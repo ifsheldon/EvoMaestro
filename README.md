@@ -1,3 +1,3 @@
 # EvoMaestro
 
-Source code to be released soon.
+Source code to be released this week.
