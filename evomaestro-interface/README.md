@@ -106,7 +106,16 @@ This lets each checkout's lockfile determine its validation environment without 
 ## Project Structure
 
 - `src/`: Next.js frontend source code.
-  - `components/`: React components (Sidebar, TreeVisualization, DetailsPanel).
+  - `app/`: Page orchestration and server-side Maestro chat routes.
+  - `components/`: Workspace views, tree visualization, panels, modals, and guided tour.
+  - `contexts/` and `hooks/`: Shared state, dataset loading, live updates, and guide lifecycle.
+  - `i18n/`: English and Simplified Chinese interface translations.
   - `lib/`: API client and utilities.
 - `backend/`: Python FastAPI backend.
   - `main.py`: API server entry point.
+  - `datasets.py`: Dataset identity, roles, and access checks.
+  - `public_demo.py`: Anonymous mock-demo access policy.
+- `start.py`: Backend, frontend, and optional evolution-runner launcher.
+- `tools/`: Mock dataset preparation and demo launcher.
+
+See the [interface architecture](architecture.md) for the component map and integration contracts.

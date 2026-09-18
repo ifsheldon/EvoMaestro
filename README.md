@@ -175,7 +175,6 @@ Clear conversation cancels its active turn and forgets the saved thread binding,
 
 Future research directions include steering groups of related nodes, suggesting or triggering pauses when evolution converges, clearer provenance for generated explanations, and aggregation for much larger evolution trees.
 These are not implemented features or committed release dates.
-See the [release checklist](docs/maintenance/release-checklist.md) for outstanding source fixes and publication checks.
 The planned demo address is `https://evomaestro-demo.reify.ing`; [deployment routing](docs/guides/mock-examples.md#single-origin-demo-routing) documents the public-demo policy and deployment requirements.
 
 ## Development

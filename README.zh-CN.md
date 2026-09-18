@@ -175,7 +175,6 @@ Maestro Chat 使用的 ChatGPT 订阅权限与真实演化所需的模型 API �
 
 未来研究方向包括对相关节点组进行引导、在演化收敛时建议或触发暂停、更清晰地展示生成解释的来源，以及面向更大演化树的聚合视图。
 这些方向尚未实现，也没有承诺的发布日期。
-待处理的源码问题与发布前检查见[发布检查清单](docs/maintenance/release-checklist.md)。
 计划使用的演示地址为 `https://evomaestro-demo.reify.ing`；[部署路由说明](docs/guides/mock-examples.md#single-origin-demo-routing)记录了公开演示策略与部署要求。
 
 ## 开发

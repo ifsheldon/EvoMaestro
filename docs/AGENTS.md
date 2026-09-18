@@ -23,7 +23,7 @@ These rules apply to `docs/` in addition to the [repository instructions](../AGE
 
 ## Plans and evidence
 
-- Keep unresolved publication work in [the release checklist](maintenance/release-checklist.md); do not recreate the retired source-release plan or deferred TODO document.
+- Keep operational requirements and validation guidance in the matching maintained guide; do not recreate the retired source-release plan or deferred TODO document.
 - Before deleting a plan, move unique active decisions to the appropriate maintained document.
 - Mark archived plans with their completion date, current replacement links, and any superseded instructions.
 - Label test evidence by date and scope; evidence for an older package must not certify newer bundled data.

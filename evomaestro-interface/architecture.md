@@ -340,7 +340,7 @@ Global insights are extracted using Markdown tokens, from the scratchpad's top-l
 The packaged example and fallback share `src/fixtures/guide-summary.json`; its English and Simplified Chinese versions are labeled as mock content.
 Loading and request errors remain distinct from absence, and stale requests cannot replace another dataset's summary.
 
-See [Mock examples](../docs/guides/mock-examples.md) and [archived implementation plan](../docs/archive/mock-guide-implementation-plan.md) for workflows and validation.
+See [Mock examples](../docs/guides/mock-examples.md) for launch, deployment, and fixture-preparation workflows.
 
 ## UI Localization
 

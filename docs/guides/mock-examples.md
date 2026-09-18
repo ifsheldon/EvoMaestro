@@ -98,7 +98,6 @@ The launcher generates a private callback credential for the backend and mock ru
 Authenticated runner callbacks use loopback URLs and ignore environment proxies.
 Keep FastAPI private behind the frontend, and configure DNS, TLS, WebSocket support, and deployment rate limits on the hosting proxy.
 `--release` alone only selects an optimized frontend build; ordinary local mode is not intended for untrusted public users.
-The remaining deployment checks are tracked in [the public-hosting checklist](../maintenance/release-checklist.md#before-public-hosting).
 
 ### 中文说明
 
@@ -148,4 +147,4 @@ The command snapshots committed SQLite WAL data, initializes a fresh demo, prese
 It fills missing seed review-cache rows and refreshes reasoning projections with the shared offline maintenance routine, preserving all vector payloads and historical priorities.
 It rejects an existing destination, source-contained outputs, source symlinks, empty guide data, and missing crossover examples.
 `--demo-source` can reuse an already initialized five-node dataset.
-See the [archived implementation plan](../archive/mock-guide-implementation-plan.md) for design history and the [dataset guide](../../datasets/README.md) for the current bundled snapshots.
+See the [interface architecture](../../evomaestro-interface/architecture.md#guided-walkthrough) for the guide lifecycle and the [dataset guide](../../datasets/README.md) for the current bundled snapshots.

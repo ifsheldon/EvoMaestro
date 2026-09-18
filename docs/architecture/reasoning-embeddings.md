@@ -173,4 +173,3 @@ Offline repair tests cover read-only audits, WAL snapshots, destination protecti
 Network connections are blocked in the new Python regression tests.
 Bun tests cover malformed vectors, stale coordinates, dimensions, tree chords, and Merge fallback/ranking.
 Real-data verification and browser evidence are recorded in the external cleanup report.
-Remaining publication checks are tracked in the [release checklist](../maintenance/release-checklist.md).
