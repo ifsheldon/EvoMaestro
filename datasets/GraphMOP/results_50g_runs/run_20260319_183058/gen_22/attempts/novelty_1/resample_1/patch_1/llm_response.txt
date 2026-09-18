@@ -1,0 +1,53 @@
+<NAME>
+regret_aware_marginal_routing
+</NAME>
+
+<DESCRIPTION>
+The novel approach implements a regret-aware greedy assignment strategy combined with a high-fidelity marginal cost model. 
+
+Key insights:
+1. **Marginal Cost Model**: Instead of simple per-task metrics, the algorithm calculates the marginal impact of each assignment on the *total* system latency and energy. This includes the change in queueing delay for all tasks at a server and the non-linear change in server dynamic power.
+2. **Regret-Aware Ordering**: Sources are prioritized based on "regret"—the difference between the best and second-best server options. This ensures that sources with limited efficient routing options are placed before those that can be flexibly assigned.
+3. **Diverse Path Generation**: Multiple Dijkstra trees are precomputed from each server using different edge weight modes (latency-focused, energy-focused, balanced, and capacity-aware) to provide a rich set of candidate paths for each source-server pair.
+4. **Iterative Refinement**: A multi-pass local improvement phase re-evaluates each assignment in the context of the final system load, allowing tasks to migrate to better servers or paths as the global state stabilizes.
+</DESCRIPTION>
+
+<CODE>
+```{language}
+# EVOLVE-BLOCK-START
+def evolve_task_routing(
+    num_nodes,
+    edges,
+    server_nodes,
+    task_sources,
+    task_info,
+    server_info,
+):
+    import heapq
+
+    # ---------- Graph and Edge Attributes ----------
+    graph = [[] for _ in range(num_nodes)]
+    edge_attr = {}
+    for u, v, lat, ene, cap in edges:
+        graph[u].append((v, lat, ene, cap))
+        graph[v].append((u, lat, ene, cap))
+        key = (u, v) if u < v else (v, u)
+        edge_attr[key] = (lat, ene, cap)
+
+    # ---------- Multi-mode Dijkstra from Servers ----------
+    def get_dijkstra_tree(root, mode_weights):
+        w_lat, w_ene, w_cap = mode_weights
+        dist = [float("inf")] * num_nodes
+        parent = [-1] * num_nodes
+        dist[root] = 0.0
+        parent[root] = root
+        heap = [(0.0, root)]
+        while heap:
+            d, u = heapq.heappop(heap)
+            if d > dist[u]: continue
+            for v, lat, ene, cap in graph[u]:
+                # Weight includes latency, energy, and a capacity penalty
+                w = w_lat * lat + w_ene * ene + w_cap / (cap + 1e-6)
+                if dist[u] + w < dist[v]:
+                    dist[v] = dist[u] + w
+                    parent

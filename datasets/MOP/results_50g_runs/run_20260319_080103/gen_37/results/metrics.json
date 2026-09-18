@@ -1,0 +1,17 @@
+{
+    "combined_score": -24.666750639666112,
+    "public": {
+        "F1 (Distance)": 1.223153131077885,
+        "F2 (School Noise)": 0.5751087498041333,
+        "F3 (Signal Loss)": 35.065588906670044,
+        "MOP Multiplier Score": 24.666750639666112,
+        "Note": "Lower MOP Multiplier Score is better. The evaluator will map this to -Score for maximization."
+    },
+    "private": {},
+    "text_feedback": "Your generated function yielded a score of 24.6668 (F1:1.2232, F2:0.5751, F3:35.0656). Try to make this score even LOWER. The system maximizes the negated score: -24.6668",
+    "execution_time_mean": 0.0007630048785358667,
+    "execution_time_std": 0.0,
+    "num_valid_runs": 1,
+    "num_invalid_runs": 0,
+    "all_validation_errors": []
+}

@@ -1,0 +1,46 @@
+<NAME>
+windowed_gaussian_refiner
+</NAME>
+
+<DESCRIPTION>
+This algorithm uses a non-parametric "Deformable Path" approach optimized via Multi-Scale Windowed Coordinate Descent. Instead of relying on a fixed parametric curve (like Gaussians), it optimizes each Y-coordinate directly. To maintain smoothness and ensure global convergence, it applies perturbations using Gaussian-shaped windows of varying scales. 
+
+1. **Multi-Scale Optimization**: It starts with large-scale windows (half the path length) to find the optimal global "bend" that avoids the school and approaches the base station. It then progressively reduces the window size to fine-tune local details.
+2. **Coordinate Descent**: The algorithm iteratively adjusts the path, accepting only changes that improve a composite score of distance (F1), school proximity (F2), signal loss (F3), and a Laplacian smoothness penalty.
+3. **Efficiency**: By using a truncated Gaussian kernel and a greedy local search, it explores a high-dimensional space (one variable per path point) much more effectively than a low-dimensional parametric model, allowing the path to "snake" around obstacles while remaining perfectly smooth.
+</DESCRIPTION>
+
+<CODE>
+```python
+# EVOLVE-BLOCK-START
+import math
+
+class PathContext:
+    """Stores input parameters and precomputes X-coordinates."""
+    __slots__ = ("x0", "y0", "x1", "y1", "school", "base", "num_points", "xs", "straight_dist")
+    def __init__(self, start, end, school, base, num_points):
+        self.x0, self.y0 = start
+        self.x1, self.y1 = end
+        self.school = school
+        self.base = base
+        self.num_points = int(num_points)
+        # Uniformly spaced X samples between start and end
+        self.xs = [self.x0 + (i + 1) * (self.x1 - self.x0) / (self.num_points + 1) 
+                   for i in range(self.num_points)]
+        self.straight_dist = math.hypot(self.x1 - self.x0, self.y1 - self.y0) + 1e-9
+
+class PathEvaluator:
+    """Calculates a composite score based on distance, noise, signal, and smoothness."""
+    def __init__(self, ctx):
+        self.ctx = ctx
+        # Weights tuned to balance the three primary objectives plus smoothness
+        self.w_dist = 1.0
+        self.w_school = 18.0
+        self.w_base = 0.25
+        self.w_smooth = 0.8
+
+    def score(self, ys):
+        ctx = self.ctx
+        # F1: Path Length Ratio
+        total_dist = 0
+        px, py = ctx.x0

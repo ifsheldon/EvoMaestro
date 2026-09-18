@@ -1,0 +1,106 @@
+```xml
+<NAME>
+conflict_aware_base_attraction
+</NAME>
+
+<DESCRIPTION>
+Upgrade base attraction to be conflict-aware. Instead of adding independent offsets for school and base, we first apply the school repulsion to the baseline, and then apply a proportional pull towards the base station from the *current* displaced position. To prevent the base attraction from pulling the drone back into the school's noise zone, we modulate the base pull strength inversely with the school's influence (`w_school`). We also increase the base pull rate and school repulsion amplitude to better match the successful dynamic programming approach's prioritization of F2 and F3.
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+    # 基于直线与学校/基站相对位置，决定上下偏置方向
+    school_line_y = line_y(sx)
+    base_line_y = line_y(bx)
+
+    # 远离学校：若学校在线上方，则向下压；若在线下方，则向上抬
+    away_dir = -1.0 if sy >= school_line_y else 1.0
+
+    # 靠近基站：向基站所在侧偏移
+    toward_dir = 1.0 if by >= base_line_y else -1.0
+
+    # 横向作用范围：学校影响更局部，基站吸引也更局部以防止路径过长
+    span = abs(dx_total)
+    sigma_school = max(span * 0.12, 6.0)
+    sigma_base = max(span * 0.14, 7.0)
+
+    # 纵向幅值：控制在适中范围，避免过大导致路径显著变长
+    school_gap = abs(sy - school_line_y)
+    base_gap = abs(by - base_line_y)
+
+    # 学校排斥更积极，基站吸引增强但更局部；同时设置上限防止极端输入失控
+    amp_school = min(18.0, 0.40 * school_gap + 6.0)
+    amp_base = min(35.0, 0.80 * base_gap + 5.0)
+
+    # 若学校与基站在同侧且作用冲突，适度增强学校规避优先级
+    if away_dir == toward_dir:
+        amp_school *= 1.10
+        amp_base *= 0.95
+
+    y_coords = []
+    for x, y0 in zip(xs, baseline):
+        w_school = gaussian(x, sx, sigma_school)
+        w_base = gaussian(x, bx, sigma_base)
+
+        # 平滑叠加：先避校区，再逐步靠向基站
+        delta = away_dir * amp_school * w_school + toward_dir * amp_base * w_base
+
+        # 轻微距离约束：限制相对基线偏离，兼顾 F1
+        max_dev = 35.0
+        if delta > max_dev:
+            delta = max_dev
+        elif delta < -max_dev:
+            delta = -max_dev
+
+        y_coords.append(float(y0 + delta))
+
+    return y_coords
+=======
+    # 基于直线与学校/基站相对位置，决定上下偏置方向
+    school_line_y = line_y(sx)
+
+    # 远离学校：若学校在线上方，则向下压；若在线下方，则向上抬
+    away_dir = -1.0 if sy >= school_line_y else 1.0
+
+    # 横向作用范围：学校影响更局部，基站吸引也更局部以防止路径过长
+    span = abs(dx_total)
+    sigma_school = max(span * 0.16, 8.0)
+    sigma_base = max(span * 0.22, 10.0)
+
+    # 动态计算学校排斥力：基线离学校越近，排斥力越强
+    school_gap = abs(sy - school_line_y)
+    amp_school = max(15.0, 35.0 - 0.5 * school_gap)
+    base_pull_rate = 0.80
+
+    y_coords = []
+    for x, y0 in zip(xs, baseline):
+        w_school = gaussian(x, sx, sigma_school)
+        w_base = gaussian(x, bx, sigma_base)
+
+        # 1. 学校排斥：在基线基础上偏移
+        y = y0 + away_dir * amp_school * w_school
+
+        # 2. 冲突感知的基站吸引：
+        # 如果当前位置受学校影响较大，则减弱基站的吸引力，防止被拉回学校噪音区
+        # 吸引力与当前 y 到 by 的距离成正比
+        conflict_factor = 1.0 - 0.85 * w_school
+        pull = base_pull_rate * w_base * conflict_factor
+
+        y += pull * (by - y)
+
+        y_coords.append(float(y))
+
+    # 轻量平滑，减少折线抖动与额外路程
+    smooth_alpha = 0.35
+    for _ in range(2):
+        smoothed = []
+        for i in range(num_points):
+            left = y_start if i == 0 else y_coords[i - 1]
+            right = y_end if i == num_points - 1 else y_coords[i + 1]
+            smoothed.append((1.0 - smooth_alpha) * y_coords[i] + smooth_alpha * 0.5 * (left + right))
+        y_coords = smoothed
+
+    return y_coords
+>>>>>>> REPLACE
+</DIFF>
+```

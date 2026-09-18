@@ -1,0 +1,209 @@
+<NAME>
+adaptive_school_push_and_base_priority
+</NAME>
+
+<DESCRIPTION>
+This modification implements the recommended two-stage adaptive school repulsion. It first projects the drone's path based on the base station's attraction and tail bias, then calculates the clearance from the school at its x-coordinate. A sharp school push is then applied with an amplitude that adaptively increases if the clearance is small, following the suggested formula `amp = min(52.0, max(32.0, a + b / (clearance + c)))`. Additionally, the surrogate score weights have been rebalanced to prioritize minimizing F3 (Signal Loss) and F2 (School Noise).
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+    # Conservative but effective search ranges.
+    school_sigmas = [max(6.0, 0.10 * span_x), max(9.0, 0.15 * span_x)]
+    base_sigmas = [max(10.0, 0.18 * span_x), max(14.0, 0.24 * span_x)]
+
+    school_amps = [
+        min(14.0, 4.0 + 0.22 * school_gap + 0.10 * span_x),
+        min(20.0, 6.0 + 0.34 * school_gap + 0.12 * span_x),
+    ]
+    base_pulls = [
+        min(0.45, 0.16 + 0.010 * base_gap),
+        min(0.68, 0.24 + 0.014 * base_gap),
+        min(0.88, 0.34 + 0.016 * base_gap),
+    ]
+    tail_gains = [0.0, 1.8, 3.6]
+    smooth_alphas = [0.18, 0.30]
+
+    if away_dir == toward_dir:
+        school_amps = [a * 1.05 for a in school_amps]
+        base_pulls = [min(0.95, b * 1.08) for b in base_pulls]
+        tail_gains = [g * 1.15 for g in tail_gains]
+=======
+    # Conservative but effective search ranges.
+    school_sigmas = [max(6.0, 0.10 * span_x), max(10.0, 0.14 * span_x)]
+    base_sigmas = [max(11.0, 0.19 * span_x), max(15.0, 0.25 * span_x)]
+
+    school_push_consts = [26.0, 32.0]
+    base_pulls = [
+        min(0.65, 0.24 + 0.012 * base_gap),
+        min(0.92, 0.42 + 0.018 * base_gap),
+    ]
+    tail_gains = [0.0, 2.5, 5.0]
+    smooth_alphas = [0.20, 0.35]
+
+    if away_dir == toward_dir:
+        school_push_consts = [c * 1.05 for c in school_push_consts]
+        base_pulls = [min(0.98, b * 1.08) for b in base_pulls]
+        tail_gains = [g * 1.25 for g in tail_gains]
+>>>>>>> REPLACE
+<<<<<<< SEARCH
+    def build_candidate(amp_school, sigma_school, base_pull, sigma_base, tail_gain, smooth_alpha):
+        ws = gauss_school[sigma_school]
+        wb = gauss_base[sigma_base]
+        wbw = gauss_base_wide[sigma_base]
+        wbp = gauss_base_post[sigma_base]
+
+        ys = [0.0] * num_points
+        for i in range(num_points):
+            y0 = baseline[i]
+            t = ts[i]
+
+            # Local school repulsion.
+            repel = away_dir * amp_school * ws[i]
+
+            # Direct attraction toward the base Y-coordinate, stronger later in the path.
+            attract_strength = base_pull * wb[i] * (0.55 + 0.85 * t * t)
+            attract = attract_strength * (by - y0)
+
+            # Mild global bend toward base side, especially near the tail.
+            tail_bias = toward_dir * tail_gain * (t * t) * (0.30 + 0.70 * wbw[i])
+
+            delta = clamp(repel + attract + tail_bias, -max_dev, max_dev)
+            y = y0 + delta
+
+            # Small local post-correction near base to improve F3 without excessive detour.
+            y += 0.16 * (by - y) * wbp[i]
+            ys[i] = y
+
+        ys = smooth_once(ys, smooth_alpha)
+        ys = smooth_once(ys, smooth_alpha * 0.65)
+        return ys
+=======
+    def build_candidate(school_k, sigma_school, base_pull, sigma_base, tail_gain, smooth_alpha):
+        ws = gauss_school[sigma_school]
+        wb = gauss_base[sigma_base]
+        wbw = gauss_base_wide[sigma_base]
+        wbp = gauss_base_post[sigma_base]
+
+        # Stage 1: Broad base attraction and tail bias
+        ys_s1 = []
+        for i in range(num_points):
+            y0 = baseline[i]
+            t = ts[i]
+            attract = base_pull * wb[i] * (0.55 + 0.85 * t * t) * (by - y0)
+            tail_bias = toward_dir * tail_gain * (t * t) * (0.30 + 0.70 * wbw[i])
+            ys_s1.append(y0 + clamp(attract + tail_bias, -max_dev, max_dev))
+        
+        # Calculate clearance at school center
+        idx_f = (sx - x_start) / (dx_total / (num_points + 1)) - 1
+        idx = int(round(idx_f))
+        y_at_sx = ys_s1[max(0, min(num_points - 1, idx))]
+        clearance = abs(sy - y_at_sx)
+        
+        # Adaptive push magnitude based on clearance
+        amp = min(52.0, max(32.0, school_k + 90.0 / (clearance + 4.5)))
+
+        # Stage 2: Final path with adaptive school push
+        ys = []
+        for i in range(num_points):
+            y = ys_s1[i] + away_dir * amp * ws[i]
+            # Precise post-correction for F3
+            y += 0.18 * (by - y) * wbp[i]
+            ys.append(y)
+
+        ys = smooth_once(ys, smooth_alpha)
+        ys = smooth_once(ys, smooth_alpha * 0.65)
+        return ys
+>>>>>>> REPLACE
+<<<<<<< SEARCH
+    def surrogate_score(ys):
+        total_len = 0.0
+        px, py = x_start, y_start
+        for x, y in zip(xs, ys):
+            total_len += math.hypot(x - px, y - py)
+            px, py = x, y
+        total_len += math.hypot(x_end - px, y_end - py)
+        f1 = total_len / direct_len
+
+        school_pen = 0.0
+        for x, y in zip(xs, ys):
+            d = math.hypot(x - sx, y - sy)
+            school_pen += 1.0 / (d + 1.2)
+        school_pen /= num_points
+
+        base_pen = 0.0
+        for i, (x, y) in enumerate(zip(xs, ys)):
+            t = (i + 1) / (num_points + 1.0)
+            w = 0.55 + 1.15 * t
+            base_pen += w * math.hypot(x - bx, y - by)
+        base_pen /= num_points
+
+        smooth_pen = 0.0
+        for i in range(1, num_points - 1):
+            smooth_pen += abs(ys[i - 1] - 2.0 * ys[i] + ys[i + 1])
+        smooth_pen /= max(1, num_points - 2)
+
+        # Weighted to avoid excessive F1 growth while still improving school/base behavior.
+        return 3.0 * f1 + 21.0 * school_pen + 0.085 * base_pen + 0.12 * smooth_pen
+=======
+    def surrogate_score(ys):
+        total_len = 0.0
+        px, py = x_start, y_start
+        for x, y in zip(xs, ys):
+            total_len += math.hypot(x - px, y - py)
+            px, py = x, y
+        total_len += math.hypot(x_end - px, y_end - py)
+        f1 = total_len / direct_len
+
+        school_pen = 0.0
+        for x, y in zip(xs, ys):
+            d = math.hypot(x - sx, y - sy)
+            school_pen += 1.0 / (d + 1.0)
+        school_pen /= num_points
+
+        base_pen = 0.0
+        for i, (x, y) in enumerate(zip(xs, ys)):
+            t = (i + 1) / (num_points + 1.0)
+            w = 0.60 + 1.20 * t
+            base_pen += w * math.hypot(x - bx, y - by)
+        base_pen /= num_points
+
+        smooth_pen = 0.0
+        for i in range(1, num_points - 1):
+            smooth_pen += abs(ys[i - 1] - 2.0 * ys[i] + ys[i + 1])
+        smooth_pen /= max(1, num_points - 2)
+
+        # Priority weights targeting F3 reduction and F2 stability
+        return 4.0 * f1 + 26.0 * school_pen + 0.12 * base_pen + 0.15 * smooth_pen
+>>>>>>> REPLACE
+<<<<<<< SEARCH
+    for amp_school in school_amps:
+        for sigma_school in school_sigmas:
+            for base_pull in base_pulls:
+                for sigma_base in base_sigmas:
+                    for tail_gain in tail_gains:
+                        for smooth_alpha in smooth_alphas:
+                            ys = build_candidate(
+                                amp_school=amp_school,
+                                sigma_school=sigma_school,
+                                base_pull=base_pull,
+                                sigma_base=sigma_base,
+                                tail_gain=tail_gain,
+                                smooth_alpha=smooth_alpha,
+                            )
+=======
+    for school_k in school_push_consts:
+        for sigma_school in school_sigmas:
+            for base_pull in base_pulls:
+                for sigma_base in base_sigmas:
+                    for tail_gain in tail_gains:
+                        for smooth_alpha in smooth_alphas:
+                            ys = build_candidate(
+                                school_k=school_k,
+                                sigma_school=sigma_school,
+                                base_pull=base_pull,
+                                sigma_base=sigma_base,
+                                tail_gain=tail_gain,
+                                smooth_alpha=smooth_alpha,
+                            )
+>>>>>>> REPLACE</DIFF>

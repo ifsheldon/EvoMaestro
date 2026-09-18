@@ -1,0 +1,14 @@
+{
+  "generation": 2,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "smooth_biased_path",
+  "patch_description": "This rewrite keeps the same interface and return type, but replaces the trivial straight-line interpolation with a smooth heuristic trajectory generator tailored to the three objectives:\n\n1. Minimize distance by starting from the straight line baseline.\n2. Reduce school-noise proximity by adding a smooth repulsive bend away from the school location.\n3. Reduce base-station signal drop by adding a smooth attractive bend toward the base location.\n\nThe implementation uses only lightweight deterministic math, so it is fast and stable. Internally it:\n- samples uniformly in X exactly as required,\n- builds the baseline straight-line Y values,\n- applies a Gaussian-shaped repulsion centered near the school X,\n- applies a broader Gaussian attraction centered near the base X,\n- limits the total deformation to remain smooth and avoid overly long detours.\n\nThis produces a continuous, low-curvature path that typically bends downward when the school is above the route and the base is below it, matching the guidance to bend away from (40, 20) and toward (70, -30), while still generalizing to other inputs.",
+  "error_msg": null,
+  "timestamp": "2026-03-19T16:01:43.381409",
+  "llm_cost": 0.027062500000000003,
+  "llm_model": null
+}

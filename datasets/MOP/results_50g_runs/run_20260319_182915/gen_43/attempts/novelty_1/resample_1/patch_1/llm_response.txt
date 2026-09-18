@@ -1,0 +1,44 @@
+```python
+# EVOLVE-BLOCK-START
+<NAME>
+analytic_multistart_adam
+</NAME>
+
+<DESCRIPTION>
+This approach transitions from discrete point-based evaluation approximations to exact continuous curve integrals utilizing a 3-point Gaussian Quadrature scheme. This computes precise path lengths (F1), school proximity repulsions (F2), and base signal attrations (F3). Because the grader scores the combined multi-objective problem as essentially F1 * F2 * F3, computing explicit analytic gradients for `log(F1) + log(F2) + log(F3)` ensures an optimal direction. 
+
+To overcome potential saddle points or local minima (especially when the straight line path passes symmetrically across the school's location, nullifying vertical gradients), it uses a multi-start strategy. Four separate initial trajectories (straight, perturbed upwards, perturbed downwards, and biased toward the base station) are optimized with an annealed Adam optimizer for 1200 steps each. The outcome with the mathematically lowest integrated objective cost is then definitively selected.
+</DESCRIPTION>
+
+<CODE>
+import math
+
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    【无人机连续空间多目标折线优化】
+    Uses an exact geometric integral via 3-point Gaussian Quadrature and Analytic Gradients
+    embedded inside a robust multi-start Adam optimizer to achieve the lowest MOP Score.
+    """
+    x_start, y_start = start
+    x_end, y_end = end
+    sx, sy = school
+    bx, by = base
+    
+    dx_spacing = (x_end - x_start) / (num_points + 1)
+    xs = [x_start + (i + 1) * dx_spacing for i in range(num_points)]
+    
+    # 3-point Gaussian Quadrature properties
+    w = [5.0/18.0, 8.0/18.0, 5.0/18.0]
+    sq15_10 = 0.3872983346207417
+    t_quad = [0.5 - sq15_10, 0.5, 0.5 + sq15_10]
+    
+    def get_gradients(current_ys):
+        pts_x = [x_start] + xs + [x_end]
+        pts_y = [y_start] + current_ys + [y_end]
+        
+        n_seg = num_points + 1
+        f1, f2, f3 = 0.0, 0.0, 0.0
+        
+        grad_f1 = [0.0] * num_points
+        grad_f2 = [0.0] * num_points
+        grad_f3 = [0.0] * num_points

@@ -1,0 +1,14 @@
+{
+  "generation": 47,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "deformable_snake_path_refiner",
+  "patch_description": "This algorithm utilizes a \"Deformable Snake\" approach to path planning. Instead of using a fixed parametric form (like Gaussians or polynomials), it treats the path as a flexible string and optimizes the individual Y-coordinates of each node. The optimization is performed using a systematic \"coordinate descent\" variant where each update is applied through a Gaussian-weighted window. This ensures that a move at one point smoothly influences its neighbors, maintaining path continuity and effectively preventing jagged edges.\n\nKey advantages of this approach:\n1. **Flexibility**: Unlike the fixed 6-parameter Gaussian model, this can adapt to any shape required to navigate between school noise and base station signal.\n2. **Smoothness**: The windowed (Gaussian) updates naturally maintain curvature constraints, and an explicit Laplacian smoothness penalty is incorporated into the search objective.\n3. **Efficiency**: A systematic multi-scale refinement (from large steps to fine adjustments) quickly converges to a high-quality local minimum within the provided time constraints.\n4. **Targeted Initialization**: The starting path is a base-biased trajectory, giving the optimizer a strong starting point near the optimal curve that bends towards (70, -30) and away from (40, 20).",
+  "error_msg": "Could not extract code from patch string",
+  "timestamp": "2026-03-20T02:48:58.424464",
+  "llm_cost": 0.0049905,
+  "llm_model": null
+}

@@ -1,0 +1,14 @@
+{
+  "generation": 7,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 2,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "server_centric_sa_routing",
+  "patch_description": "Instead of running Dijkstra from every task source (which is slow and scales poorly with the number of sources), this algorithm runs a few \"Reverse Dijkstras\" from each of the few servers. By varying the edge weights (focusing on latency, energy, or hop count), it quickly builds a diverse set of Pareto-optimal candidate paths for every source-server pair. \n\nOnce the candidate paths are precomputed, the algorithm uses a highly optimized Simulated Annealing (SA) local search to assign each task source to a server and path. The SA objective function strictly models the system's true latency and energy costs, including a continuous M/M/1 queueing delay penalty that smoothly transitions into a heavy linear penalty if a server exceeds 95% utilization. Because the SA inner loop tracks objective deltas in $O(1)$ time, it can explore millions of neighboring configurations within the time limit, smoothly decaying the temperature to converge on a globally optimal routing plan.",
+  "error_msg": "Could not extract code from patch string",
+  "timestamp": "2026-03-20T02:36:50.565502",
+  "llm_cost": 0.012428000000000002,
+  "llm_model": null
+}

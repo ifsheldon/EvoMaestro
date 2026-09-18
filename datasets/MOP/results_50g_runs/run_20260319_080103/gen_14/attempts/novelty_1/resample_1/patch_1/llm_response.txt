@@ -1,0 +1,44 @@
+```xml
+<NAME>
+post_smoothing_base_pull
+</NAME>
+
+<DESCRIPTION>
+Add a mild base-focused correction pass after the smoothing rounds. Smoothing tends to pull the path away from the base station (which was carefully targeted in the first pass), increasing the signal loss (F3). By applying a lightweight update `y += post_base_pull * gaussian(x around bx) * (by - y)` with a small coefficient, the path regains some base alignment lost during smoothing, shaving down F3 without materially increasing the flying distance (F1).
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+    # 轻量平滑，减少折线抖动与额外路程
+    smooth_alpha = 0.35
+    for _ in range(2):
+        smoothed = []
+        for i in range(num_points):
+            left = y_start if i == 0 else y_coords[i - 1]
+            right = y_end if i == num_points - 1 else y_coords[i + 1]
+            smoothed.append((1.0 - smooth_alpha) * y_coords[i] + smooth_alpha * 0.5 * (left + right))
+        y_coords = smoothed
+
+    return [float(y) for y in y_coords]
+=======
+    # 轻量平滑，减少折线抖动与额外路程
+    smooth_alpha = 0.35
+    for _ in range(2):
+        smoothed = []
+        for i in range(num_points):
+            left = y_start if i == 0 else y_coords[i - 1]
+            right = y_end if i == num_points - 1 else y_coords[i + 1]
+            smoothed.append((1.0 - smooth_alpha) * y_coords[i] + smooth_alpha * 0.5 * (left + right))
+        y_coords = smoothed
+
+    # 恢复部分基站引力，降低 F3
+    post_base_pull = 0.15
+    for i in range(num_points):
+        x = x_start + (i + 1) * dx
+        attract_w = math.exp(-((x - bx) ** 2) / (2.0 * base_sigma ** 2))
+        y_coords[i] += post_base_pull * attract_w * (by - y_coords[i])
+
+    return [float(y) for y in y_coords]
+>>>>>>> REPLACE
+</DIFF>
+```

@@ -1,0 +1,14 @@
+{
+    "combined_score": 2.8978,
+    "public": {
+        "raw_value": 11.4244,
+        "random_score": 2.8978
+    },
+    "private": {},
+    "text_feedback": "Raw output was 11.4244. Random score: 2.8978.",
+    "execution_time_mean": 2.462498378008604e-05,
+    "execution_time_std": 0.0,
+    "num_valid_runs": 1,
+    "num_invalid_runs": 0,
+    "all_validation_errors": []
+}

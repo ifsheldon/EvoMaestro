@@ -1,0 +1,14 @@
+{
+  "generation": 14,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "heuristic_parameter_tuning_and_envelope_optimization",
+  "patch_description": "The current heuristic path optimization is limited by three factors: \n1) The clipping of the path offset (max_offset=22.0) prevents the drone from reaching the base station's Y-coordinate (approx -30), leading to high signal loss (F3).\n2) The school repulsion and base attraction weights are too conservative.\n3) The sinusoidal envelope is too narrow at the points of interest (x=40 and x=70).\n\nThis edit improves the path by:\n- Increasing the max_offset to 60.0 to allow full proximity to the base station.\n- Using a power-transformed sine envelope (sin^0.7) to create a flatter \"plateau\" in the middle of the path, allowing the drone to stay near the base station for a longer duration.\n- Implementing dynamic repulsion that scales with the distance between the baseline and the school, ensuring a more consistent clearance.\n- Increasing the influence (sigma) of both the school and base station to create smoother, earlier transitions that minimize the product of F1, F2, and F3.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:34:16.579909",
+  "llm_cost": 0.005366,
+  "llm_model": null
+}

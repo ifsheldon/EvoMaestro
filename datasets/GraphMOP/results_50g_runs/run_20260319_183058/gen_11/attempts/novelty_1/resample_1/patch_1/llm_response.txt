@@ -1,0 +1,364 @@
+<NAME>
+pareto_lagrangian_local_search
+</NAME>
+
+<DESCRIPTION>
+This rewrite uses a **two-stage Pareto + local-search optimizer** instead of the original one-pass greedy assignment.
+
+1. **Candidate generation (multi-objective path discovery):**  
+   For each task source, it runs multiple Dijkstra passes with different latency/energy tradeoff weights (Lagrangian scalarizations). This produces diverse source→server path candidates, then keeps the best non-dominated ones.
+
+2. **Global assignment optimization (load-coupled):**  
+   It initializes a feasible assignment, then performs iterative **best-response local search** with incremental load updates. Each move evaluates full system impact:
+   - routing latency + routing energy from chosen path,
+   - server queueing latency using an M/M/1-like delay model,
+   - server compute energy (dynamic + shared idle activation cost).
+
+This approach is fundamentally different from the old ranked greedy method because it explicitly explores multi-objective path tradeoffs first and then optimizes assignments under server-load coupling globally. It tends to perform better when latency/energy tradeoffs and queue congestion interact.
+</DESCRIPTION>
+
+<CODE>
+```python
+# EVOLVE-BLOCK-START
+def evolve_task_routing(
+    num_nodes,
+    edges,
+    server_nodes,
+    task_sources,
+    task_info,
+    server_info,
+):
+    """
+    Graph multi-objective routing problem.
+
+    Return:
+    {
+        source_node: {
+            "server": server_node,
+            "path": [source_node, ..., server_node],
+        },
+        ...
+    }
+    """
+    import heapq
+    import math
+
+    # ----------------------------
+    # Graph build (undirected)
+    # ----------------------------
+    graph = [[] for _ in range(num_nodes)]
+    for u, v, base_latency, energy_cost, capacity in edges:
+        graph[u].append((v, float(base_latency), float(energy_cost), float(capacity)))
+        graph[v].append((u, float(base_latency), float(energy_cost), float(capacity)))
+
+    server_set = set(server_nodes)
+
+    # ----------------------------
+    # Helpers
+    # ----------------------------
+    def dijkstra(source, payload, lam):
+        """
+        Scalarized shortest paths from source with weight:
+            latency_component + lam * energy_component
+        """
+        dist = [float("inf")] * num_nodes
+        parent = [-1] * num_nodes
+        dist[source] = 0.0
+        hq = [(0.0, source)]
+
+        while hq:
+            cd, u = heapq.heappop(hq)
+            if cd != dist[u]:
+                continue
+            for v, base_lat, e_cost, cap in graph[u]:
+                # Transmission latency includes a payload/capacity term.
+                tx_lat = base_lat + (payload / max(cap, 1e-9))
+                tx_en = e_cost * payload
+                w = tx_lat + lam * tx_en
+                nd = cd + w
+                if nd < dist[v]:
+                    dist[v] = nd
+                    parent[v] = u
+                    heapq.heappush(hq, (nd, v))
+        return dist, parent
+
+    def reconstruct_path(parent, s, t):
+        if s == t:
+            return [s]
+        if t < 0 or t >= num_nodes or parent[t] == -1:
+            return []
+        path = [t]
+        cur = t
+        seen = {t}
+        while cur != s:
+            cur = parent[cur]
+            if cur == -1 or cur in seen:
+                return []
+            path.append(cur)
+            seen.add(cur)
+        path.reverse()
+        return path
+
+    def path_metrics(path, payload):
+        if not path or len(path) == 1:
+            return 0.0, 0.0
+        total_lat = 0.0
+        total_en = 0.0
+        for i in range(len(path) - 1):
+            u = path[i]
+            v = path[i + 1]
+            found = False
+            for nv, base_lat, e_cost, cap in graph[u]:
+                if nv == v:
+                    total_lat += base_lat + (payload / max(cap, 1e-9))
+                    total_en += e_cost * payload
+                    found = True
+                    break
+            if not found:
+                return float("inf"), float("inf")
+        return total_lat, total_en
+
+    def queue_delay(load, mu):
+        # Stable M/M/1-style delay; strong penalty near saturation.
+        eps = 1e-9
+        if load >= 0.985 * mu:
+            return 1e6 + 1e4 * (load - 0.985 * mu + 1.0)
+        return 1.0 / max(mu - load, eps)
+
+    # ----------------------------
+    # Candidate generation:
+    # Multi-lambda path set per source, then Pareto-prune
+    # ----------------------------
+    lambdas = [0.0, 0.15, 0.35, 0.7, 1.5, 3.0]
+    max_candidates_per_source = 10
+    candidates = {}
+
+    for s in task_sources:
+        arr, payload, comp = task_info[s]
+        raw = []
+        for lam in lambdas:
+            _, parent = dijkstra(s, payload, lam)
+            for srv in server_nodes:
+                p = reconstruct_path(parent, s, srv)
+                if not p:
+                    continue
+                rlat, ren = path_metrics(p, payload)
+                if math.isinf(rlat) or math.isinf(ren):
+                    continue
+                raw.append((srv, p, rlat, ren))
+
+        # Deduplicate by server/path signature; keep best by (lat+en)
+        uniq = {}
+        for srv, p, rlat, ren in raw:
+            key = (srv, tuple(p))
+            val = rlat + ren
+            if key not in uniq or val < uniq[key][2] + uniq[key][3]:
+                uniq[key] = (srv, p, rlat, ren)
+        raw = list(uniq.values())
+
+        # Pareto prune (route latency, route energy)
+        nondom = []
+        for i, ci in enumerate(raw):
+            _, _, li, ei = ci
+            dominated = False
+            for j, cj in enumerate(raw):
+                if i == j:
+                    continue
+                _, _, lj, ej = cj
+                if (lj <= li and ej <= ei) and (lj < li or ej < ei):
+                    dominated = True
+                    break
+            if not dominated:
+                nondom.append(ci)
+
+        # Fallback if none
+        if not nondom:
+            # Try pure hop-based BFS-like fallback via dijkstra with tiny weights
+            _, parent = dijkstra(s, payload, 0.0)
+            for srv in server_nodes:
+                p = reconstruct_path(parent, s, srv)
+                if p:
+                    rlat, ren = path_metrics(p, payload)
+                    nondom.append((srv, p, rlat, ren))
+
+        # Sort by mixed score and cap size
+        nondom.sort(key=lambda x: (x[2] + 0.4 * x[3], x[2], x[3], len(x[1])))
+        candidates[s] = nondom[:max_candidates_per_source] if nondom else []
+
+    # ----------------------------
+    # Ensure every source has at least one feasible candidate
+    # ----------------------------
+    for s in task_sources:
+        if candidates[s]:
+            continue
+        # Last-resort: pick any server with direct dijkstra outcome
+        arr, payload, comp = task_info[s]
+        _, parent = dijkstra(s, payload, 0.5)
+        best = None
+        for srv in server_nodes:
+            p = reconstruct_path(parent, s, srv)
+            if not p:
+                continue
+            rlat, ren = path_metrics(p, payload)
+            if best is None or (rlat + ren) < (best[2] + best[3]):
+                best = (srv, p, rlat, ren)
+        if best is None:
+            # pathological disconnected case: force trivial placeholder
+            srv = server_nodes[0]
+            p = [s] if s == srv else [s, srv]
+            rlat, ren = (0.0, 0.0) if s == srv else (1e6, 1e6)
+            best = (srv, p, rlat, ren)
+        candidates[s] = [best]
+
+    # ----------------------------
+    # Objective components
+    # ----------------------------
+    # Load unit from task:
+    # work = arrival_rate * compute_demand
+    work = {s: task_info[s][0] * task_info[s][2] for s in task_sources}
+
+    # Initial assignment: best route adjusted by rough server pressure
+    assign_idx = {}
+    server_load = {srv: 0.0 for srv in server_nodes}
+    server_users = {srv: 0 for srv in server_nodes}
+
+    # Larger jobs first for better stability
+    ordered_sources = sorted(task_sources, key=lambda s: work[s], reverse=True)
+
+    for s in ordered_sources:
+        best_i = 0
+        best_score = float("inf")
+        for i, (srv, p, rlat, ren) in enumerate(candidates[s]):
+            mu, idle_p, dyn_p = server_info[srv]
+            pred = server_load[srv] + work[s]
+            if pred >= 0.99 * mu:
+                continue
+            util = pred / max(mu, 1e-9)
+            qd = queue_delay(pred, mu)
+            # rough per-task energy proxy
+            comp_en = dyn_p * (work[s] / max(mu, 1e-9)) + (idle_p * (1.0 if server_users[srv] == 0 else 0.2))
+            score = rlat + qd + 0.35 * (ren + comp_en) + 0.8 * util
+            if score < best_score:
+                best_score = score
+                best_i = i
+
+        assign_idx[s] = best_i
+        srv = candidates[s][best_i][0]
+        server_load[srv] += work[s]
+        server_users[srv] += 1
+
+    def total_cost():
+        # Full objective estimate for local search
+        latency_sum = 0.0
+        energy_sum = 0.0
+
+        # active server set for idle energy sharing
+        active = {srv for srv in server_nodes if server_users[srv] > 0}
+
+        for s in task_sources:
+            i = assign_idx[s]
+            srv, p, rlat, ren = candidates[s][i]
+            mu, idle_p, dyn_p = server_info[srv]
+            l = server_load[srv]
+            qd = queue_delay(l, mu)
+            latency_sum += rlat + qd
+
+            # compute energy per-source
+            comp_part = dyn_p * (work[s] / max(mu, 1e-9))
+            idle_share = (idle_p / max(server_users[srv], 1)) if srv in active else 0.0
+            energy_sum += ren + comp_part + 0.12 * idle_share
+
+        # Balanced scalarization
+        return latency_sum + 0.45 * energy_sum
+
+    # ----------------------------
+    # Local search: best-response reassignments
+    # ----------------------------
+    current = total_cost()
+    max_iters = 7
+
+    for _ in range(max_iters):
+        improved = False
+        for s in ordered_sources:
+            old_i = assign_idx[s]
+            old_srv = candidates[s][old_i][0]
+            w = work[s]
+
+            # remove current
+            server_load[old_srv] -= w
+            server_users[old_srv] -= 1
+
+            best_i = old_i
+            best_val = current
+
+            for i, (new_srv, p, rlat, ren) in enumerate(candidates[s]):
+                mu, _, _ = server_info[new_srv]
+                if server_load[new_srv] + w >= 0.995 * mu:
+                    continue
+
+                # tentative add
+                server_load[new_srv] += w
+                server_users[new_srv] += 1
+                assign_idx[s] = i
+
+                val = total_cost()
+                if val < best_val:
+                    best_val = val
+                    best_i = i
+
+                # rollback tentative
+                server_load[new_srv] -= w
+                server_users[new_srv] -= 1
+
+            # commit best
+            assign_idx[s] = best_i
+            new_srv = candidates[s][best_i][0]
+            server_load[new_srv] += w
+            server_users[new_srv] += 1
+
+            if best_i != old_i and best_val + 1e-12 < current:
+                current = best_val
+                improved = True
+            else:
+                # if no improvement, recompute current robustly occasionally
+                current = total_cost()
+
+        if not improved:
+            break
+
+    # ----------------------------
+    # Build final plan
+    # ----------------------------
+    plan = {}
+    for s in task_sources:
+        i = assign_idx[s]
+        srv, p, _, _ = candidates[s][i]
+        if not p:
+            # hard fallback
+            p = [s] if s == srv else [s, srv]
+        plan[s] = {"server": srv, "path": p}
+
+    return plan
+# EVOLVE-BLOCK-END
+
+import os
+import sys
+
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from graph_evaluation import GraphRoutingGrader
+
+
+def run_experiment(**kwargs):
+    del kwargs
+    grader = GraphRoutingGrader()
+    try:
+        avg_latency, avg_energy, final_score = grader.grade_silent(evolve_task_routing, timeout=12)
+    except Exception:
+        import traceback
+
+        traceback.print_exc()
+        avg_latency, avg_energy, final_score = float("inf"), float("inf"), float("inf")
+
+    return avg_latency, avg_energy, final_score
+```
+</CODE>

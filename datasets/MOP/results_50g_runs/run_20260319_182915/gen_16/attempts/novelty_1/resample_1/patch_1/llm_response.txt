@@ -1,0 +1,185 @@
+<NAME>
+school_aware_bilaplacian_refine
+</NAME>
+
+<DESCRIPTION>
+Improve the path generator with two coordinated changes aimed at lowering combined score:
+
+1) **Proxy objective upgrade**: add a **bi-Laplacian bending penalty** (4th-order smoothness) so the optimizer can maintain globally smooth curvature while still creating a stronger local deflection away from school and toward base. At the same time, slightly rebalance weights to prioritize school avoidance more (current F2 is the main weakness) while keeping distance and signal terms active.
+
+2) **Deterministic post-CEM shape refinement**: replace simple averaging with a short, stable relaxation pass that combines:
+- Laplacian + bi-Laplacian smoothing (smooth yet controllable bend),
+- localized school repulsion around school x-position,
+- localized base attraction around base x-position,
+- mild tether to the current best path and baseline line.
+This typically improves F2/F3 trade-off without introducing jaggedness or large F1 growth.
+
+These edits are targeted, deterministic, and remain lightweight for runtime.
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+    def proxy_score(ys):
+        # F1-like: path length
+        length = 0.0
+        px, py = x0, y0
+        for x, y in zip(xs, ys):
+            length += math.hypot(x - px, y - py)
+            px, py = x, y
+        length += math.hypot(x1 - px, y1 - py)
+
+        # F2-like: school noise penalty, strong near school
+        school_pen = 0.0
+        for x, y in zip(xs, ys):
+            d2 = (x - sx) * (x - sx) + (y - sy) * (y - sy)
+            school_pen += 1.0 / (d2 + 16.0)
+        school_pen /= num_points
+
+        # F3-like: signal drop penalty, prefer closeness to base
+        base_pen = 0.0
+        for x, y in zip(xs, ys):
+            base_pen += math.hypot(x - bx, y - by)
+        base_pen /= num_points
+
+        # Curvature/smoothness
+        curv = 0.0
+        if num_points >= 3:
+            for i in range(1, num_points - 1):
+                dd = ys[i - 1] - 2.0 * ys[i] + ys[i + 1]
+                curv += dd * dd
+            curv /= (num_points - 2)
+
+        # Keep path from becoming unrealistically extreme
+        dev = 0.0
+        for yl, y in zip(y_line, ys):
+            d = y - yl
+            dev += d * d
+        dev /= num_points
+
+        return (
+            0.95 * length
+            + 150.0 * school_pen
+            + 0.62 * base_pen
+            + 0.045 * curv
+            + 0.0025 * dev
+        )
+=======
+    def proxy_score(ys):
+        # F1-like: path length
+        length = 0.0
+        px, py = x0, y0
+        for x, y in zip(xs, ys):
+            length += math.hypot(x - px, y - py)
+            px, py = x, y
+        length += math.hypot(x1 - px, y1 - py)
+
+        # F2-like: school noise penalty, strong near school
+        school_pen = 0.0
+        for x, y in zip(xs, ys):
+            d2 = (x - sx) * (x - sx) + (y - sy) * (y - sy)
+            school_pen += 1.0 / (d2 + 16.0)
+        school_pen /= num_points
+
+        # F3-like: signal drop penalty, prefer closeness to base
+        base_pen = 0.0
+        for x, y in zip(xs, ys):
+            base_pen += math.hypot(x - bx, y - by)
+        base_pen /= num_points
+
+        # Curvature/smoothness (2nd derivative)
+        curv = 0.0
+        if num_points >= 3:
+            for i in range(1, num_points - 1):
+                dd = ys[i - 1] - 2.0 * ys[i] + ys[i + 1]
+                curv += dd * dd
+            curv /= (num_points - 2)
+
+        # Higher-order bending control (bi-Laplacian / 4th derivative)
+        bend4 = 0.0
+        if num_points >= 5:
+            for i in range(2, num_points - 2):
+                b4 = ys[i - 2] - 4.0 * ys[i - 1] + 6.0 * ys[i] - 4.0 * ys[i + 1] + ys[i + 2]
+                bend4 += b4 * b4
+            bend4 /= (num_points - 4)
+
+        # Keep path from becoming unrealistically extreme
+        dev = 0.0
+        for yl, y in zip(y_line, ys):
+            d = y - yl
+            dev += d * d
+        dev /= num_points
+
+        return (
+            0.94 * length
+            + 178.0 * school_pen
+            + 0.57 * base_pen
+            + 0.030 * curv
+            + 0.016 * bend4
+            + 0.0018 * dev
+        )
+>>>>>>> REPLACE
+</DIFF>
+
+<DIFF>
+<<<<<<< SEARCH
+    ys = best_path[:]
+
+    # Light post-smoothing while preserving overall bend
+    if num_points >= 3:
+        for _ in range(3):
+            new_ys = ys[:]
+            for i in range(1, num_points - 1):
+                new_ys[i] = 0.2 * ys[i - 1] + 0.6 * ys[i] + 0.2 * ys[i + 1]
+            ys = new_ys
+
+    return [float(v) for v in ys]
+=======
+    ys = best_path[:]
+
+    # School/base-aware refinement with 2nd + 4th order smoothness control
+    if num_points >= 3:
+        anchor = ys[:]
+        x_sigma_s = max(6.0, 0.10 * span_x)
+        x_sigma_b = max(8.0, 0.13 * span_x)
+
+        for _ in range(7):
+            new_ys = ys[:]
+            for i in range(num_points):
+                y = ys[i]
+
+                # Localized task forces around school/base x-regions
+                gx_s = gauss(xs[i], sx, x_sigma_s)
+                gx_b = gauss(xs[i], bx, x_sigma_b)
+
+                dsy = y - sy
+                db = math.hypot(xs[i] - bx, y - by) + 1e-6
+
+                school_push = gx_s * (dsy / (abs(dsy) + 7.0))   # repel from school y
+                base_pull = gx_b * ((by - y) / db)              # attract toward base y
+
+                # Smoothness terms
+                lap = 0.0
+                if 0 < i < num_points - 1:
+                    lap = ys[i - 1] - 2.0 * ys[i] + ys[i + 1]
+
+                bi_lap = 0.0
+                if 1 < i < num_points - 2:
+                    bi_lap = ys[i - 2] - 4.0 * ys[i - 1] + 6.0 * ys[i] - 4.0 * ys[i + 1] + ys[i + 2]
+
+                # Mild tether to avoid over-deformation
+                tether = (anchor[i] - y)
+                line_tether = (y_line[i] - y)
+
+                new_ys[i] = y + (
+                    0.22 * school_push
+                    + 0.18 * base_pull
+                    + 0.20 * lap
+                    - 0.035 * bi_lap
+                    + 0.10 * tether
+                    + 0.035 * line_tether
+                )
+            ys = new_ys
+
+    return [float(v) for v in ys]
+>>>>>>> REPLACE
+</DIFF>

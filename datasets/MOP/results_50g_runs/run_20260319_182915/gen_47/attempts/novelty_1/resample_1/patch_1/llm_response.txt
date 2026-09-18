@@ -1,0 +1,50 @@
+<NAME>
+deformable_snake_path_refiner
+</NAME>
+
+<DESCRIPTION>
+This algorithm utilizes a "Deformable Snake" approach to path planning. Instead of using a fixed parametric form (like Gaussians or polynomials), it treats the path as a flexible string and optimizes the individual Y-coordinates of each node. The optimization is performed using a systematic "coordinate descent" variant where each update is applied through a Gaussian-weighted window. This ensures that a move at one point smoothly influences its neighbors, maintaining path continuity and effectively preventing jagged edges.
+
+Key advantages of this approach:
+1. **Flexibility**: Unlike the fixed 6-parameter Gaussian model, this can adapt to any shape required to navigate between school noise and base station signal.
+2. **Smoothness**: The windowed (Gaussian) updates naturally maintain curvature constraints, and an explicit Laplacian smoothness penalty is incorporated into the search objective.
+3. **Efficiency**: A systematic multi-scale refinement (from large steps to fine adjustments) quickly converges to a high-quality local minimum within the provided time constraints.
+4. **Targeted Initialization**: The starting path is a base-biased trajectory, giving the optimizer a strong starting point near the optimal curve that bends towards (70, -30) and away from (40, 20).
+</DESCRIPTION>
+
+<CODE>
+```python
+import math
+
+# EVOLVE-BLOCK-START
+class PathContext:
+    """Immutable input bundle with precomputed samples and constants."""
+    __slots__ = ("start", "end", "school", "base", "num_points", "xs", "x_span", "dx", "straight_dist")
+
+    def __init__(self, start, end, school, base, num_points):
+        self.start = start
+        self.end = end
+        self.school = school
+        self.base = base
+        self.num_points = int(num_points)
+        x0, y0 = start
+        x1, y1 = end
+        self.x_span = x1 - x0
+        self.straight_dist = math.hypot(x1 - x0, y1 - y0) + 1e-9
+        
+        # Intermediate X samples
+        self.dx = self.x_span / (self.num_points + 1)
+        self.xs = [x0 + (i + 1) * self.dx for i in range(self.num_points)]
+
+
+class PathEvaluator:
+    """Internal scoring function that estimates F1, F2, F3, and Smoothness."""
+    def __init__(self, ctx):
+        self.ctx = ctx
+        # Estimated weights based on previously high-performing proxy programs
+        self.w_dist = 1.02
+        self.w_school = 18.2
+        self.w_base = 0.28
+        self.w_smooth = 0.75
+
+    def score

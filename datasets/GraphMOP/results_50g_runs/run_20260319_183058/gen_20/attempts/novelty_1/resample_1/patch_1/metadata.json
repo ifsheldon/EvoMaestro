@@ -1,0 +1,14 @@
+{
+  "generation": 20,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 5,
+  "patch_name": "activation_aware_scoring_and_tree_diversity",
+  "patch_description": "This edit makes two targeted improvements:\n\n1) **Increase path candidate diversity per server** by adding a 4th server-rooted shortest-path tree with a stronger capacity/congestion-aware blend. This preserves the fast precompute pattern while giving the assignment stage more robust alternatives in graphs where hop latency and edge energy trade off differently under capacity constraints.\n\n2) **Make idle-power scoring activation-aware instead of per-task additive**. The previous scoring charged idle cost for every assigned source, which can distort energy optimization. Idle power is a server-level fixed cost, so this update charges it mainly when a server is newly activated (and mirrors this in local search), improving both latency-energy balance and assignment stability.\n\nAdditionally, a small tie-break fix in regret ordering prioritizes harder-to-place sources when regrets are equal.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:41:14.472273",
+  "llm_cost": 0.03856475,
+  "llm_model": null
+}

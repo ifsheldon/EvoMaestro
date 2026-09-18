@@ -1,0 +1,17 @@
+# Bun workspace dependencies
+/node_modules/
+
+# Generated Next.js and TypeScript output
+/.next/
+/out/
+/build/
+next-env.d.ts
+*.tsbuildinfo
+
+# Local configuration and tooling
+.env*
+!.env.example
+.vercel/
+.DS_Store
+*.pem
+/coverage/

@@ -1,0 +1,14 @@
+{
+  "generation": 18,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 2,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "adam_energy_path",
+  "patch_description": "Redesigned the program with a novel object-oriented architecture, decoupling the optimization logic into an explicit `AdamOptimizer` and a `PathEnergyModel`. The new formulation calculates physically-motivated, precise gradients (using true curve len/rubber-banding and smoothness stiffness). Because standard Gradient Descent struggles with poorly scaled objectives, implementing Adam allows automatic magnitude normalization so the path quickly converges to the very bottom of the F1/F2/F3 energy basin. We also tune the balancing weights to prioritize minimizing noise while penalizing excessive V-shaped distance stretches that previously spiked the F1 score.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:37:53.512077",
+  "llm_cost": 0.030986,
+  "llm_model": null
+}

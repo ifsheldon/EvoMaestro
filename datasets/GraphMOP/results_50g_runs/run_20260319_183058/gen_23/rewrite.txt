@@ -1,0 +1,9 @@
+<NAME>
+exact_marginal_cost_routing
+</NAME>
+
+<DESCRIPTION>
+Combines diverse server-rooted tree path generation with an exact marginal cost evaluation for queueing delay and energy. Uses regret-based ordering for the initial greedy assignment and performs multiple passes of local search refinement to monotonically minimize the global objective.
+</DESCRIPTION>
+
+<CODE>

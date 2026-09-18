@@ -1,0 +1,14 @@
+{
+  "generation": 41,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "quadrature_surrogate_search",
+  "patch_description": "The improved program implements a multi-sample quadrature surrogate scoring system to evaluate candidate drone paths more accurately. Instead of evaluating noise and signal at vertices only, it samples three interior points per segment (at 1/4, 1/2, and 3/4 of the segment length) to integrate the school noise and base station signal penalties more effectively. \n\nThe path generation uses a potential field approach with Gaussian repulsion from the school and Gaussian attraction to the base station. A deterministic grid search is performed over a set of parameters (amplitudes, pull strengths, and Gaussian widths) to find the path that minimizes a weighted combination of distance (F1), noise proximity (F2), and signal loss (F3). This search includes the straight-line baseline as a candidate. Finally, a Laplacian smoothing pass is applied to ensure the path is continuous and natural.",
+  "error_msg": "Could not extract code from patch string",
+  "timestamp": "2026-03-19T16:13:19.944358",
+  "llm_cost": 0.0056545,
+  "llm_model": null
+}

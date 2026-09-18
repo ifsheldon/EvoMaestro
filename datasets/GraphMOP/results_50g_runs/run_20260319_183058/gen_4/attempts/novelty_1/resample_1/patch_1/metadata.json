@@ -1,0 +1,14 @@
+{
+  "generation": 4,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "theoretical_marginal_cost_routing",
+  "patch_description": "The proposed modification improves the task routing by using a more theoretically sound marginal cost heuristic. \n\n1.  **Adaptive Dijkstra Weighting**: Instead of a fixed weight, the Dijkstra search now uses a weight that balances latency and energy based on the specific task's arrival rate and payload size: `weight = arrival_rate * (base_latency + payload_size * energy_cost)`. This represents the task's marginal contribution to the total system travel latency and routing energy.\n2.  **Marginal Delay Modeling**: The server selection now uses an M/M/1 queueing model to calculate the marginal increase in total system delay caused by adding a task to a server: `marginal_delay = new_load / (service_rate - new_load) - old_load / (service_rate - old_load)`. This captures the non-linear increase in latency as a server approaches saturation.\n3.  **Marginal Energy Modeling**: The server selection also accounts for the marginal increase in compute energy and the idle power cost of activating a new server.\n4.  **Efficiency**: Dijkstra is run once per task source (instead of once per source-server pair), which is more efficient and allows for a more thorough search of the solution space.\n5.  **Task Ranking**: Tasks are ranked by their total potential impact (load and routing) to prioritize the assignment of more demanding tasks.",
+  "error_msg": "No changes applied",
+  "timestamp": "2026-03-20T02:32:31.762389",
+  "llm_cost": 0.002894,
+  "llm_model": null
+}

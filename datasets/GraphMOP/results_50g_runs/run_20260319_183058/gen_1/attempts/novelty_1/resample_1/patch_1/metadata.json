@@ -1,0 +1,14 @@
+{
+  "generation": 1,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "load_aware_multicriteria_routing",
+  "patch_description": "This rewrite improves both solution quality and runtime by switching from per-(source,server) shortest-path calls to a **server-centric precomputation** plus a **load-aware assignment**:\n\n1. **Precompute paths from each server once** (few servers, many sources):\n   - Dijkstra trees for three modes: latency-focused, energy-focused, and balanced.\n   - This avoids repeatedly running shortest path for every (source, server) pair.\n\n2. **Evaluate multiple candidate paths per server** for each source:\n   - For each source-server pair, use up to 3 path candidates (latency/energy/balanced trees).\n   - Compute explicit path transmission latency and routing energy using edge attributes.\n\n3. **Load-aware server selection**:\n   - Includes queueing-delay proxy from server utilization.\n   - Includes compute-energy proxy (idle + dynamic).\n   - Rejects assignments near overload unless unavoidable.\n\n4. **Greedy + local refinement**:\n   - Initial assignment in descending task intensity order.\n   - One improvement pass tries reassignments with current loads to reduce combined objective.\n\nThe function still returns the exact required structure:\n`{source: {\"server\": s, \"path\": [...]}}`, with valid simple paths where reachable.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:32:11.082515",
+  "llm_cost": 0.05129425,
+  "llm_model": null
+}

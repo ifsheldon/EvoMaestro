@@ -1,0 +1,111 @@
+<NAME>
+school_aware_base_pull
+</NAME>
+
+<DESCRIPTION>
+Introduce a school-aware base-attraction mechanism and relax endpoint suppression so the path can recover signal quality more effectively after avoiding the school.
+
+Key ideas:
+1. **Condition base pull on school influence at the same x**: when school repulsion is strong, soften base pull to preserve safe deviation; when school influence fades, restore/boost pull toward the base to improve F3.
+2. **Reduce over-damping from the current window**: the old cubic window nearly cancels shaping near both ends, which can prevent useful late-stage pull toward the base region. A floored smooth window keeps paths stable while allowing optimization to act across the whole segment.
+3. **Retune modifier strengths**: slightly stronger, narrower school repulsion plus stronger/wider base attraction tends to preserve F2 while reducing F3 without excessive F1 inflation.
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+class BaseAttractionModifier(PathModifier):
+    def __init__(self, base_x, base_y, pull_ratio=0.9, width=2000.0):
+        self.bx = base_x
+        self.by = base_y
+        self.pull_ratio = pull_ratio
+        self.width = width
+        
+    def apply(self, x, y):
+        dist_x = abs(x - self.bx)
+        weight = 2.71828 ** (-(dist_x ** 2) / self.width)
+        
+        # Pull y towards base y
+        target_y = y + (self.by - y) * self.pull_ratio
+        return y + (target_y - y) * weight
+=======
+class BaseAttractionModifier(PathModifier):
+    def __init__(
+        self,
+        base_x,
+        base_y,
+        pull_ratio=0.96,
+        width=2600.0,
+        school_x=None,
+        school_width=900.0,
+        conflict_soften=0.45,
+        recovery_boost=0.35,
+    ):
+        self.bx = base_x
+        self.by = base_y
+        self.pull_ratio = pull_ratio
+        self.width = width
+        self.sx = school_x
+        self.school_width = school_width
+        self.conflict_soften = conflict_soften
+        self.recovery_boost = recovery_boost
+        
+    def apply(self, x, y):
+        dist_x_base = abs(x - self.bx)
+        w_b = 2.71828 ** (-(dist_x_base ** 2) / self.width)
+
+        # School influence at this x; used to modulate base pull strength.
+        if self.sx is None:
+            w_s = 0.0
+        else:
+            dist_x_school = abs(x - self.sx)
+            w_s = 2.71828 ** (-(dist_x_school ** 2) / self.school_width)
+
+        # Weaken base attraction where school avoidance is strongest,
+        # then recover/boost away from school to improve signal quality.
+        pull = self.pull_ratio * (1.0 - self.conflict_soften * w_s)
+        pull *= (1.0 + self.recovery_boost * (1.0 - w_s))
+        if pull > 1.0:
+            pull = 1.0
+
+        target_y = y + (self.by - y) * pull
+        return y + (target_y - y) * w_b
+>>>>>>> REPLACE
+</DIFF>
+
+<DIFF>
+<<<<<<< SEARCH
+            # Apply window function to ensure endpoints are anchored
+            # Using a cubic window for a flatter middle section to maximize base proximity
+            progress = i / (self.num_points + 1)
+            window = 1.0 - abs(2.0 * progress - 1.0)**3
+=======
+            # Smooth window with a non-zero floor:
+            # keeps endpoints stable while preserving optimization effect near both sides.
+            progress = i / (self.num_points + 1)
+            center_emphasis = 1.0 - abs(2.0 * progress - 1.0) ** 2
+            window = 0.35 + 0.65 * center_emphasis
+>>>>>>> REPLACE
+</DIFF>
+
+<DIFF>
+<<<<<<< SEARCH
+    # Add behavioral modifiers to sculpt the path
+    generator.add_modifier(SchoolAvoidanceModifier(school[0], school[1], push_distance=45.0, width=900.0))
+    generator.add_modifier(BaseAttractionModifier(base[0], base[1], pull_ratio=0.9, width=2000.0))
+=======
+    # Add behavioral modifiers to sculpt the path
+    generator.add_modifier(SchoolAvoidanceModifier(school[0], school[1], push_distance=50.0, width=800.0))
+    generator.add_modifier(
+        BaseAttractionModifier(
+            base[0],
+            base[1],
+            pull_ratio=0.96,
+            width=2600.0,
+            school_x=school[0],
+            school_width=800.0,
+            conflict_soften=0.45,
+            recovery_boost=0.35,
+        )
+    )
+>>>>>>> REPLACE
+</DIFF>

@@ -1,0 +1,188 @@
+--- a/original.py
++++ b/original.py
+@@ -1,122 +1,108 @@
+ # EVOLVE-BLOCK-START
+ def evolve_drone_path(start, end, school, base, num_points):
+     """
+-    连续空间多目标折线优化：
+-    - F1: 控制飞行距离（避免过度弯折）
+-    - F2: 远离学校噪音区（school）
+-    - F3: 靠近基站降低信号损失（base）
+-    返回长度为 num_points 的 Y 坐标列表（X 按起终点均匀分布，且不含端点）。
++    无人机连续空间多目标折线优化：
++    使用“销钉高斯基函数解析求解器”(Pinned Gaussian Basis Solver)。
++    - F1: 保证 C-infinity 连续，通过宽基函数最小化曲率。
++    - F2: 求解线性方程组，精确计算离校目标的偏移量。
++    - F3: 求解线性方程组，确保轨迹在基站处有最低信号损失。
+     """
+     import math
+ 
+     x0, y0 = start
+     x1, y1 = end
+     xs, ys = school
+     xb, yb = base
+ 
+     if num_points <= 0:
+         return []
+ 
+-    # ---------- helpers ----------
+-    def gaussian_weight(x, center, sigma):
+-        if sigma <= 1e-9:
+-            return 0.0
+-        z = (x - center) / sigma
+-        return math.exp(-z * z)
++    dx_total = x1 - x0
++    if abs(dx_total) < 1e-12:
++        # 极端情况：X 轴无跨度，按 Y 轴线性插值
++        step = (y1 - y0) / (num_points + 1)
++        return [float(y0 + (i + 1) * step) for i in range(num_points)]
+ 
+-    def build_interior_xs():
+-        # 与原实现一致：使用 (i+1)/(n+1) 作为内点比例
+-        return [x0 + (x1 - x0) * ((i + 1) / (num_points + 1)) for i in range(num_points)]
++    # 1. 设置平滑度参数
++    span = abs(dx_total)
++    sigma = 0.22 * span  # 较大的 sigma 保证 F1 指标
+ 
+-    def build_linear_baseline():
+-        return [y0 + (y1 - y0) * ((i + 1) / (num_points + 1)) for i in range(num_points)]
++    def get_y_lin(x):
++        # 线性插值基准
++        t = (x - x0) / dx_total
++        return y0 + t * (y1 - y0)
+ 
+-    def apply_school_repulsion(x_arr, y_arr, amp, sigma):
+-        # 将轨迹从 school.y 推开；方向由当前相对位置决定
+-        out = y_arr[:]
+-        for i, x in enumerate(x_arr):
+-            w = gaussian_weight(x, xs, sigma)
+-            direction = 1.0 if out[i] >= ys else -1.0
+-            out[i] += direction * amp * w
+-        return out
++    def get_pinned_basis(x, mu):
++        # 计算在 x0 和 x1 处为 0 的高斯偏移函数
++        t = (x - x0) / dx_total
++        phi = math.exp(-0.5 * ((x - mu) / sigma)**2)
++        phi0 = math.exp(-0.5 * ((x0 - mu) / sigma)**2)
++        phi1 = math.exp(-0.5 * ((x1 - mu) / sigma)**2)
++        # 通过线性减除，确保端点为 0
++        return phi - (phi0 + t * (phi1 - phi0))
+ 
+-    def apply_base_attraction(x_arr, y_arr, gain, sigma):
+-        # 向 base.y 拉拢
+-        out = y_arr[:]
+-        for i, x in enumerate(x_arr):
+-            w = gaussian_weight(x, xb, sigma)
+-            out[i] += (yb - out[i]) * gain * w
+-        return out
++    # 2. 确定目标偏移量
++    # 基站目标：正好落在基站 Y 坐标上
++    target_dip_b = yb - get_y_lin(xb)
++    
++    # 学校目标：远离中心（通常至少保持 32-35 单位距离）
++    ys_lin = get_y_lin(xs)
++    # 如果学校在基准线上方，向下推；反之亦然
++    target_ys = (ys - 34.0) if ys >= ys_lin else (ys + 34.0)
++    target_dip_s = target_ys - ys_lin
+ 
+-    def smooth_with_endpoint_awareness(y_arr, rounds=2, lam=0.18):
+-        # 轻量平滑，保证曲线连续；边界邻居使用真实端点
+-        out = y_arr[:]
+-        n = len(out)
+-        if n <= 1:
+-            return out
+-        for _ in range(rounds):
+-            nxt = out[:]
+-            for i in range(n):
+-                yl = y0 if i == 0 else out[i - 1]
+-                yr = y1 if i == n - 1 else out[i + 1]
+-                nxt[i] = out[i] + lam * (0.5 * (yl + yr) - out[i])
+-            out = nxt
+-        return out
++    # 3. 求解线性方程组 M*A = T
++    # Pss*As + Psb*Ab = Ts
++    # Pbs*As + Pbb*Ab = Tb
++    p_ss = get_pinned_basis(xs, xs)
++    p_sb = get_pinned_basis(xs, xb)
++    p_bs = get_pinned_basis(xb, xs)
++    p_bb = get_pinned_basis(xb, xb)
+ 
+-    # ---------- staged optimization ----------
+-    x_arr = build_interior_xs()
+-    y_arr = build_linear_baseline()
++    det = p_ss * p_bb - p_sb * p_bs
++    if abs(det) < 1e-6:
++        # 若退化（如 xs 极靠近 xb），退回到简单的加权处理
++        amp_s = target_dip_s / (p_ss + 1e-5)
++        amp_b = (target_dip_b - amp_s * p_bs) / (p_bb + 1e-5)
++    else:
++        # Cramer's Rule
++        amp_s = (target_dip_s * p_bb - target_dip_b * p_sb) / det
++        amp_b = (p_ss * target_dip_b - p_bs * target_dip_s) / det
+ 
+-    x_span = max(abs(x1 - x0), 1e-6)
++    # 4. 限制振幅防止过度扰动 F1
++    amp_limit = 65.0
++    amp_s = max(-amp_limit, min(amp_limit, amp_s))
++    amp_b = max(-amp_limit, min(amp_limit, amp_b))
+ 
+-    # 1) 学校规避：局部高斯斥力（避免靠近 school）
+-    y_arr = apply_school_repulsion(
+-        x_arr,
+-        y_arr,
+-        amp=12.0,
+-        sigma=0.16 * x_span
+-    )
++    # 5. 生成采样点
++    y_coords = []
++    for i in range(num_points):
++        # 计算 X 坐标
++        px = x0 + (i + 1) * dx_total / (num_points + 1)
++        # 叠加线性部分与两个偏移基函数
++        y_val = get_y_lin(px) + amp_s * get_pinned_basis(px, xs) + amp_b * get_pinned_basis(px, xb)
++        y_coords.append(float(y_val))
+ 
+-    # 2) 基站靠拢：第一阶段（较宽支撑）
+-    y_arr = apply_base_attraction(
+-        x_arr,
+-        y_arr,
+-        gain=0.92,
+-        sigma=0.22 * x_span
+-    )
+-
+-    # 3) 基站二次局部恢复：第二阶段（窄核 + 小幅）
+-    #    重点改善 base 附近 F3，同时尽量不破坏全局形状/F2。
+-    y_arr = apply_base_attraction(
+-        x_arr,
+-        y_arr,
+-        gain=0.35,
+-        sigma=0.07 * x_span
+-    )
+-
+-    # 4) 轻度平滑，压制尖锐变化（平衡 F1）
+-    y_arr = smooth_with_endpoint_awareness(y_arr, rounds=2, lam=0.18)
+-
+-    return [float(v) for v in y_arr]
++    return y_coords
+ # EVOLVE-BLOCK-END
+ 
+ import sys
+ import os
+ 
+ # 将当前目录加入系统路径以便导入同级文件
+ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+ from drone_evaluation import DroneGrader
+ 
+ def run_experiment(**kwargs):
+     """供 Shinka 触发的单次实验方法"""
+     grader = DroneGrader()
+ 
+     # 捕获异常防止大模型写出死循环炸毁测评机
+     try:
+         avg_f1, avg_f2, avg_f3, final_score = grader.grade_silent(evolve_drone_path, timeout=12)
+     except Exception as e:
+         import traceback
+         traceback.print_exc()
+         avg_f1, avg_f2, avg_f3, final_score = float('inf'), float('inf'), float('inf'), float('inf')
+ 
+     return avg_f1, avg_f2, avg_f3, final_score

@@ -1,0 +1,14 @@
+{
+  "generation": 3,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "dual_gaussian_envelope_bending",
+  "patch_description": "This algorithm implements a dual-influence model using Gaussian kernels modulated by a sinusoidal envelope. \n\nKey insights:\n1. **Multi-Objective Balance**: The three objectives (Distance, Noise, Signal) are balanced by treating the school as a repulsive force and the base station as an attractive force.\n2. **Gaussian Influence**: Two Gaussian kernels are centered at the X-coordinates of the school and base station. The school kernel pushes the path vertically away from the school's Y-coordinate to minimize noise (F2), while the base station kernel pulls the path toward its Y-coordinate to maximize signal strength (F3).\n3. **Sinusoidal Envelope**: To maintain the fixed start and end points (ensuring the path remains valid), the combined Gaussian offsets are multiplied by a sine-based envelope `sin(pi * t)`. This ensures the deviation is zero at the boundaries and smooth throughout the trajectory.\n4. **Robustness**: The repulsion direction is determined by the path's general position relative to the school, preventing \"kinks\" and ensuring a smooth, differentiable curve that minimizes the distance penalty (F1).",
+  "error_msg": "Could not extract code from patch string",
+  "timestamp": "2026-03-19T16:02:37.488593",
+  "llm_cost": 0.0024895000000000004,
+  "llm_model": null
+}

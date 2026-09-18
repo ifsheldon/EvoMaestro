@@ -1,0 +1,14 @@
+{
+    "combined_score": -999999999.0,
+    "public": {
+        "status": "Compilation/Runtime Timeout"
+    },
+    "private": {},
+    "execution_time_mean": 22.000204641837627,
+    "execution_time_std": 0.0,
+    "num_valid_runs": 0,
+    "num_invalid_runs": 1,
+    "all_validation_errors": [
+        "Evaluation crashed, timed out, or produced an invalid routing plan."
+    ]
+}

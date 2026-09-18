@@ -1,0 +1,14 @@
+{
+  "generation": 7,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "optimize_drone_path_with_gaussian_offsets",
+  "patch_description": "To minimize the combined score (which is a product of flying distance F1, school noise F2, and signal drop F3), we need to modify the drone's path so that it bends away from the school to reduce noise (F2) and bends towards the base station to improve signal (F3), while keeping the path smooth to avoid excessively increasing the flying distance (F1).\n\nWe achieve this by:\n1. Calculating the baseline straight-line path.\n2. Using Gaussian functions to create smooth local offsets. We push the path away from the school's coordinates and pull it towards the base station's coordinates.\n3. Applying a sine window function to the offsets so that the path smoothly connects to the exact start and end points without any abrupt jumps, which would otherwise heavily penalize the distance score (F1).",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:31:45.620616",
+  "llm_cost": 0.014512,
+  "llm_model": null
+}

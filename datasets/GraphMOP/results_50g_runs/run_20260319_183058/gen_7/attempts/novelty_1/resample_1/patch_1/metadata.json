@@ -1,0 +1,14 @@
+{
+  "generation": 7,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "Server-centric Reverse Dijkstra with Time-Decayed Simulated Annealing",
+  "patch_description": "This approach is fundamentally different from the current method. Rather than computing optimal paths from each source individually with a single heuristic edge weight metric, this algorithm flips the traversal direction. Since there are many sources but only a few servers, it runs multiple Reverse Dijkstras from each server using several different Pareto-optimality weights (emphasizing latency vs. energy vs. hop bounds). This massively reduces Dijkstra overhead and compiles a wealthy precomputed candidate set of (server, path) pairs for each task source.\n\nSubsequently, a dynamic fast-swapping Simulated Annealing local-search metaheuristic optimizes the assignment. The objective function strictly mirrors system-wide latency and energy, using properly scaled M/M/1 wait penalties for servers and heavy soft-penalties for capacity violations. Fast $O(1)$ incremental objective tracking lets the simulated annealing explore hundreds of thousands of neighboring configurations, and the simulated temperature smoothly decays precisely scaled to the runtime bound.",
+  "error_msg": "Could not extract code from patch string",
+  "timestamp": "2026-03-20T02:34:35.548113",
+  "llm_cost": 0.011064000000000001,
+  "llm_model": null
+}

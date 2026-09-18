@@ -1,0 +1,14 @@
+{
+  "generation": 46,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "procedural_hybrid_mop_path",
+  "patch_description": "This approach performs a crossover between the fast, procedural style of the current implementation and the robust modifier behavior found in the crossover inspiration block. By dissolving the `PathModifier` classes into a cohesive and heavily vectorized procedural block, the drone calculation speeds up greatly while improving mathematical fidelity.\n\nKey changes:\n1. **School Avoidance & Base Attraction**: Migrated from the inspiration block but optimized to directly inject target influence dynamically. The school Gaussian influence width was slightly increased (to `850`) for a more fluid deviation, and the base influence widened (to `2800`) to secure robust signal quality without sharp, reactive bends.\n2. **Conflict Parameter Adaptation**: The `pull` coefficient correctly scales attraction upwards where school interference diminishes, capping exactly at 1.0 to guarantee smooth approaches to the base station coordinates without passing through them. \n3. **Endpoint Smoothing Envelope**: Replaced the non-zero offset taper (`0.35 + 0.65*...`) with a rapid, complete fade-to-zero using `math.sin(math.pi * pct) ** 0.6`. This eliminates the artificial F1 distance \"jump\" at the very first and last segment, reducing the flight length penalty while fully executing the optimization curves in the operational field.",
+  "error_msg": null,
+  "timestamp": "2026-03-19T16:14:30.800465",
+  "llm_cost": 0.02407,
+  "llm_model": null
+}

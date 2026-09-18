@@ -1,0 +1,14 @@
+{
+  "generation": 24,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "surrogate_guided_s_curve",
+  "patch_description": "This rewrite replaces the single-pass heuristic with a fast surrogate-guided search over smooth path families.\n\nKey ideas:\n1. Start from the straight line to keep F1 low.\n2. Add a smooth repulsion bump near the school, pushing the path away from the school side.\n3. Add a broader asymmetric attraction toward the base station so the drone descends earlier and stays in better signal regions longer, targeting F3.\n4. Search a small deterministic grid of amplitudes using a surrogate objective that jointly balances:\n   - path length,\n   - school proximity,\n   - base distance / signal quality,\n   - smoothness.\n5. Perform a light smoothing pass with fixed endpoints to remove local kinks without erasing the intended bend.\n\nThis is still very cheap to run, but much more adaptive than the previous static formula. It is especially tuned for the stated geometry: bending away from the school region around (40, 20) and then toward the base region around (70, -30), while keeping the line smooth and not overly long.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:36:54.634124",
+  "llm_cost": 0.06679750000000001,
+  "llm_model": null
+}

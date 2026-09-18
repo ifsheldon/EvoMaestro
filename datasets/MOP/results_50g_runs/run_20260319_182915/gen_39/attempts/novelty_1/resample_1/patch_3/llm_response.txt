@@ -1,0 +1,54 @@
+<NAME>
+seed_expansion_and_gradient_polish
+</NAME>
+
+<DESCRIPTION>
+The previous highest-performing solutions married exact path energy gradients with an Adam-style optimizer, but were limited by starting their trajectory from a naive straight line. The current generation features a robust, broad search over shape parameters, but stops at a grid minimum and misses the pinpoint optimization.
+
+This change elegantly merges the two approaches:
+1. It expands the initialization seed geometries by adding asymmetric configurations (e.g., bumps starting before or after the school position, as well as a "bridge" between the school and base station). This creates "targeted basin coverage" for paths curving smartly around the obstacles.
+2. After utilizing the true energy model to select the best coarsely estimated seed strategy, a 400-step exact active contour optimization (with standard Adam descent properties over length, smoothness, repulsion, and attraction) is deployed directly on top of the deterministic seed constraint. 
+
+This avoids blind convergence while securing the tightest possible score boundaries on simultaneously solving distance (F1), school proximity (F2), and target signal (F3).
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+def evolve_drone_path(start, end, school, base, num_points):
+    import math
+
+    x_start, y_start = start
+    x_end, y_end = end
+    x_school, y_school = school
+    x_base, y_base = base
+
+    if num_points <= 0:
+        return []
+
+    # Degenerate vertical-x case: fall back to linear interpolation in y.
+    dx_total = x_end - x_start
+    if abs(dx_total) < 1e-12:
+        return [
+            float(y_start + (y_end - y_start) * (i + 1) / (num_points + 1))
+            for i in range(num_points)
+        ]
+
+    n = num_points
+    inv_n1 = 1.0 / (n + 1)
+
+    x_coords = [x_start + dx_total * ((i + 1) * inv_n1) for i in range(n)]
+    y_line = [y_start + (y_end - y_start) * ((i + 1) * inv_n1) for i in range(n)]
+
+    def gauss(x, mu, sigma):
+        sigma = max(float(sigma), 1e-6)
+        z = (x - mu) / sigma
+        return math.exp(-0.5 * z * z)
+
+    def smoothstep01(u):
+        if u <= 0.0:
+            return 0.0
+        if u >= 1.0:
+            return 1.0
+        return u * u * (3.0 - 2.0 * u)
+
+    # Straight-line y-value at school x

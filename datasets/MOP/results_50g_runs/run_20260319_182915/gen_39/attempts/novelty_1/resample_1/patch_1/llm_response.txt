@@ -1,0 +1,44 @@
+<NAME>
+seed_expansion_and_gradient_polish
+</NAME>
+
+<DESCRIPTION>
+The previous highest-performing solutions married exact path energy gradients with an Adam-style optimizer, but were limited by starting their trajectory from a naive straight line. The current generation features a robust, broad search over shape parameters, but stops at a grid minimum and misses the pinpoint optimization.
+
+This change elegantly merges the two approaches:
+1. It expands the initialization seed geometries by adding asymmetric configurations (e.g., bumps starting before or after the school position, as well as a "bridge" between the school and base station). This creates "targeted basin coverage" for paths curving smartly around the obstacles.
+2. After utilizing the surrogate model to select the best coarsely estimated seed strategy, a 250-step exact active contour optimization (with standard Adam descent properties over length, smoothness, repulsion, and attraction) is deployed directly on top of the deterministic seed constraint. 
+
+This avoids blind convergence while securing the tightest possible score boundaries on simultaneously solving distance (F1), school proximity (F2), and target signal (F3).
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+    # Basis widths: school more local, base broader and slightly earlier.
+    sigma_school = max(10.0, 0.10 * span_x)
+    sigma_base = max(16.0, 0.18 * span_x)
+    sigma_base_early = max(18.0, 0.24 * span_x)
+
+    school_basis = []
+    base_basis = []
+    envelopes = []
+
+    for i, x in enumerate(x_coords):
+        t = (i + 1) * inv_n1
+
+        # Smooth endpoint taper: zero at both ends, strong in middle.
+        env = math.sin(math.pi * t) ** 0.9
+
+        g_school = gauss(x, x_school, sigma_school)
+
+        # Broader base influence: encourage entering the base region earlier.
+        g_base_main = gauss(x, x_base, sigma_base)
+        g_base_early = gauss(x, x_base - 0.55 * sigma_base_early, sigma_base_early)
+        g_base = 0.65 * g_base_early + 1.00 * g_base_main
+
+        # Slightly stronger influence after passing the school area.
+        if x_base > x_school:
+            u = (x - (x_school - 0.10 * span_x)) / max(0.35 * span_x, 1e-6)
+        else:
+            u = ((x_school + 0.10 * span_x) - x) / max(0.35 * span_x, 1e-6)
+        corridor_gain = 0.55 + 0

@@ -1,0 +1,148 @@
+# EVOLVE-BLOCK-START
+class PathModifier:
+    def apply(self, x, y):
+        pass
+
+class SchoolAvoidanceModifier(PathModifier):
+    def __init__(self, school_x, school_y, push_distance=45.0, width=900.0):
+        self.sx = school_x
+        self.sy = school_y
+        self.push_distance = push_distance
+        self.width = width
+
+    def apply(self, x, y):
+        dist_x = abs(x - self.sx)
+        weight = 2.71828 ** (-(dist_x ** 2) / self.width)
+
+        # Determine direction to push away from school
+        direction = -1 if self.sy > y else 1
+
+        return y + direction * self.push_distance * weight
+
+class BaseAttractionModifier(PathModifier):
+    def __init__(
+        self,
+        base_x,
+        base_y,
+        pull_ratio=0.96,
+        width=2600.0,
+        school_x=None,
+        school_width=900.0,
+        conflict_soften=0.45,
+        recovery_boost=0.35,
+    ):
+        self.bx = base_x
+        self.by = base_y
+        self.pull_ratio = pull_ratio
+        self.width = width
+        self.sx = school_x
+        self.school_width = school_width
+        self.conflict_soften = conflict_soften
+        self.recovery_boost = recovery_boost
+
+    def apply(self, x, y):
+        dist_x_base = abs(x - self.bx)
+        w_b = 2.71828 ** (-(dist_x_base ** 2) / self.width)
+
+        # School influence at this x; used to modulate base pull strength.
+        if self.sx is None:
+            w_s = 0.0
+        else:
+            dist_x_school = abs(x - self.sx)
+            w_s = 2.71828 ** (-(dist_x_school ** 2) / self.school_width)
+
+        # Weaken base attraction where school avoidance is strongest,
+        # then recover/boost away from school to improve signal quality.
+        pull = self.pull_ratio * (1.0 - self.conflict_soften * w_s)
+        pull *= (1.0 + self.recovery_boost * (1.0 - w_s))
+        if pull > 1.0:
+            pull = 1.0
+
+        target_y = y + (self.by - y) * pull
+        return y + (target_y - y) * w_b
+
+class DronePathGenerator:
+    def __init__(self, start, end, num_points):
+        self.start = start
+        self.end = end
+        self.num_points = num_points
+        self.modifiers = []
+
+    def add_modifier(self, modifier):
+        self.modifiers.append(modifier)
+
+    def generate(self):
+        x_start, y_start = self.start
+        x_end, y_end = self.end
+
+        dx = (x_end - x_start) / (self.num_points + 1)
+        dy = (y_end - y_start) / (self.num_points + 1)
+
+        path = []
+        for i in range(1, self.num_points + 1):
+            x = x_start + i * dx
+            y_line = y_start + i * dy
+            y = y_line
+
+            # Apply all modifiers sequentially
+            for mod in self.modifiers:
+                y = mod.apply(x, y)
+
+            # Smooth window with a non-zero floor:
+            # keeps endpoints stable while preserving optimization effect near both sides.
+            progress = i / (self.num_points + 1)
+            center_emphasis = 1.0 - abs(2.0 * progress - 1.0) ** 2
+            window = 0.35 + 0.65 * center_emphasis
+
+            # Interpolate between the straight line and the modified path
+            final_y = y_line + (y - y_line) * window
+            path.append(float(final_y))
+
+        return path
+
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    【无人机连续空间多目标折线优化】
+    Generates an optimized drone path using a modifier-based architecture.
+    Applies repulsive forces from the school and attractive forces to the base.
+    """
+    generator = DronePathGenerator(start, end, num_points)
+
+    # Add behavioral modifiers to sculpt the path
+    generator.add_modifier(SchoolAvoidanceModifier(school[0], school[1], push_distance=50.0, width=800.0))
+    generator.add_modifier(
+        BaseAttractionModifier(
+            base[0],
+            base[1],
+            pull_ratio=0.96,
+            width=2600.0,
+            school_x=school[0],
+            school_width=800.0,
+            conflict_soften=0.45,
+            recovery_boost=0.35,
+        )
+    )
+
+    return generator.generate()
+# EVOLVE-BLOCK-END
+
+import sys
+import os
+
+# 将当前目录加入系统路径以便导入同级文件
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from drone_evaluation import DroneGrader
+
+def run_experiment(**kwargs):
+    """供 Shinka 触发的单次实验方法"""
+    grader = DroneGrader()
+
+    # 捕获异常防止大模型写出死循环炸毁测评机
+    try:
+        avg_f1, avg_f2, avg_f3, final_score = grader.grade_silent(evolve_drone_path, timeout=12)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        avg_f1, avg_f2, avg_f3, final_score = float('inf'), float('inf'), float('inf'), float('inf')
+
+    return avg_f1, avg_f2, avg_f3, final_score

@@ -1,0 +1,14 @@
+{
+  "generation": 43,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "analytic_multistart_adam",
+  "patch_description": "This approach transitions from discrete point-based evaluation approximations to exact continuous curve integrals utilizing a 3-point Gaussian Quadrature scheme. This computes precise path lengths (F1), school proximity repulsions (F2), and base signal attrations (F3). Because the grader scores the combined multi-objective problem as essentially F1 * F2 * F3, computing explicit analytic gradients for `log(F1) + log(F2) + log(F3)` ensures an optimal direction. \n\nTo overcome potential saddle points or local minima (especially when the straight line path passes symmetrically across the school's location, nullifying vertical gradients), it uses a multi-start strategy. Four separate initial trajectories (straight, perturbed upwards, perturbed downwards, and biased toward the base station) are optimized with an annealed Adam optimizer for 1200 steps each. The outcome with the mathematically lowest integrated objective cost is then definitively selected.",
+  "error_msg": "Could not extract code from patch string",
+  "timestamp": "2026-03-20T02:45:57.825951",
+  "llm_cost": 0.02007,
+  "llm_model": null
+}

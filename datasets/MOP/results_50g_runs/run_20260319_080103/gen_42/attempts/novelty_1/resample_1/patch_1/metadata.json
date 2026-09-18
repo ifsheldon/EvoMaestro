@@ -1,0 +1,14 @@
+{
+  "generation": 42,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "smooth_biased_gaussian_path",
+  "patch_description": "This rewrite performs a practical crossover of the two implementations:\n\n- It keeps the stronger parts of the current program:\n  - adaptive local school avoidance using a clearance concept\n  - endpoint tapering so the path stays smooth and does not over-bend near boundaries\n- It borrows the best structural ideas from the inspiration program:\n  - staged Gaussian shaping\n  - a lightweight endpoint-aware smoothing pass\n\nThe main improvement is a more coherent directional strategy: instead of deciding school avoidance only from the local intermediate point, the path uses a preferred bend direction inferred from the geometry, especially from the base relative to the school. This encourages a smooth line that bends away from the school region and then gets pulled toward the base region, matching the desired behavior of bending away from (40, 20) and toward (70, -30).\n\nImplementation details:\n- Build the interior X positions and linear baseline.\n- Use a smooth edge ramp to suppress unnecessary deformation near start/end.\n- Apply school repulsion first, with dynamic amplitude based on how close the current path is to the school Y level.\n- Apply two-stage base attraction:\n  - a broad pull for global shaping\n  - a narrow pull for local refinement near the base\n- Finish with endpoint-aware smoothing to reduce path length inflation while preserving the bend.\n\nThis remains deterministic, efficient, numerically safe, and preserves the same input/output contract.",
+  "error_msg": null,
+  "timestamp": "2026-03-19T16:12:42.059448",
+  "llm_cost": 0.0423525,
+  "llm_model": null
+}

@@ -1,0 +1,96 @@
+<NAME>
+adaptive_two_stage_field_projection
+</NAME>
+
+<DESCRIPTION>
+The `adaptive_two_stage_field_projection` algorithm implements a directed analytical construction of the drone path based on the two-stage potential field recommendation. 
+
+1. **Broad Signal Alignment**: It calculates a base station attraction amplitude based on the required displacement from the linear path. It uses a wide Gaussian kernel to ensure the path stays close to the base station for signal coverage (minimizing F3).
+2. **Adaptive School Clearance**: It estimates the height of the path at the school's x-coordinate *after* the base pull is applied. Following the potential recommendation, it uses an adaptive formula `amp = min(52.0, max(32.0, a + b / (clearance + c)))` to determine the school's repulsion force. This ensures that the noise penalty (F2) is minimized only as much as needed, preventing unnecessary distance increases (F1).
+3. **Harmonic Smoothness**: The final path is synthesized by combining the linear baseline with the two Gaussian fields, all modulated by a sinusoid taper. This guarantees that the path starts and ends exactly at the required points and maintains $C^\infty$ smoothness throughout.
+</DESCRIPTION>
+
+<CODE>
+# EVOLVE-BLOCK-START
+import math
+
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    Optimizes a path to minimize Flying Distance (F1), School Noise (F2), and Signal Drop (F3).
+    A two-stage analytical approach using adaptive Gaussian deformation.
+    """
+    if num_points <= 0:
+        return []
+
+    x0, y0 = start
+    x1, y1 = end
+    sx, sy = school
+    bx, by = base
+
+    # Distance across the x-axis
+    dx_range = x1 - x0
+    safe_dx = max(1e-9, abs(dx_range))
+    
+    # Simple linear baseline function
+    def get_y_lin(x):
+        t = (x - x0) / dx_range if abs(dx_range) > 1e-12 else 0.5
+        return y0 + (y1 - y0) * t
+
+    # --- Stage 1: Base Station Attraction (Signal Strength F3) ---
+    # Width of the base influence (broad)
+    sigma_base = 0.45 * safe_dx
+    
+    # Calculate the current height at the base's x-location
+    t_bx = (bx - x0) / dx_range if abs(dx_range) > 1e-12 else 0.5
+    t_bx_clamped = max(0.01, min(0.99, t_bx))
+    taper_bx = math.sin(math.pi * t_bx_clamped)
+    
+    y_lin_bx = get_y_lin(bx)
+    # Target: pull the path close to 'by' at 'bx'
+    # We use a factor of 0.96 to manage the trade-off with distance
+    target_pull_bx = (by - y_lin_bx)
+    amp_base = (target_pull_bx / (taper_bx + 0.01)) * 0.96
+
+    # --- Stage 2: Adaptive School Push (Noise Proximity F2) ---
+    # Width of the school influence (sharper)
+    sigma_school = 0.15 * safe_dx
+    
+    # Estimate clearance from school after the base pull is factored in
+    t_sx = (sx - x0) / dx_range if abs(dx_range) > 1e-12 else 0.5
+    taper_sx = math.sin(math.pi * max(0.0, min(1.0, t_sx)))
+    
+    # Gaussian weight of base influence at the school's x-coordinate
+    gauss_base_at_sx = math.exp(-0.5 * ((sx - bx) / sigma_base)**2)
+    y_est_at_sx = get_y_lin(sx) + (amp_base * gauss_base_at_sx) * taper_sx
+    
+    # Clearance at sx
+    clearance = abs(y_est_at_sx - sy)
+    
+    # Adaptive amplitude formula from documentation:
+    # amp = min(52.0, max(32.0, a + b / (clearance + c)))
+    amp_school_val = min(52.0, max(32.0, 30.5 + 115.0 / (clearance + 6.0)))
+    dir_school = 1.0 if (y_est_at_sx - sy) >= 0 else -1.0
+    amp_school = dir_school * amp_school_val
+
+    # --- Final Path Generation ---
+    ys = []
+    # Generate num_points between start and end
+    for i in range(1, num_points + 1):
+        x = x0 + i * (dx_range / (num_points + 1))
+        t = (x - x0) / dx_range
+        t_normalized = max(0.0, min(1.0, t))
+        
+        # Smooth taper to ensure endpoints are fixed
+        taper = math.sin(math.pi * t_normalized)
+        
+        # Superimpose Gaussian fields onto linear baseline
+        y_lin = get_y_lin(x)
+        g_base = amp_base * math.exp(-0.5 * ((x - bx) / sigma_base)**2)
+        g_school = amp_school * math.exp(-0.5 * ((x - sx) / sigma_school)**2)
+        
+        y_total = y_lin + (g_base + g_school) * taper
+        ys.append(float(y_total))
+
+    return ys
+# EVOLVE-BLOCK-END
+</CODE>

@@ -1,0 +1,14 @@
+{
+  "generation": 41,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 2,
+  "patch_name": "capacity_aware_mode_and_pareto_filter",
+  "patch_description": "We introduce a fourth, highly capacity-aware routing mode dynamically via `run_dijkstra` which uses a heavier weight (`gamma = 5.0`) on the inverse capacity term. Since task sources often face bottlenecks dependent on their specific edge capacity limits (especially high-payload ones), this explores a new structural alternative. \nTo prevent an explosion of options and to only keep this alternative when it represents an objectively beneficial route for the specific payload, we filter candidates at the source-server level taking only Pareto front solutions (considering specific `payload`-adjusted `p_lat` and `p_ene`). This strictly improves the tightness of our route options.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:49:17.807563",
+  "llm_cost": 0.034201999999999996,
+  "llm_model": null
+}

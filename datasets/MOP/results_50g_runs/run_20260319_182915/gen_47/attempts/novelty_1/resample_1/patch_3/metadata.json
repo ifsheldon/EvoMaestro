@@ -1,0 +1,14 @@
+{
+  "generation": 47,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 3,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "rbf_kernel_path_optimizer",
+  "patch_description": "This algorithm uses a Radial Basis Function (RBF) network to represent the drone's path deviation from the straight-line trajectory. Instead of a fixed parametric form, the path is defined by the sum of 10 Gaussian kernels (kernels centered at regular intervals along the X-axis). \n\nKey features:\n1.  **Coordinate Descent with Block Updates**: It performs a multi-pass optimization on the kernel weights. After every full sweep of single-weight adjustments, it tests \"pair moves\" (adjusting adjacent weights together). This allows the algorithm to find smooth coordinated shape changes that single-variable moves would miss, as suggested in the task recommendations.\n2.  **RBF Flexibility**: Using multiple Gaussian kernels allows the path to bend flexibly and independently in different regions\u2014for example, diving deep near the base station at (70, -30) while maintaining distance from the school at (40, 20).\n3.  **Local Refinement**: The search progresses from large movements to fine-tuning, ensuring both global avoidance and local path length optimization.\n4.  **Smoothness by Design**: Because the path is a sum of Gaussian functions, it is inherently smooth (infinitely differentiable), which naturally minimizes the internal smoothness penalties and improves the F1 (distance) score.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:51:04.625166",
+  "llm_cost": 0.0095395,
+  "llm_model": null
+}

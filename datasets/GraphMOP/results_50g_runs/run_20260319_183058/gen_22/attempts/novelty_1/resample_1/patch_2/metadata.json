@@ -1,0 +1,14 @@
+{
+  "generation": 22,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 2,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "regret_aware_marginal_routing",
+  "patch_description": "The regret_aware_marginal_routing algorithm implements a sophisticated task-to-server assignment strategy focused on total system optimization. \n\nKey improvements:\n1. **True Marginal Costing**: Instead of individual task metrics, we calculate the discrete change in total system objectives (Sum of Latencies and Total Energy) caused by assigning a task. This accounts for how a new task increases the queueing delay for all other existing tasks on the same server.\n2. **Regret-Based Prioritization**: We order task assignments by \"regret\"\u2014the penalty incurred if the source cannot be assigned to its first-best server/path. This ensures sources with unique bottlenecks are prioritized over those with many flexible options.\n3. **Diverse Candidate Selection**: For each server, we precompute four Dijkstra trees using different weight profiles (Latency-optimized, Energy-optimized, Balanced, and Capacity-aware). This provides a rich, varied set of path options for every source-server pair.\n4. **Iterative Refinement**: After an initial greedy assignment, the algorithm performs refinement passes, re-evaluating each source's placement in the context of the emergent global load distribution to find globally improved solutions.",
+  "error_msg": "Could not extract code from patch string",
+  "timestamp": "2026-03-20T02:44:11.262232",
+  "llm_cost": 0.009815500000000001,
+  "llm_model": null
+}

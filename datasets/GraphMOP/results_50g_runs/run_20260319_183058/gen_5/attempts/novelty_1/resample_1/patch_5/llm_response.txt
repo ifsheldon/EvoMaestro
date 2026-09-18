@@ -1,0 +1,67 @@
+
+```python
+# EVOLVE-BLOCK-START
+def evolve_task_routing(
+    num_nodes,
+    edges,
+    server_nodes,
+    task_sources,
+    task_info,
+    server_info,
+):
+    """
+    Graph multi-objective routing problem.
+    Optimized using marginal cost analysis for latency and energy.
+    """
+    import heapq
+
+    # Build adjacency list
+    graph = [[] for _ in range(num_nodes)]
+    for u, v, bl, ec, cap in edges:
+        graph[u].append((v, bl, ec))
+        graph[v].append((u, bl, ec))
+
+    # Calculate global average payload to use in path discovery
+    all_payloads = [task_info[s][1] for s in task_sources]
+    avg_payload = sum(all_payloads) / len(all_payloads) if all_payloads else 1.0
+
+    # Precompute Dijkstra paths from all server nodes once
+    # Weight balances latency and transmission energy cost
+    server_paths = {}
+    for snode in server_nodes:
+        dists = [float('inf')] * num_nodes
+        parents = [-1] * num_nodes
+        p_lat = [0.0] * num_nodes
+        p_en = [0.0] * num_nodes
+        
+        dists[snode] = 0.0
+        pq = [(0.0, snode)]
+        
+        while pq:
+            d, u = heapq.heappop(pq)
+            if d > dists[u]:
+                continue
+            for v, bl, ec in graph[u]:
+                # Multi-objective weight for path finding
+                weight = bl + 0.3 * (avg_payload * ec)
+                if dists[u] + weight < dists[v]:
+                    dists[v] = dists[u] + weight
+                    parents[v] = u
+                    p_lat[v] = p_lat[u] + bl
+                    p_en[v] = p_en[u] + ec
+                    heapq.heappush(pq, (dists[v], v))
+        server_paths[snode] = (parents, p_lat, p_en)
+
+    current_load = {s: 0.0 for s in server_nodes}
+    plan = {}
+    
+    # Sort tasks by total compute load (arrival_rate * compute_demand)
+    ranked_sources = sorted(
+        task_sources,
+        key=lambda s: task_info[s][0] * task_info[s][2],
+        reverse=True,
+    )
+
+    for source in ranked_sources:
+        arrival_rate, payload_size, compute_demand = task_info[source]
+        task_load =

@@ -1,0 +1,142 @@
+<NAME>
+adam_energy_path
+</NAME>
+
+<DESCRIPTION>
+Redesigned the program with a novel object-oriented architecture, decoupling the optimization logic into an explicit `AdamOptimizer` and a `PathEnergyModel`. The new formulation calculates physically-motivated, precise gradients (using true curve len/rubber-banding and smoothness stiffness). Because standard Gradient Descent struggles with poorly scaled objectives, implementing Adam allows automatic magnitude normalization so the path quickly converges to the very bottom of the F1/F2/F3 energy basin. We also tune the balancing weights to prioritize minimizing noise while penalizing excessive V-shaped distance stretches that previously spiked the F1 score.
+</DESCRIPTION>
+
+<CODE>
+```python
+# EVOLVE-BLOCK-START
+import math
+
+class AdamOptimizer:
+    """Standard Adam optimizer implemented from scratch for stable and fast convergence."""
+    def __init__(self, size, lr=0.5, beta1=0.9, beta2=0.999, eps=1e-8):
+        self.m = [0.0] * size
+        self.v = [0.0] * size
+        self.lr = lr
+        self.beta1 = beta1
+        self.beta2 = beta2
+        self.eps = eps
+        self.t = 0
+        
+    def step(self, params, grads):
+        self.t += 1
+        lr_t = self.lr * math.sqrt(1.0 - self.beta2**self.t) / (1.0 - self.beta1**self.t)
+        for i in range(len(params)):
+            self.m[i] = self.beta1 * self.m[i] + (1.0 - self.beta1) * grads[i]
+            self.v[i] = self.beta2 * self.v[i] + (1.0 - self.beta2) * (grads[i] ** 2)
+            # Apply update
+            params[i] -= lr_t * self.m[i] / (math.sqrt(self.v[i]) + self.eps)
+
+class PathEnergyModel:
+    """Computes exact gradients of the multi-objective drone path energy landscape."""
+    def __init__(self, start, end, school, base, num_points):
+        self.start = start
+        self.end = end
+        self.school = school
+        self.base = base
+        self.num_points = num_points
+        self.dx = (end[0] - start[0]) / (num_points + 1)
+        self.X = [start[0] + (i + 1) * self.dx for i in range(num_points)]
+        
+        # Hyperparameters for translating task constraints
+        self.w_len = 15.0         # Pulls back to minimize F1 true distance
+        self.w_spring = 2.0       # Softly prevents sharp jagged bends
+        
+        self.w_school = 3500.0    # Repulsion to minimize F2 noise
+        self.sigma_school = 25.0
+        
+        self.w_base = 4.0         # Attraction to minimize F3 signal loss
+        self.sigma_base = 35.0
+        
+    def compute_gradients(self, y_coords):
+        grads = [0.0] * self.num_points
+        # Pad with endpoints to compute neighbor interactions properly
+        Y = [self.start[1]] + y_coords + [self.end[1]]
+        
+        for i in range(self.num_points):
+            y_curr = y_coords[i]
+            x_curr = self.X[i]
+            y_prev = Y[i]
+            y_next = Y[i+2]
+            
+            # 1. True Length Gradient (rubber band tension, limits F1)
+            len_prev = math.sqrt(self.dx**2 + (y_curr - y_prev)**2)
+            len_next = math.sqrt(self.dx**2 + (y_next - y_curr)**2)
+            grad_len = (y_curr - y_prev) / max(len_prev, 1e-6) + (y_curr - y_next) / max(len_next, 1e-6)
+            
+            # 2. Smoothness Gradient (elastic spring tension)
+            grad_spring = (2.0 * y_curr - y_prev - y_next)
+            
+            # 3. School Repulsion Gradient (pushes away, limits F2)
+            dist_sq_school = (x_curr - self.school[0])**2 + (y_curr - self.school[1])**2
+            dy_school = y_curr - self.school[1]
+            if abs(dy_school) < 1e-5: 
+                dy_school = 1e-5
+                
+            grad_school = -self.w_school * math.exp(-dist_sq_school / (2.0 * self.sigma_school**2)) * dy_school / (self.sigma_school**2)
+            
+            # 4. Base Attraction Gradient (pulls near base, limits F3)
+            weight_base = math.exp(-((x_curr - self.base[0])**2) / (2.0 * self.sigma_base**2))
+            grad_base = self.w_base * weight_base * (y_curr - self.base[1])
+            
+            # Combine
+            grads[i] = self.w_len * grad_len + self.w_spring * grad_spring + grad_school + grad_base
+            
+            # Clip gradient for numerical stability
+            grads[i] = max(min(grads[i], 100.0), -100.0)
+            
+        return grads
+
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    【Adam-Optimized Energy Path】
+    Initializes a flexible string between the endpoints and leverages Adam
+    to descend the energy gradient. Automatically balances minimizing F1 (distance),
+    F2 (school noise proximity), and F3 (base station distance).
+    """
+    x_start, y_start = start
+    x_end, y_end = end
+    
+    # Initialize with a straight line
+    dy = (y_end - y_start) / (num_points + 1)
+    y_coords = [y_start + (i + 1) * dy for i in range(num_points)]
+    
+    # Initialize optimization components
+    model = PathEnergyModel(start, end, school, base, num_points)
+    optimizer = AdamOptimizer(num_points, lr=0.5)
+    
+    # Optimization loop
+    iterations = 400
+    for _ in range(iterations):
+        grads = model.compute_gradients(y_coords)
+        optimizer.step(y_coords, grads)
+        
+    return y_coords
+# EVOLVE-BLOCK-END
+
+import sys
+import os
+
+# 将当前目录加入系统路径以便导入同级文件
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from drone_evaluation import DroneGrader
+
+def run_experiment(**kwargs):
+    """供 Shinka 触发的单次实验方法"""
+    grader = DroneGrader()
+    
+    # 捕获异常防止大模型写出死循环炸毁测评机
+    try:
+        avg_f1, avg_f2, avg_f3, final_score = grader.grade_silent(evolve_drone_path, timeout=12)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        avg_f1, avg_f2, avg_f3, final_score = float('inf'), float('inf'), float('inf'), float('inf')
+        
+    return avg_f1, avg_f2, avg_f3, final_score
+```
+</CODE>

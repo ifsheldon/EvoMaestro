@@ -1,0 +1,60 @@
+<NAME>
+Server-centric Reverse Dijkstra with Time-Decayed Simulated Annealing
+</NAME>
+
+<DESCRIPTION>
+This approach is fundamentally different from the current method. Rather than computing optimal paths from each source individually with a single heuristic edge weight metric, this algorithm flips the traversal direction. Since there are many sources but only a few servers, it runs multiple Reverse Dijkstras from each server using several different Pareto-optimality weights (emphasizing latency vs. energy vs. hop bounds). This massively reduces Dijkstra overhead and compiles a wealthy precomputed candidate set of (server, path) pairs for each task source.
+
+Subsequently, a dynamic fast-swapping Simulated Annealing local-search metaheuristic optimizes the assignment. The objective function strictly mirrors system-wide latency and energy, using properly scaled M/M/1 wait penalties for servers and heavy soft-penalties for capacity violations. Fast $O(1)$ incremental objective tracking lets the simulated annealing explore hundreds of thousands of neighboring configurations, and the simulated temperature smoothly decays precisely scaled to the runtime bound.
+</DESCRIPTION>
+
+<CODE>
+```python
+# EVOLVE-BLOCK-START
+def evolve_task_routing(
+    num_nodes,
+    edges,
+    server_nodes,
+    task_sources,
+    task_info,
+    server_info,
+):
+    import heapq
+    import time
+    import random
+    import math
+
+    start_time = time.time()
+
+    # Adjacency list and edge bounds
+    graph = [[] for _ in range(num_nodes)]
+    edge_capacity = {}
+    for u, v, base_lat, en_cost, cap in edges:
+        graph[u].append((v, base_lat, en_cost, cap))
+        graph[v].append((u, base_lat, en_cost, cap))
+        e = (min(u, v), max(u, v))
+        edge_capacity[e] = cap
+
+    # Dijkstra from start (server)
+    def run_dijkstra(server, w_lat, w_en, w_hop):
+        dist = [float("inf")] * num_nodes
+        parent = [-1] * num_nodes
+        dist[server] = 0.0
+        heap = [(0.0, server)]
+
+        while heap:
+            d, u = heapq.heappop(heap)
+            if d > dist[u]: 
+                continue
+
+            for v, base_lat, en_cost, _cap in graph[u]:
+                weight = w_lat * base_lat + w_en * en_cost + w_hop
+                if dist[u] + weight < dist[v]:
+                    dist[v] = dist[u] + weight
+                    parent[v] = u
+                    heapq.heappush(heap, (dist[v], v))
+                    
+        return parent
+
+    class Candidate:
+        __slots__ = ['server', 'path', '

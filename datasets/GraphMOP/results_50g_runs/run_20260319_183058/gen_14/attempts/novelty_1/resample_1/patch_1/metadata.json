@@ -1,0 +1,14 @@
+{
+  "generation": 14,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "regret_marginal_routing",
+  "patch_description": "The algorithm implements a regret-based task ordering policy combined with a marginal-cost greedy assignment and iterative local search. \n\nKey insights:\n1.  **Regret-Based Ordering**: Tasks are prioritized based on their \"regret\"\u2014the difference in cost between their best and second-best server options. This ensures that tasks with limited high-quality options are assigned before servers become congested.\n2.  **Marginal Cost Function**: Instead of simple per-task metrics, the assignment and local search use a global marginal cost that accounts for the impact of a task on *all* other tasks sharing the same server (specifically, the change in total queueing delay $N/(\\mu - L)$).\n3.  **Multi-Objective Dijkstra**: A scalarized weight $(latency + 0.5 \\cdot energy)$ is used during pathfinding to find paths that naturally balance both objectives.\n4.  **Iterative Refinement**: A best-response local search iteratively reassigns tasks to servers that minimize the total system cost, effectively handling the non-linear queueing delay and discrete idle power costs.",
+  "error_msg": "Could not extract code from patch string",
+  "timestamp": "2026-03-20T02:37:25.530398",
+  "llm_cost": 0.0045515,
+  "llm_model": null
+}

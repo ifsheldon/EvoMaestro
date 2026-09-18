@@ -1,0 +1,14 @@
+{
+  "generation": 17,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "server_rooted_multitree_routing",
+  "patch_description": "Replace the simplistic per-(source,server) shortest path and hop-based scoring with a server-rooted multi-tree candidate strategy plus load-aware assignment.\n\nKey improvements:\n1. **Few servers, many sources optimization**: precompute multiple routing trees per server (latency/energy blends), instead of running many source-target shortest paths repeatedly.\n2. **Candidate diversity**: for each server, build 4 alternative trees with different latency-energy-capacity weightings to expose better Pareto tradeoffs.\n3. **Accurate path evaluation**: compute actual route latency and route energy per source using its payload on the chosen path.\n4. **Queue-aware greedy assignment**: assign larger workloads first with explicit queue-delay and compute-energy terms, respecting stability.\n5. **Light local refinement**: one improvement pass to reassign heavy tasks when beneficial.\n\nThis directly addresses the observed weakness (high latency + energy from simplistic scoring and single-path style) while keeping runtime practical.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:40:03.577671",
+  "llm_cost": 0.06692175,
+  "llm_model": null
+}

@@ -1,0 +1,56 @@
+An elegant and highly effective way to improve the routing algorithm is to combine the diverse candidate path generation from the current program with the exact marginal cost evaluation and regret-based assignment from the crossover inspiration. 
+
+### Method Explanation
+1. **Graph Building**: We construct the graph by keeping only the best edge between any two nodes based on a scalarized weight (`latency + 1.5 * energy`). This ensures consistency between the path discovery and path metric evaluation.
+2. **Candidate Path Generation**: We precompute multiple server-rooted shortest-path trees using different blends of latency and energy weights. This efficiently generates a diverse set of high-quality candidate paths for each task source.
+3. **Exact Marginal Cost Evaluation**: Instead of using rough approximations for the server queueing delay and energy, we compute the *exact* marginal increase in the global objective function. 
+   - For latency, the marginal cost accounts for the increased queueing delay experienced by *all* tasks currently assigned to the server: `(N + 1) * qd_new - N * qd_old`.
+   - For energy, it exactly accounts for the dynamic compute energy and the idle energy penalty if the server is being newly activated.
+4. **Regret-based Ordering**: We order the task sources based on their load and their "regret" (the difference in score between their best and second-best candidate paths). Tasks with high load and high regret are assigned first.
+5. **Local Search Refinement**: We perform multiple passes of local search where each task is tentatively removed and reassigned to the server/path that minimizes the exact marginal cost. Because our marginal cost function perfectly aligns with the global objective, this local search monotonically decreases the total system cost.
+
+### Python 3 Source Code
+
+```python
+<NAME>
+exact_marginal_cost_routing
+</NAME>
+
+<DESCRIPTION>
+Combines diverse server-rooted tree path generation with an exact marginal cost evaluation for queueing delay and energy. Uses regret-based ordering for the initial greedy assignment and performs multiple passes of local search refinement to monotonically minimize the global objective.
+</DESCRIPTION>
+
+<CODE>
+```python
+# EVOLVE-BLOCK-START
+def evolve_task_routing(
+    num_nodes,
+    edges,
+    server_nodes,
+    task_sources,
+    task_info,
+    server_info,
+):
+    """
+    Graph multi-objective routing problem.
+
+    You must return a dict:
+    {
+        source_node: {
+            "server": server_node,
+            "path": [source_node, ..., server_node],
+        },
+        ...
+    }
+
+    Goals:
+    1. Minimize end-to-end latency = transmission latency + server queueing delay.
+    2. Minimize total energy = routing energy + server compute energy.
+    """
+    import heapq
+
+    # ----------------------------
+    # Graph build (undirected)
+    # ----------------------------
+    edge_attr = {}
+    for u, v, base_latency, energy_cost, capacity

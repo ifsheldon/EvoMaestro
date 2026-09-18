@@ -1,0 +1,14 @@
+{
+  "generation": 43,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "pareto_filtered_routing",
+  "patch_description": "Redesigned the program to use explicit Pareto-style filtering for candidate paths. For each server, we generate 3 trees using different latency/energy/capacity blends. When reconstructing paths for a source, we evaluate them and keep only the best path (minimizing a combined metric) plus at most one alternate path that offers a materially different tradeoff (e.g., >5% lower latency or energy). This ensures a compact, diverse candidate set. The assignment phase uses a mathematically exact marginal cost formulation for both latency (queueing delay derivative) and energy, followed by a regret-based greedy initialization and local search refinement.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:50:53.997046",
+  "llm_cost": 0.05388,
+  "llm_model": null
+}

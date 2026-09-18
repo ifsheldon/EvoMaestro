@@ -1,0 +1,123 @@
+<NAME>
+grid_search_multi_objective_path
+</NAME>
+
+<DESCRIPTION>
+This edit replaces the fixed Gaussian displacement with a dynamic grid search optimizer. The strategy uses a sine-windowed Gaussian basis to perturb the straight-line path. It searches across a range of amplitudes and widths to find the specific trajectory that minimizes the product of distance (F1), school noise (F2), and base station signal loss (F3). This effectively balances the three competing objectives by choosing the best parameter combination for each specific school and base layout.
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+import math
+
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    【无人机连续空间多目标折线优化】
+    LLMs 将被要求在这里编写代码（可以使用启发式寻找策略，或者单纯使用规则拟合）。
+    你需要返回一个长度为 num_points 的列表，包含从起点到终点按 X 匀速布置对应的 Y 轴偏移量。
+    """
+    x_start, y_start = start
+    x_end, y_end = end
+    x_school, y_school = school
+    x_base, y_base = base
+
+    y_coords = []
+    dx = (x_end - x_start) / (num_points + 1)
+
+    def get_y_line(x):
+        if x_end == x_start:
+            return y_start
+        return y_start + (x - x_start) * (y_end - y_start) / (x_end - x_start)
+
+    y_line_school = get_y_line(x_school)
+    y_line_base = get_y_line(x_base)
+
+    # Determine push directions relative to the straight line
+    push_school = -1 if y_school > y_line_school else 1
+    push_base = 1 if y_base > y_line_base else -1
+
+    for i in range(num_points):
+        x = x_start + (i + 1) * dx
+        y_line = get_y_line(x)
+
+        # Sine window to ensure offsets smoothly drop to 0 at the start and end points
+        window = math.sin(math.pi * (x - x_start) / (x_end - x_start)) if x_end != x_start else 1.0
+
+        # Gaussian curves for smooth local bending
+        offset_school = push_school * 25.0 * math.exp(-((x - x_school) ** 2) / 300.0)
+        offset_base = push_base * 36.0 * math.exp(-((x - x_base) ** 2) / 300.0)
+
+        total_offset = (offset_school + offset_base) * window
+
+        y_coords.append(float(y_line + total_offset))
+
+    return y_coords
+=======
+import math
+
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    【无人机连续空间多目标折线优化】
+    LLMs 将被要求在这里编写代码（可以使用启发式寻找策略，或者单纯使用规则拟合）。
+    你需要返回一个长度为 num_points 的列表，包含从起点到终点按 X 匀速布置对应的 Y 轴偏移量。
+    """
+    x_start, y_start = start
+    x_end, y_end = end
+    x_s, y_s = school
+    x_b, y_b = base
+
+    xs = [x_start + (i + 1) * (x_end - x_start) / (num_points + 1) for i in range(num_points)]
+    lx = (x_end - x_start) if x_end != x_start else 1.0
+    line_ys = [y_start + (x - x_start) * (y_end - y_start) / lx for x in xs]
+
+    # Precompute sine window to maintain smooth entry/exit at endpoints
+    wins = [math.sin(math.pi * (x - x_start) / lx) for x in xs]
+
+    # Directions: push away from school center, pull towards base station center
+    y_ls = y_start + (x_s - x_start) * (y_end - y_start) / lx
+    ds = -1.0 if y_s > y_ls else 1.0
+    y_lb = y_start + (x_b - x_start) * (y_end - y_start) / lx
+    db = 1.0 if y_b > y_lb else -1.0
+
+    # Grid search parameters for amplitudes and widths
+    amps = [0, 20, 40, 60, 80]
+    widths = [200.0, 600.0, 1200.0]
+
+    # Precompute Gaussian shapes for efficiency during grid search iterations
+    g_s = [[math.exp(-((x - x_s)**2) / w) for x in xs] for w in widths]
+    g_b = [[math.exp(-((x - x_b)**2) / w) for x in xs] for w in widths]
+
+    best_score = float('inf')
+    best_ys = line_ys[:]
+    straight_dist = math.hypot(x_end - x_start, y_end - y_start) or 1.0
+
+    # Grid search for the optimal Gaussian superposition to minimize combined F1*F2*F3
+    for a_s in amps:
+        for a_b in amps:
+            for i_ws in range(len(widths)):
+                sh_s = g_s[i_ws]
+                for i_wb in range(len(widths)):
+                    sh_b = g_b[i_wb]
+
+                    # Generate path candidates by perturbing the straight line
+                    c_ys = [(line_ys[i] + (ds*a_s*sh_s[i] + db*a_b*sh_b[i]) * wins[i]) for i in range(num_points)]
+
+                    # Score evaluation (F1: distance loss, F2: noise penalty, F3: signal loss)
+                    dist, f2, f3 = 0.0, 0.0, 0.0
+                    px, py = x_start, y_start
+                    for i in range(num_points):
+                        cx, cy = xs[i], c_ys[i]
+                        dist += math.hypot(cx - px, cy - py)
+                        f2 += 1.0 / ((cx - x_s)**2 + (cy - y_s)**2 + 1e-3)
+                        f3 += math.sqrt((cx - x_b)**2 + (cy - y_b)**2)
+                        px, py = cx, cy
+                    dist += math.hypot(x_end - px, y_end - py)
+
+                    score = (dist / straight_dist) * f2 * f3
+                    if score < best_score:
+                        best_score = score
+                        best_ys = c_ys
+
+    return best_ys
+>>>>>>> REPLACE
+</DIFF>

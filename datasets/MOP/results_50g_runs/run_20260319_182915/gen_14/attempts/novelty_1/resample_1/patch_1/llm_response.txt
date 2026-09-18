@@ -1,0 +1,83 @@
+<NAME>
+heuristic_parameter_tuning_and_envelope_optimization
+</NAME>
+
+<DESCRIPTION>
+The current heuristic path optimization is limited by three factors: 
+1) The clipping of the path offset (max_offset=22.0) prevents the drone from reaching the base station's Y-coordinate (approx -30), leading to high signal loss (F3).
+2) The school repulsion and base attraction weights are too conservative.
+3) The sinusoidal envelope is too narrow at the points of interest (x=40 and x=70).
+
+This edit improves the path by:
+- Increasing the max_offset to 60.0 to allow full proximity to the base station.
+- Using a power-transformed sine envelope (sin^0.7) to create a flatter "plateau" in the middle of the path, allowing the drone to stay near the base station for a longer duration.
+- Implementing dynamic repulsion that scales with the distance between the baseline and the school, ensuring a more consistent clearance.
+- Increasing the influence (sigma) of both the school and base station to create smoother, earlier transitions that minimize the product of F1, F2, and F3.
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+    y_coords = []
+    base_line_span = abs(y_end - y_start)
+
+    # 控制偏移幅度，尽量在提升 F2/F3 的同时维持较低 F1
+    school_amp = 10.0 + 0.08 * abs(sy - (y_start + y_end) * 0.5)
+    base_amp = 16.0 + 0.10 * abs(by - (y_start + y_end) * 0.5)
+
+    # 学校附近影响稍窄，基站附近影响稍宽，形成平滑 S 型趋势
+    school_sigma = max(abs(dx_total) * 0.12, 10.0)
+    base_sigma = max(abs(dx_total) * 0.16, 12.0)
+
+    for i in range(num_points):
+        t = (i + 1) / (num_points + 1)
+        x = x_start + dx_total * t
+
+        # 基线：起点到终点线性过渡
+        y_line = y_start + (y_end - y_start) * t
+
+        # 端点为 0 的平滑包络，保证中段可弯折，两端自然收敛
+        envelope = math.sin(math.pi * t)
+
+        # 远离学校：如果当前基线在学校下方，则继续下压；反之上抬
+        school_dir = -1.0 if y_line <= sy else 1.0
+        school_push = school_dir * school_amp * gauss(x, sx, school_sigma)
+
+        # 靠近基站：拉向基站 y 值
+        base_pull = (by - y_line) * gauss(x, bx, base_sigma)
+
+        # 组合并限制幅度，避免过度绕行
+        offset = envelope * (school_push + 0.75 * base_pull)
+        max_offset = 22.0 + 0.15 * base_line_span
+        if offset > max_offset:
+            offset = max_offset
+        elif offset < -max_offset:
+            offset = -max_offset
+
+        y_coords.append(float(y_line + offset))
+=======
+    y_coords = []
+    
+    # Use wider sigmas to ensure the drone stays in the optimal signal/noise zones longer
+    school_sigma = max(abs(dx_total) * 0.20, 15.0)
+    base_sigma = max(abs(dx_total) * 0.25, 20.0)
+
+    for i in range(num_points):
+        t = (i + 1) / (num_points + 1)
+        x = x_start + dx_total * t
+        y_line = y_start + (y_end - y_start) * t
+
+        # Flattened sine envelope allows more persistent deviation in the middle regions
+        envelope = math.sin(math.pi * t)**0.7
+
+        # Dynamic repulsion from school and attraction to base station
+        # school_push moves the path away from sy; base_pull moves it towards by
+        school_push = (y_line - sy) * 1.2 * gauss(x, sx, school_sigma)
+        base_pull = (by - y_line) * 1.1 * gauss(x, bx, base_sigma)
+
+        # Combine influences and clip to prevent extreme detours (safety limit)
+        offset = envelope * (school_push + base_pull)
+        offset = max(min(offset, 60.0), -60.0)
+
+        y_coords.append(float(y_line + offset))
+>>>>>>> REPLACE
+</DIFF>

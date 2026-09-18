@@ -1,0 +1,89 @@
+<NAME>
+analytical_adaptive_dual_projection
+</NAME>
+
+<DESCRIPTION>
+The `analytical_adaptive_dual_projection` algorithm utilizes a multi-objective geometric construction strategy. 1. **Signal Strength Priority (F3)**: Since signal loss was the primary bottleneck, the algorithm first establishes a broad Gaussian pull with an adaptive weighting factor `(1.02 / (taper + 0.01))` that ensures the path reaches proximity to the base station regardless of its relative position between the endpoints. 2. **Adaptive Clearance-Based Repulsion (F2)**: Following the recommendation from Gen 34, a "two-stage" approach is implemented where the path's height is first estimated at the school's x-coordinate (accounting for the base pull), and then a localized school-push amplitude is calculated using a narrow adaptive range `amp = min(52, max(32, a + b / (clearance + c)))`. 3. **Smooth Path Preservation (F1)**: Instead of iterative smoothing, which can introduce jagged artifacts or slow convergence, the path is constructed analytically using Gaussian basis functions and a sinusoid taper. This ensures C-infinity smoothness and exact adherence to start and end points while minimizing total distance.
+</DESCRIPTION>
+
+<CODE>
+# EVOLVE-BLOCK-START
+import math
+
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    Constructs a smooth drone path through an analytical projection model.
+    Optimizes distance (F1), school noise (F2), and signal loss (F3).
+    """
+    x0, y0 = start
+    x1, y1 = end
+    sx, sy = school
+    bx, by = base
+
+    if num_points <= 0:
+        return []
+
+    # Basic setup and longitudinal span
+    dx_total = x1 - x0
+    safe_dx = max(1e-9, abs(dx_total))
+
+    def get_y_lin(x):
+        """Straight-line baseline."""
+        if abs(dx_total) < 1e-12:
+            return y0
+        return y0 + (y1 - y0) * (x - x0) / dx_total
+
+    # --- Stage 1: Broad Base Signal Alignment (F3) ---
+    # Find base station position relative to start-end span
+    t_bx = (bx - x0) / dx_total if abs(dx_total) > 1e-12 else 0.5
+    t_bx_clamped = max(0.0, min(1.0, t_bx))
+    taper_bx = math.sin(math.pi * t_bx_clamped)
+    
+    # Adaptive pull factor to handle base positions near endpoints
+    base_weight = 1.05 / (taper_bx + 0.01)
+    base_weight = min(2.5, max(0.4, base_weight))
+    
+    sigma_base = 0.45 * safe_dx
+    y_lin_bx = get_y_lin(bx)
+    base_diff = by - y_lin_bx
+
+    # --- Stage 2: Adaptive School Noise Clearance (F2) ---
+    # Pre-calculate clearance at sx after base pull logic
+    t_sx = (sx - x0) / dx_total if abs(dx_total) > 1e-12 else 0.5
+    taper_sx = math.sin(math.pi * max(0.0, min(1.0, t_sx)))
+    
+    # Calculate current height at school x-location (base pull included)
+    bump_base_at_sx = base_diff * base_weight * math.exp(-0.5 * ((sx - bx) / sigma_base)**2)
+    y_at_sx_with_base = get_y_lin(sx) + bump_base_at_sx * taper_sx
+    
+    # Determine adaptive push strength (Recommendation: min 32, max 52)
+    clearance = abs(sy - y_at_sx_with_base)
+    amp_school = min(52.0, max(32.0, 31.0 + 112.0 / (clearance + 6.0)))
+    dir_school = 1.0 if (y_at_sx_with_base - sy) >= 0 else -1.0
+    sigma_school = 0.16 * safe_dx
+
+    # --- Stage 3: Geometric Path Synthesis ---
+    ys_output = []
+    step = dx_total / (num_points + 1)
+    
+    for i in range(1, num_points + 1):
+        x = x0 + i * step
+        t = (x - x0) / dx_total
+        t_normalized = max(0.0, min(1.0, t))
+        
+        # Sine taper ensures path returns to (x0, y0) and (x1, y1)
+        taper = math.sin(math.pi * t_normalized)
+        
+        y_lin = get_y_lin(x)
+        
+        # Gaussian field calculation
+        offset_base = base_diff * base_weight * math.exp(-0.5 * ((x - bx) / sigma_base)**2)
+        offset_school = dir_school * amp_school * math.exp(-0.5 * ((x - sx) / sigma_school)**2)
+        
+        # Final combined height
+        y_final = y_lin + (offset_base + offset_school) * taper
+        ys_output.append(float(y_final))
+
+    return ys_output
+# EVOLVE-BLOCK-END
+```

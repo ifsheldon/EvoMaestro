@@ -1,0 +1,14 @@
+{
+  "generation": 42,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 4,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "pareto_multi_tree_marginal_cost",
+  "patch_description": "The new algorithm adopts a systematic marginal-cost approach to balance network latency, queuing delay, and energy footprint. \n\nKey improvements:\n1. **Multi-Objective Path Finding**: For every server, it executes two distinct Dijkstra runs to find the minimum-latency path (including capacity-induced transmission delay) and the minimum-energy path. This provides a diverse set of \"candidate paths\" for each source.\n2. **System-Level Marginal Cost**: When evaluating assignments, it doesn't just look at the individual task's cost. It estimates the impact on the entire system, including the incremental server dynamic energy (using a non-linear power model) and the queuing delay escalation for existing tasks as server utilization increases.\n3. **Queueing Model**: It models server delay using an M/M/1-style delay function ($Comp / (\\mu - Load)$) and applies a steep penalty as utilization approaches the 95% stability threshold.\n4. **Adaptive Weighting**: It calculates scaling factors for latency and energy based on the graph's average edge characteristics, ensuring that the combined cost function is robust across different graph scales and units.\n5. **Greedy Priority**: Sources are prioritized by their computational load ($ArrivalRate \\times ComputeDemand$), as high-demand tasks are the most constrained and impactful on system performance.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:53:01.901521",
+  "llm_cost": 0.009498,
+  "llm_model": null
+}

@@ -1,0 +1,62 @@
+<NAME>
+marginal_cost_routing
+</NAME>
+
+<DESCRIPTION>
+The current approach uses a simple heuristic and a fixed-weight Dijkstra that doesn't account for task-specific payload sizes or the non-linear nature of queueing delays. 
+
+My new algorithm improves this by:
+1.  **Accurate Objective Modeling**: It uses a marginal cost function derived from the system's total latency and energy. This includes a more realistic M/M/1 queueing delay model ($V / (\mu - V)$) and compute energy ($P_{dyn} \cdot V / \mu$).
+2.  **Task-Specific Path Optimization**: It precomputes shortest paths from each server using a combined weight ($latency + energy\_cost \times avg\_payload$) to balance the two objectives during routing.
+3.  **Dynamic Load Balancing**: Instead of a fixed utilization cap, it uses the marginal increase in total system latency (including the impact on all tasks already at a server) to make assignment decisions.
+4.  **Efficiency**: By running Dijkstra from the few server nodes instead of many task sources, it significantly reduces computational overhead while maintaining high accuracy.
+</DESCRIPTION>
+
+<CODE>
+```python
+# EVOLVE-BLOCK-START
+def evolve_task_routing(
+    num_nodes,
+    edges,
+    server_nodes,
+    task_sources,
+    task_info,
+    server_info,
+):
+    """
+    Graph multi-objective routing problem.
+    Optimized using marginal cost analysis for latency and energy.
+    """
+    import heapq
+
+    # Build adjacency list
+    graph = [[] for _ in range(num_nodes)]
+    for u, v, base_latency, energy_cost, capacity in edges:
+        graph[u].append((v, base_latency, energy_cost, capacity))
+        graph[v].append((u, base_latency, energy_cost, capacity))
+
+    # Calculate average payload to use as a heuristic for path finding
+    if not task_sources:
+        return {}
+    
+    avg_payload = sum(task_info[s][1] for s in task_sources) / len(task_sources)
+    
+    # Precompute shortest paths from each server to all nodes
+    # Weight = latency + energy_cost * avg_payload
+    # We store latency and energy separately along these paths
+    server_paths = {}
+    
+    for server in server_nodes:
+        dists = [float('inf')] * num_nodes
+        path_latencies = [0.0] * num_nodes
+        path_energies = [0.0] * num_nodes
+        parents = [-1] * num_nodes
+        
+        dists[server] = 0.0
+        pq = [(0.0, server)]
+        
+        while pq:
+            d, u = heapq.heappop(pq)
+            if d > dists[u]:
+                continue
+            for

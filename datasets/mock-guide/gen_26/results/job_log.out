@@ -1,0 +1,4 @@
+Evaluation error: unexpected indent (main.py, line 2)
+Correctness and error status saved to results_sandbox/gen_26/results/correct.json
+Metrics saved to results_sandbox/gen_26/results/metrics.json
+[evaluate] FAIL  score=0.0  error=unexpected indent (main.py, line 2)

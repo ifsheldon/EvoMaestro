@@ -1,0 +1,14 @@
+{
+  "generation": 8,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "anchor_spline_search",
+  "patch_description": "This redesign shifts the program from a single-pass potential-field formula to a small planning pipeline:\n\n1. Build a geometric context from the inputs.\n2. Generate smooth path candidates from anchor points instead of directly perturbing each sampled point.\n3. Use a monotonic Catmull-Rom style spline over X to create a naturally curved path.\n4. Run a lightweight internal surrogate search over a few avoidance/attraction parameter combinations and select the best candidate.\n\nThis structure improves maintainability by separating geometry, candidate generation, interpolation, smoothing, and scoring. It also improves performance by producing smoother globally coordinated curves that bend away from the school region and dip toward the base station region, rather than relying only on local pointwise forces.",
+  "error_msg": null,
+  "timestamp": "2026-03-19T16:02:31.246179",
+  "llm_cost": 0.053895000000000005,
+  "llm_model": null
+}

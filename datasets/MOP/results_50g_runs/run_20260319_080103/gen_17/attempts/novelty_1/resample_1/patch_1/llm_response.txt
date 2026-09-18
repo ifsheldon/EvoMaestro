@@ -1,0 +1,64 @@
+` and `<NAME>` etc. are used.
+        Yes.
+
+    *   *Self-Correction:* The description should explain the novel approach.
+        "Sinusoidal Windowed Sequential Potential Field".
+        Novelty: Sequential updates (school then base) and sinusoidal windowing.
+
+    *   Ready.
+
+    *   Wait, the previous program used `sigma_base = 32.0`.
+        `24.0` is indeed narrower.
+        `32.0 / 24.0 = 1.33`. So it's about 25% narrower.
+
+    *   Okay.
+
+    *   One last check on the `y_linear` calculation.
+        `y_linear = y_start + t * dy_total`
+        If $y_{start} = 5, y_{end} = 15, t = 0.5$, then $y_{linear} = 5 + 0.5 * 10 = 10$.
+        Correct.
+
+    *   Ready.
+
+    *   *Wait!* The `influence_school` calculation:
+        `influence_school = math.exp(-(dist_x_school**2) / (2 * sigma_school**2))`
+        Yes, standard.
+
+    *   *Wait!* The `direction` for school:
+        `direction = -1.0 if y_school > y_linear else 1.0`
+        If $y_{school} = 20, y_{linear} = 0$, `direction = -1`.
+        If $y_{school} = -20, y_{linear} = 0$, `direction = 1`.
+        Correct.
+
+    *   *Wait!* The `shift_attract` calculation:
+        `shift_attract = influence_base * (y_base - y_temp) * k_base * window`
+        If $y_{base} = -30, y_{temp} = -10$, `shift_attract = -20 * 0.92 * window`.
+        Correct.
+
+    *   Okay.
+
+    *   *Wait!* The `final_y` calculation:
+        `final_y = y_temp + shift_attract`
+        Yes.
+
+    *   Ready.
+
+    *   *Wait!* One more thing. The school repulsion:
+        `shift_repel = influence_school * direction * k_school * window`
+        Yes.
+
+    *   Okay.
+
+    *   *Wait!* The `curr_x` calculation:
+        `curr_x = x_start + t * dx_total`
+        Yes.
+
+    *   Okay.
+
+    *   *Wait!* The `dy_total` calculation:
+        `dy_total = y_end - y_start`
+        Yes.
+
+    *   Okay.
+
+    *   *Wait!* The `dx_

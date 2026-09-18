@@ -1,0 +1,36 @@
+An elegant and robust way to implement the recommendation is to evaluate both possible push directions (away from the school vs. towards the school's side) and choose the one that minimizes a combined heuristic cost. This cost function balances the distance to the base station with a heavy penalty for getting too close to the school. 
+
+By doing this, the drone will naturally choose to "jump over" the school (pushing towards the base's side) only when it is safe to do so (i.e., the school is far enough from the resulting path). This prevents the second stage from having to drastically "undo" the school deformation, significantly improving F1 (Distance) and F3 (Signal Loss) without compromising F2 (School Noise).
+
+<NAME>
+conditional_push_direction_override
+</NAME>
+
+<DESCRIPTION>
+Replaces the hardcoded school repulsion direction with a dynamic cost-based evaluation. It calculates the potential new Y-coordinate for both pushing away and pushing towards the school's side. It then evaluates a cost function for both options: `distance_to_base + 20000 / (distance_to_school^2 + 1)`. If pushing towards the base yields a lower cost (meaning the savings in base distance outweigh the increased school noise penalty), it flips the push direction. This safely resolves conflict cases where the default repulsion would push the drone far away from the base station.
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+        # 1) Bend away from school (localized, stronger)
+        w_s = math.exp(-((x - sx) ** 2) / sigma_s2)
+        push_dir = -1.0 if sy > y_line else 1.0
+        y += push_dir * 34.0 * w_s * env
+
+        # 2) Bend towards base (broader, moderate)
+=======
+        # 1) Bend away from school (localized, stronger)
+        w_s = math.exp(-((x - sx) ** 2) / sigma_s2)
+        push_dir = -1.0 if sy > y_line else 1.0
+        
+        # Evaluate if flipping push direction better balances base attraction and school avoidance
+        y_def = y_line + push_dir * 34.0 * w_s * env
+        y_alt = y_line - push_dir * 34.0 * w_s * env
+        
+        dist2_def = (x - sx)**2 + (y_def - sy)**2
+        dist2_alt = (x - sx)**2 + (y_alt - sy)**2
+        
+        cost_def = abs(by - y_def) + 20000.0 / (dist2_def + 1.0)
+        cost_alt = abs(by - y_alt) + 20000.0 / (dist2_alt + 1.0)
+        
+        

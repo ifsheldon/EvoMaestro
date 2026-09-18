@@ -1,0 +1,214 @@
+--- a/original.py
++++ b/original.py
+@@ -1,40 +1,198 @@
+ # EVOLVE-BLOCK-START
++import math
++
+ def evolve_drone_path(start, end, school, base, num_points):
+     """
+-    【无人机连续空间多目标折线优化】
+-    LLMs 将被要求在这里编写代码（可以使用启发式寻找策略，或者单纯使用规则拟合）。
+-    你需要返回一个长度为 num_points 的列表，包含从起点到终点按 X 匀速布置对应的 Y 轴偏移量。
++    Return a list of Y coordinates for uniformly spaced X locations between start and end.
++    The path is optimized heuristically for three goals:
++      F1: shorter flying distance
++      F2: lower school-noise proximity
++      F3: lower base-station signal drop
++
++    Strategy:
++      - initialize from a straight line
++      - apply smooth analytic bending away from school and toward base
++      - iteratively refine with normalized multi-term updates and smoothing
+     """
+-    x_start, y_start = start
+-    x_end, y_end = end
+-    
+-    # 【初始方案：最无脑的纯直线】
+-    y_coords = []
+-    dy = (y_end - y_start) / (num_points + 1)
+-    
+-    for i in range(num_points):
+-        y_coords.append(float(y_start + (i + 1) * dy))
+-        
++    x0, y0 = start
++    x1, y1 = end
++    xs, ys = school
++    xb, yb = base
++
++    if num_points <= 0:
++        return []
++
++    # ---- helpers ---------------------------------------------------------
++    def clamp(v, lo, hi):
++        return lo if v < lo else hi if v > hi else v
++
++    def l2_norm(arr):
++        s = 0.0
++        for v in arr:
++            s += v * v
++        return math.sqrt(s) + 1e-12
++
++    def smooth_inplace(y, weight=0.18, passes=1):
++        n = len(y)
++        if n <= 2:
++            return
++        for _ in range(passes):
++            prev = y[:]
++            for i in range(n):
++                left = y0 if i == 0 else prev[i - 1]
++                right = y1 if i == n - 1 else prev[i + 1]
++                y[i] = (1.0 - weight) * prev[i] + 0.5 * weight * (left + right)
++
++    # ---- x positions and baseline ---------------------------------------
++    dx_total = (x1 - x0) / (num_points + 1)
++    x_positions = [x0 + (i + 1) * dx_total for i in range(num_points)]
++
++    # straight line baseline
++    y_line = [y0 + (y1 - y0) * ((x - x0) / (x1 - x0 + 1e-12)) for x in x_positions]
++    y_coords = y_line[:]
++
++    # ---- structured initialization --------------------------------------
++    # Smoothly bend away from school and toward base.
++    # Sign is chosen relative to current line position so the deformation is geometry-aware.
++    path_span_x = abs(x1 - x0) + 1e-9
++    path_span_y = abs(y1 - y0) + 1e-9
++    amp_scale = max(8.0, 0.22 * math.hypot(path_span_x, path_span_y))
++
++    school_sigma = max(8.0, 0.16 * path_span_x)
++    base_sigma = max(10.0, 0.20 * path_span_x)
++
++    for i, x in enumerate(x_positions):
++        y_ref = y_line[i]
++
++        # Move away from school vertically.
++        school_sign = -1.0 if ys >= y_ref else 1.0
++        school_pull = math.exp(-((x - xs) / school_sigma) ** 2)
++
++        # Move toward base vertically.
++        base_sign = 1.0 if yb >= y_ref else -1.0
++        base_pull = math.exp(-((x - xb) / base_sigma) ** 2)
++
++        # Slight center weighting to avoid endpoint distortion.
++        t = (i + 1) / (num_points + 1)
++        endpoint_taper = math.sin(math.pi * t)
++
++        y_coords[i] += endpoint_taper * (
++            0.95 * amp_scale * school_sign * school_pull +
++            0.70 * amp_scale * base_sign * base_pull
++        )
++
++    smooth_inplace(y_coords, weight=0.22, passes=3)
++
++    # ---- iterative refinement -------------------------------------------
++    # Staged, normalized updates prevent any one objective from dominating.
++    iters = 140 if num_points < 80 else 180
++
++    for it in range(iters):
++        progress = it / max(1, iters - 1)
++
++        # staged schedule: stronger deformation early, gentler late
++        lr = 0.24 * (1.0 - progress) + 0.035
++        w_smooth = 0.55 + 0.50 * progress
++        w_school = 1.30 - 0.25 * progress
++        w_base = 1.00 - 0.10 * progress
++        w_dist = 0.45 + 0.20 * progress
++
++        grad_smooth = [0.0] * num_points
++        grad_school = [0.0] * num_points
++        grad_base = [0.0] * num_points
++        grad_dist = [0.0] * num_points
++
++        # smoothing / curvature penalty
++        for i in range(num_points):
++            left = y0 if i == 0 else y_coords[i - 1]
++            right = y1 if i == num_points - 1 else y_coords[i + 1]
++            grad_smooth[i] = 2.0 * y_coords[i] - left - right
++
++        # local distance reduction: pull toward segment-average to shorten zig-zags
++        for i in range(num_points):
++            left = y0 if i == 0 else y_coords[i - 1]
++            right = y1 if i == num_points - 1 else y_coords[i + 1]
++            grad_dist[i] = y_coords[i] - 0.5 * (left + right)
++
++        # school avoidance and base attraction using vertical-distance shaped fields
++        for i, x in enumerate(x_positions):
++            y = y_coords[i]
++
++            # school: repulsive field
++            dxs = x - xs
++            dys = y - ys
++            r2s = dxs * dxs + dys * dys + 36.0
++            # vertical derivative-like repulsion
++            grad_school[i] = -dys / (r2s ** 1.15)
++
++            # emphasize school region more strongly in x-neighborhood
++            school_x_gate = math.exp(-((x - xs) / max(8.0, 0.18 * path_span_x)) ** 2)
++            grad_school[i] *= (1.0 + 2.2 * school_x_gate)
++
++            # base: attractive field
++            dxb = x - xb
++            dyb = y - yb
++            r2b = dxb * dxb + dyb * dyb + 49.0
++            grad_base[i] = dyb / (r2b ** 1.05)
++
++            # x-neighborhood emphasis near base
++            base_x_gate = math.exp(-((x - xb) / max(10.0, 0.22 * path_span_x)) ** 2)
++            grad_base[i] *= (0.7 + 1.4 * base_x_gate)
++
++        # normalize terms separately for stability
++        ns = l2_norm(grad_smooth)
++        nch = l2_norm(grad_school)
++        nb = l2_norm(grad_base)
++        nd = l2_norm(grad_dist)
++
++        # geometry-aware vertical envelope to keep path smooth near endpoints
++        for i in range(num_points):
++            t = (i + 1) / (num_points + 1)
++            envelope = 0.30 + 0.70 * math.sin(math.pi * t)
++
++            total_grad = (
++                w_smooth * (grad_smooth[i] / ns) +
++                w_school * (grad_school[i] / nch) +
++                w_base * (grad_base[i] / nb) +
++                w_dist * (grad_dist[i] / nd)
++            )
++            y_coords[i] -= lr * envelope * total_grad * amp_scale * 3.0
++
++        # periodic extra smoothing to preserve a single smooth bend
++        if it % 7 == 0:
++            smooth_inplace(y_coords, weight=0.10 + 0.08 * progress, passes=1)
++
++    # final polish
++    smooth_inplace(y_coords, weight=0.20, passes=2)
++
++    # conservative clipping against extreme excursions
++    line_min = min(y0, y1, ys, yb)
++    line_max = max(y0, y1, ys, yb)
++    margin = max(25.0, 0.35 * math.hypot(path_span_x, path_span_y))
++    lo = line_min - margin
++    hi = line_max + margin
++    y_coords = [float(clamp(y, lo, hi)) for y in y_coords]
++
+     return y_coords
+ # EVOLVE-BLOCK-END
+ 
+ import sys
+ import os
+ 
+ # 将当前目录加入系统路径以便导入同级文件
+ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+ from drone_evaluation import DroneGrader
+ 
+ def run_experiment(**kwargs):
+     """供 Shinka 触发的单次实验方法"""
+     grader = DroneGrader()
+     
+     # 捕获异常防止大模型写出死循环炸毁测评机
+     try:
+         avg_f1, avg_f2, avg_f3, final_score = grader.grade_silent(evolve_drone_path, timeout=12)
+     except Exception as e:
+         import traceback
+         traceback.print_exc()
+         avg_f1, avg_f2, avg_f3, final_score = float('inf'), float('inf'), float('inf'), float('inf')
+         
+     return avg_f1, avg_f2, avg_f3, final_score

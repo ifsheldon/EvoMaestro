@@ -1,0 +1,101 @@
+<NAME>
+builder_pattern_optimizer
+</NAME>
+
+<DESCRIPTION>
+Implemented a Builder-pattern `RouteArchitect` to encapsulate trajectory generation. This structural shift modularizes the baseline generation, school repulsion, and base attraction into distinct pipeline stages. By utilizing smooth Gaussian influence functions within these encapsulated methods, the architecture achieves a highly maintainable, collision-avoiding, and signal-optimizing path natively.
+</DESCRIPTION>
+
+<CODE>
+```python
+# EVOLVE-BLOCK-START
+import math
+
+class RouteArchitect:
+    """
+    Structural redesign using a Pipeline/Builder pattern-inspired architecture
+    to generate and smoothly deform the drone path based on obstacles/targets.
+    """
+    def __init__(self, start, end, num_points):
+        self.start = start
+        self.end = end
+        self.num_points = num_points
+        self.x_coords = []
+        self.y_coords = []
+
+    def build_base_trajectory(self):
+        """Creates an initial straight-line trajectory base."""
+        x0, y0 = self.start
+        x1, y1 = self.end
+        dx = (x1 - x0) / (self.num_points + 1)
+        
+        for i in range(self.num_points):
+            x = x0 + (i + 1) * dx
+            w = (x - x0) / (x1 - x0) if x1 != x0 else 0
+            y = y0 * (1 - w) + y1 * w
+            
+            self.x_coords.append(float(x))
+            self.y_coords.append(float(y))
+        return self
+
+    def apply_gaussian_force(self, point, is_repulsor, strength, spread):
+        """Applies a smooth Gaussian wave deformation to the trajectory."""
+        px, py = point
+        x0, y0 = self.start
+        x1, y1 = self.end
+        for i in range(self.num_points):
+            x = self.x_coords[i]
+            w = (x - x0) / (x1 - x0) if x1 != x0 else 0
+            line_y = y0 * (1 - w) + y1 * w
+            
+            # Repulse (push away) or Attract (pull towards)
+            if is_repulsor:
+                direction = -1 if py >= line_y else 1
+            else:
+                direction = 1 if py >= line_y else -1
+                
+            influence = direction * strength * math.exp(-((x - px)**2) / spread)
+            self.y_coords[i] += influence
+        return self
+
+    def get_route(self):
+        return self.y_coords
+
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    【无人机连续空间多目标折线优化】
+    Uses the RouteArchitect class for a scalable pipeline approach.
+    """
+    # Initialize builder and chain modular route deformations
+    architect = RouteArchitect(start, end, num_points)
+    route = (architect
+             .build_base_trajectory()
+             .apply_gaussian_force(school, is_repulsor=True, strength=20.0, spread=1000.0)
+             .apply_gaussian_force(base, is_repulsor=False, strength=25.0, spread=1000.0)
+             .get_route())
+    
+    return route
+# EVOLVE-BLOCK-END
+
+import sys
+import os
+
+# 将当前目录加入系统路径以便导入同级文件
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from drone_evaluation import DroneGrader
+
+def run_experiment(**kwargs):
+    """供 Shinka 触发的单次实验方法"""
+    grader = DroneGrader()
+    
+    # 捕获异常防止大模型写出死循环炸毁测评机
+    try:
+        avg_f1, avg_f2, avg_f3, final_score = grader.grade_silent(evolve_drone_path, timeout=12)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        avg_f1, avg_f2, avg_f3, final_score = float('inf'), float('inf'), float('inf'), float('inf')
+        
+    return avg_f1, avg_f2, avg_f3, final_score
+```
+</CODE>

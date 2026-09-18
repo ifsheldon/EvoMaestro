@@ -1,0 +1,14 @@
+{
+  "generation": 47,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "elastic_knot_segment_sampling",
+  "patch_description": "I took inspiration from earlier solutions that used smooth baseline bending and surrogate scoring, but switched to a **different optimization paradigm**: an **elastic polyline controlled by a small set of knot offsets**, optimized with deterministic pattern search.\n\nKey changes:\n1. **Segment-integrated objective (not midpoint-only):** each segment is evaluated at 1/4, 1/2, 3/4 samples.  \n2. **Max-biased school risk aggregation:** school proximity uses a blend of average and worst sample per segment, so brief close passes are penalized more strongly.  \n3. **Low-dimensional smooth shape optimization:** instead of Bezier control-point fitting, the path is generated from knot offsets over progress `t`, reconstructed via cubic Hermite interpolation for smooth curvature.  \n4. **Deterministic multi-start pattern search:** searches in knot-offset space, balancing F1/F2/F3 proxies with smoothness penalties and soft directional guidance (away from school, toward base).\n\nThis keeps the output interface identical while using a fundamentally different internal strategy.",
+  "error_msg": null,
+  "timestamp": "2026-03-19T16:15:02.670924",
+  "llm_cost": 0.09168075,
+  "llm_model": null
+}

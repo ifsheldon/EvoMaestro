@@ -1,0 +1,14 @@
+{
+  "generation": 28,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "hybrid_seeded_adam_path",
+  "patch_description": "This version crossovers the two ideas:\n\n1. **Heuristic smooth seed path** (from the sinusoidal/Gaussian approach):  \n   - Starts from straight line,\n   - bends away from school region,\n   - bends toward base region,\n   - keeps endpoints naturally smooth via envelope.\n\n2. **Gradient-based refinement** (from Adam optimizer approach):  \n   - Optimizes a differentiable multi-objective surrogate with terms for:\n     - path length (F1),\n     - school proximity penalty (F2),\n     - base distance penalty (F3),\n     - smoothness regularization.\n   - Uses deterministic Adam with clipping and offset bounds for stability/speed.\n\nThis generally keeps the low-noise advantage of the Adam script while restoring better geometric smoothness and distance control from the heuristic script.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:38:42.438490",
+  "llm_cost": 0.05360424999999999,
+  "llm_model": null
+}

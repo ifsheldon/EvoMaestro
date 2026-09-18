@@ -1,0 +1,14 @@
+{
+  "generation": 8,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "flexible_bump_coordinate_descent",
+  "patch_description": "Replaces the 3-parameter global search with a 9-parameter Gaussian bump coordinate descent. Updates the proxy score to minimize the product of F1, F2, and F3 to match the evaluator's MOP Multiplier Score.",
+  "error_msg": "No changes applied",
+  "timestamp": "2026-03-20T02:32:34.550583",
+  "llm_cost": 0.015382,
+  "llm_model": null
+}

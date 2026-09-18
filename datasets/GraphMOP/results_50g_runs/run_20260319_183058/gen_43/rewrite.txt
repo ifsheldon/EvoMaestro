@@ -1,0 +1,258 @@
+# EVOLVE-BLOCK-START
+def evolve_task_routing(
+    num_nodes,
+    edges,
+    server_nodes,
+    task_sources,
+    task_info,
+    server_info,
+):
+    import heapq
+
+    # 1. Build Graph
+    graph = [[] for _ in range(num_nodes)]
+    edge_attr = {}
+    for u, v, lat, en, cap in edges:
+        bl = float(lat)
+        ec = float(en)
+        cp = float(cap)
+        graph[u].append((v, bl, ec, cp))
+        graph[v].append((u, bl, ec, cp))
+        
+        k1 = (u, v)
+        k2 = (v, u)
+        prev = edge_attr.get(k1)
+        if prev is None or (bl + 0.45 * ec) < (prev[0] + 0.45 * prev[1]):
+            edge_attr[k1] = (bl, ec, cp)
+            edge_attr[k2] = (bl, ec, cp)
+
+    # 2. Candidate Path Generation
+    payloads = [float(task_info[s][1]) for s in task_sources] if task_sources else [1.0]
+    avg_payload = sum(payloads) / max(len(payloads), 1)
+    max_payload = max(payloads) if payloads else avg_payload
+
+    blends = [
+        (1.0, 0.2, 0.0, avg_payload),
+        (1.0, 0.8, 0.1, avg_payload),
+        (1.0, 0.5, 0.2, 0.7 * avg_payload + 0.3 * max_payload)
+    ]
+
+    trees = {srv: [] for srv in server_nodes}
+    for srv in server_nodes:
+        for a_lat, b_en, c_cap, rep_pay in blends:
+            dist = [float('inf')] * num_nodes
+            parent = [-1] * num_nodes
+            dist[srv] = 0.0
+            pq = [(0.0, srv)]
+            while pq:
+                d, u = heapq.heappop(pq)
+                if d > dist[u]: continue
+                for v, bl, ec, cp in graph[u]:
+                    tx_lat = bl + rep_pay / max(cp, 1e-9)
+                    tx_en = ec * rep_pay
+                    w = a_lat * tx_lat + b_en * tx_en + c_cap * (rep_pay / max(cp, 1e-9))
+                    if dist[u] + w < dist[v]:
+                        dist[v] = dist[u] + w
+                        parent[v] = u
+                        heapq.heappush(pq, (dist[v], v))
+            trees[srv].append(parent)
+
+    def fallback_path(source, target):
+        dist = [float('inf')] * num_nodes
+        parent = [-1] * num_nodes
+        dist[source] = 0.0
+        pq = [(0.0, source)]
+        while pq:
+            d, u = heapq.heappop(pq)
+            if d > dist[u]: continue
+            if u == target: break
+            for v, bl, ec, cp in graph[u]:
+                w = bl + ec
+                if dist[u] + w < dist[v]:
+                    dist[v] = dist[u] + w
+                    parent[v] = u
+                    heapq.heappush(pq, (dist[v], v))
+        if parent[target] == -1 and source != target: return []
+        path = []
+        curr = target
+        while curr != -1:
+            path.append(curr)
+            if curr == source: break
+            curr = parent[curr]
+        path.reverse()
+        return path
+
+    candidates = {s: [] for s in task_sources}
+    for s in task_sources:
+        payload = float(task_info[s][1])
+        
+        for srv in server_nodes:
+            srv_paths = []
+            seen_paths = set()
+            for parent in trees[srv]:
+                path = []
+                curr = s
+                while curr != -1:
+                    path.append(curr)
+                    if curr == srv: break
+                    curr = parent[curr]
+                else:
+                    continue
+                
+                ptup = tuple(path)
+                if ptup in seen_paths: continue
+                seen_paths.add(ptup)
+                
+                lat, en = 0.0, 0.0
+                valid = True
+                for i in range(len(path)-1):
+                    u, v = path[i], path[i+1]
+                    e = edge_attr.get((u, v))
+                    if not e: valid = False; break
+                    lat += e[0] + payload / max(e[2], 1e-9)
+                    en += e[1] * payload
+                if valid:
+                    srv_paths.append({'server': srv, 'path': path, 'lat': lat, 'en': en})
+            
+            if not srv_paths: continue
+            
+            # Pareto filtering: keep best and at most one alternate
+            srv_paths.sort(key=lambda x: x['lat'] + 0.45 * x['en'])
+            best_p = srv_paths[0]
+            candidates[s].append(best_p)
+            
+            for alt_p in srv_paths[1:]:
+                if alt_p['lat'] < best_p['lat'] * 0.95 or alt_p['en'] < best_p['en'] * 0.95:
+                    candidates[s].append(alt_p)
+                    break
+
+        # Fallback if no paths found
+        if not candidates[s]:
+            for srv in server_nodes:
+                p = fallback_path(s, srv)
+                if p:
+                    lat, en = 0.0, 0.0
+                    for i in range(len(p)-1):
+                        u, v = p[i], p[i+1]
+                        e = edge_attr.get((u, v))
+                        if e:
+                            lat += e[0] + payload / max(e[2], 1e-9)
+                            en += e[1] * payload
+                    candidates[s].append({'server': srv, 'path': p, 'lat': lat, 'en': en})
+            if not candidates[s]:
+                candidates[s].append({'server': server_nodes[0], 'path': [s, server_nodes[0]], 'lat': 1e6, 'en': 1e6})
+
+    # 3. Marginal Cost Assignment
+    def get_marginal_score(cand, src, current_loads, current_users):
+        srv = cand['server']
+        arr = float(task_info[src][0])
+        comp = float(task_info[src][2])
+        mu, idle, dyn = server_info[srv]
+        mu = float(mu)
+        l = arr * comp
+        L = current_loads[srv]
+        U = current_users[srv]
+        
+        new_L = L + l
+        if new_L >= 0.995 * mu:
+            marginal_q = 1e6 + 1e4 * (new_L - 0.995 * mu)
+        else:
+            if L > 0:
+                marginal_q = 1.0 / (mu - new_L) + U * (1.0 / (mu - new_L) - 1.0 / (mu - L))
+            else:
+                marginal_q = 1.0 / (mu - new_L)
+            
+        m_en = cand['en'] + float(dyn) * (l / mu)
+        if L < 1e-9:
+            m_en += float(idle)
+            
+        m_lat = cand['lat'] + marginal_q
+        
+        return m_lat + 0.45 * m_en
+
+    # Calculate Regret for ordering
+    source_priorities = []
+    for src in task_sources:
+        arr = float(task_info[src][0])
+        comp = float(task_info[src][2])
+        load = arr * comp
+        scores = sorted([c['lat'] + 0.45 * c['en'] for c in candidates[src]])
+        regret = (scores[1] - scores[0]) if len(scores) > 1 else 1000.0
+        source_priorities.append((src, load * 0.5 + regret))
+        
+    source_priorities.sort(key=lambda x: x[1], reverse=True)
+
+    current_loads = {srv: 0.0 for srv in server_nodes}
+    current_users = {srv: 0 for srv in server_nodes}
+    assignments = {}
+    
+    for src, _ in source_priorities:
+        best_cand = None
+        best_s = float('inf')
+        for cand in candidates[src]:
+            s_score = get_marginal_score(cand, src, current_loads, current_users)
+            if s_score < best_s:
+                best_s = s_score
+                best_cand = cand
+                
+        if not best_cand:
+            best_cand = candidates[src][0]
+            
+        assignments[src] = best_cand
+        srv = best_cand['server']
+        current_loads[srv] += float(task_info[src][0]) * float(task_info[src][2])
+        current_users[srv] += 1
+
+    # 4. Local Search Refinement
+    for _ in range(4):
+        improved = False
+        for src in task_sources:
+            old_cand = assignments[src]
+            old_srv = old_cand['server']
+            load = float(task_info[src][0]) * float(task_info[src][2])
+            
+            # Tentatively remove
+            current_loads[old_srv] = max(0.0, current_loads[old_srv] - load)
+            current_users[old_srv] -= 1
+            
+            best_cand = old_cand
+            best_s = get_marginal_score(old_cand, src, current_loads, current_users)
+            
+            for cand in candidates[src]:
+                if cand == old_cand: continue
+                s_score = get_marginal_score(cand, src, current_loads, current_users)
+                if s_score < best_s - 1e-6:
+                    best_s = s_score
+                    best_cand = cand
+                    improved = True
+                    
+            assignments[src] = best_cand
+            new_srv = best_cand['server']
+            current_loads[new_srv] += load
+            current_users[new_srv] += 1
+            
+        if not improved: break
+
+    # 5. Format Output
+    return {src: {"server": assignments[src]["server"], "path": assignments[src]["path"]} for src in task_sources}
+# EVOLVE-BLOCK-END
+
+import os
+import sys
+
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from graph_evaluation import GraphRoutingGrader
+
+
+def run_experiment(**kwargs):
+    del kwargs
+    grader = GraphRoutingGrader()
+    try:
+        avg_latency, avg_energy, final_score = grader.grade_silent(evolve_task_routing, timeout=12)
+    except Exception:
+        import traceback
+
+        traceback.print_exc()
+        avg_latency, avg_energy, final_score = float("inf"), float("inf"), float("inf")
+
+    return avg_latency, avg_energy, final_score

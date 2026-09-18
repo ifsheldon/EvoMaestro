@@ -1,0 +1,152 @@
+<NAME>
+hybrid_grid_hillclimb
+</NAME>
+
+<DESCRIPTION>
+Redesigned the program to use a hybrid discrete-continuous optimization structure. First, it performs a broad grid search over structured asymmetric seeds (varying amplitudes, centers, and widths for both school and base) to find a strong topological initialization. Then, it introduces a third "bridge" Gaussian and runs a multi-parameter hill climbing algorithm to fine-tune the continuous variables (amplitudes, centers, and widths) for all three components simultaneously. This allows the path to discover complex, highly optimized shapes like S-curves or bridge bumps that perfectly balance the three objectives.
+</DESCRIPTION>
+
+<CODE>
+```python
+# EVOLVE-BLOCK-START
+import math
+
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    【无人机连续空间多目标折线优化】
+    LLMs 将被要求在这里编写代码（可以使用启发式寻找策略，或者单纯使用规则拟合）。
+    你需要返回一个长度为 num_points 的列表，包含从起点到终点按 X 匀速布置对应的 Y 轴偏移量。
+    """
+    if num_points == 0:
+        return []
+
+    x_start, y_start = start
+    x_end, y_end = end
+    x_s, y_s = school
+    x_b, y_b = base
+
+    xs = [x_start + (i + 1) * (x_end - x_start) / (num_points + 1) for i in range(num_points)]
+    lx = (x_end - x_start) if x_end != x_start else 1.0
+    line_ys = [y_start + (x - x_start) * (y_end - y_start) / lx for x in xs]
+    
+    # Precompute sine window to maintain smooth entry/exit at endpoints
+    wins = [math.sin(math.pi * (x - x_start) / lx) if lx != 0 else 1.0 for x in xs]
+
+    straight_dist = math.hypot(x_end - x_start, y_end - y_start)
+    if straight_dist == 0:
+        straight_dist = 1.0
+
+    def safe_exp(v):
+        return math.exp(v) if v > -700 else 0.0
+
+    # Define a broad grid of asymmetric seeds
+    amps_s = [-150, -100, -60, -20, 0, 20, 60, 100, 150]
+    centers_s = [x_s - 20, x_s, x_s + 20]
+    widths_s = [150.0, 400.0, 800.0]
+
+    amps_b = [-100, -50, 0, 50, 100]
+    centers_b = [x_b - 20, x_b, x_b + 20]
+    widths_b = [200.0, 600.0]
+
+    # Precompute Gaussian shapes for the grid search
+    shapes_s = []
+    for c in centers_s:
+        for w in widths_s:
+            shapes_s.append((c, w, [safe_exp(-((x - c)**2) / w) for x in xs]))
+
+    shapes_b = []
+    for c in centers_b:
+        for w in widths_b:
+            shapes_b.append((c, w, [safe_exp(-((x - c)**2) / w) for x in xs]))
+
+    best_score = float('inf')
+    best_params = None
+
+    # Pre-zip arrays to optimize the inner evaluation loop
+    pts = list(zip(xs, line_ys, wins))
+
+    # Phase 1: Grid search to find the best topological initialization
+    for c_s, w_s, shape_s in shapes_s:
+        for a_s in amps_s:
+            part_s = [a_s * v for v in shape_s]
+            for c_b, w_b, shape_b in shapes_b:
+                for a_b in amps_b:
+                    dist = 0.0
+                    f2 = 0.0
+                    f3 = 0.0
+                    px, py = x_start, y_start
+                    
+                    for i in range(num_points):
+                        cx, ly, win = pts[i]
+                        cy = ly + (part_s[i] + a_b * shape_b[i]) * win
+                        
+                        dist += math.hypot(cx - px, cy - py)
+                        f2 += 1.0 / ((cx - x_s)**2 + (cy - y_s)**2 + 1e-3)
+                        f3 += math.sqrt((cx - x_b)**2 + (cy - y_b)**2)
+                        px, py = cx, cy
+                        
+                    dist += math.hypot(x_end - px, y_end - py)
+                    score = (dist / straight_dist) * f2 * f3
+                    
+                    if score < best_score:
+                        best_score = score
+                        best_params = (a_s, c_s, w_s, a_b, c_b, w_b)
+
+    # Phase 2: Hill climbing to fine-tune continuous variables and introduce a third "bridge" Gaussian
+    best_a_s, best_c_s, best_w_s, best_a_b, best_c_b, best_w_b = best_params
+    
+    # Parameters: [a_s, c_s, w_s, a_b, c_b, w_b, a_mid, c_mid, w_mid]
+    params = [best_a_s, best_c_s, best_w_s, best_a_b, best_c_b, best_w_b, 0.0, (x_s + x_b)/2.0, 400.0]
+    step_sizes = [15.0, 5.0, 50.0, 15.0, 5.0, 50.0, 15.0, 5.0, 50.0]
+
+    def get_score(p_a_s, p_c_s, p_w_s, p_a_b, p_c_b, p_w_b, p_a_m, p_c_m, p_w_m):
+        dist = 0.0
+        f2 = 0.0
+        f3 = 0.0
+        px, py = x_start, y_start
+        
+        for i in range(num_points):
+            cx, ly, win = pts[i]
+            
+            v_s = p_a_s * safe_exp(-((cx - p_c_s)**2) / p_w_s)
+            v_b = p_a_b * safe_exp(-((cx - p_c_b)**2) / p_w_b)
+            v_m = p_a_m * safe_exp(-((cx - p_c_m)**2) / p_w_m)
+            
+            cy = ly + (v_s + v_b + v_m) * win
+            
+            dist += math.hypot(cx - px, cy - py)
+            f2 += 1.0 / ((cx - x_s)**2 + (cy - y_s)**2 + 1e-3)
+            f3 += math.sqrt((cx - x_b)**2 + (cy - y_b)**2)
+            px, py = cx, cy
+            
+        dist += math.hypot(x_end - px, y_end - py)
+        return (dist / straight_dist) * f2 * f3
+
+    for iteration in range(40):
+        improved = False
+        for i in range(9):
+            for direction in [1, -1]:
+                new_params = list(params)
+                new_params[i] += direction * step_sizes[i]
+                
+                # Ensure widths remain strictly positive
+                if new_params[2] < 10.0: new_params[2] = 10.0
+                if new_params[5] < 10.0: new_params[5] = 10.0
+                if new_params[8] < 10.0: new_params[8] = 10.0
+                
+                score = get_score(*new_params)
+                if score < best_score:
+                    best_score = score
+                    params = new_params
+                    improved = True
+                    
+        # Decay step sizes to allow finer tuning
+        if not improved:
+            step_sizes = [s * 0.7 for s in step_sizes]
+
+    # Generate final path using the optimized parameters
+    final_ys = []
+    p_a_s, p_c_s, p_w_s, p_a_b, p_c_b, p_w_b, p_a_m, p_c_m, p_w_m = params
+    for i in range(num_points):
+        cx, ly, win = pts[i]
+        v_s = p_a_s * safe_exp(-((cx - p_c

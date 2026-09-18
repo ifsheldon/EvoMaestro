@@ -1,0 +1,10 @@
+{
+  "en": {
+    "label": "Illustrative summary · mock data",
+    "content": "## Successful Algorithmic Patterns\n\nSmall changes to constants and loop structure produce branches that are easy to compare. Following a promising parent illustrates how improvements accumulate across generations.\n\n## Ineffective Approaches\n\nExtra computation does not always improve a candidate. Failed and slow variants show why execution results matter alongside the proposed idea.\n\n## Implementation Insights\n\nA shared function interface lets every candidate use the same evaluator. Crossover nodes illustrate combining ideas from different islands.\n\n## Performance Analysis\n\nUse scores, ancestry, and similarity together when exploring the tree. Scores in this mock run are simulated for demonstration; they do not measure performance on a real optimization task."
+  },
+  "zh-CN": {
+    "label": "示例概览 · 模拟数据",
+    "content": "## 有效的算法模式\n\n调整常量和循环结构可以产生便于比较的分支。沿着有潜力的父节点继续探索，可以展示改进如何在多代演化中积累。\n\n## 无效的尝试\n\n增加计算量并不一定带来改进。失败或运行缓慢的变体说明，评估方案时也需要关注实际执行结果。\n\n## 实现经验\n\n统一的函数接口让所有候选程序使用同一套评估流程。交叉节点展示了如何结合不同岛屿中的思路。\n\n## 性能分析\n\n探索演化树时，可结合分数、祖先关系和相似度进行比较。本模拟运行的分数仅用于展示界面，不代表真实优化任务中的性能。"
+  }
+}

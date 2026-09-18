@@ -1,0 +1,14 @@
+{
+  "generation": 21,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "geometry_aware_amplitude",
+  "patch_description": "Make the initial perturbation amplitudes dynamic and geometry-aware. For the school, we scale the Gaussian bump amplitude based on the baseline's vertical distance to the school (`dist_school_y`), maintaining strong localized avoidance when necessary but eliminating unnecessary detours when the baseline is safely distant. For the base station, the fixed amplitude of 14.0 had a bug: if the baseline passed very close to the base station, this fixed bump could cause the path to overshoot and unnecessarily deflect away from the target. We cap the attraction bump amplitude relative to the raw vertical distance (`dist_base_y * 0.85`), preventing overshooting while allowing a stronger initial guess (up to 25.0) when the baseline is far away.",
+  "error_msg": null,
+  "timestamp": "2026-03-19T16:06:35.279588",
+  "llm_cost": 0.013413999999999999,
+  "llm_model": null
+}

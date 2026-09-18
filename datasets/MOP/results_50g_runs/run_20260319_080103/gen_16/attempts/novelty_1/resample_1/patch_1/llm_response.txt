@@ -1,0 +1,40 @@
+\Delta x$, $x_{start} + 0.66\Delta x$, $x_{end}$.
+Wait! A Bezier curve doesn't REQUIRE $P1_x = sx$ to act at $x=sx$.
+If we set $P1_x = x\_start + (x\_end - x\_start)/3$ and $P2_x = x\_start + 2(x\_end - x\_start)/3$, the $X$ is perfectly monotonic, independent of inputs!
+Then, we just set $P1_y$ based on $school$, and $P2_y$ based on $base$!
+Since $B(1/3)$ is influenced heavily by P1, we can map the school's displacement to the corresponding control point.
+Even better:
+```python
+    # Ensure P1_x and P2_x are strictly between start and end and strictly ordered
+    p1_x = min(max(sx, x_start + 1.0), x_end - 2.0)
+    p2_x = min(max(bx, p1_x + 1.0), x_end - 1.0)
+```
+Since the prompt specifies we pass near school then base, $sx < bx$ is virtually guaranteed in the standard layout. But enforcing it like above is unbreakable.
+Wait, if `sx = 70` and `bx = 40`, `p1_x` becomes 70, `p2_x` becomes `min(40, 71) = 40`? No, `max(40, 71) = 71`. So `p2_x = 71`.
+What if we just assign control points dynamically based on which one is first!
+```python
+    # Sort the intermediate points purely by X coordinate to guarantee monotonicity in Bezier X
+    # We create two control points: one for school, one for base.
+    pts = [
+        ('school', sx, sy),
+        ('base', bx, by)
+    ]
+    pts.sort(key=lambda item: item[1]) # sort by X
+    
+    # ...then assign P1 to pts[0] and P2 to pts[1]
+```
+Let's see:
+```python
+    x_start, y_start = start
+    x_end, y_end = end
+    
+    def get_baseline_y(x):
+        return y_start + (y_end - y_start) * (x - x_start) / (x_end - x_start)
+
+    # Calculate optimal Y offsets for school and base
+    sx, sy = school
+    bx, by = base
+
+    y_line_s = get_baseline_y(sx)
+    push_direction = -1 if sy > y_line_s else 1
+    school_proximity = abs(sy - y

@@ -1,0 +1,14 @@
+{
+  "generation": 48,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 3,
+  "patch_name": "asymmetric_base_attraction",
+  "patch_description": "1. Upgrade the initial trajectory guess to start using dynamic asymmetric widths where initialization pulls to `by` broadly on the left but relaxes quickly on the right.\n2. Augments `w_base` in the multi-target energy cost parameters, given that its area of influence is vastly reduced and needs stronger pull locally.\n3. Replace the global base gradient pull with local asymmetric weights proportional to `math.exp(-(dx^2)/sig)`.",
+  "error_msg": null,
+  "timestamp": "2026-03-19T16:15:49.487008",
+  "llm_cost": 0.020687999999999998,
+  "llm_model": null
+}

@@ -1,0 +1,14 @@
+{
+  "generation": 1,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 2,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "adam_physics_path_optimizer",
+  "patch_description": "To minimize the combined score (which is the product of F1, F2, and F3), we can mathematically reframe the problem as minimizing the sum of their logarithms: `log(F1) + log(F2) + log(F3)`. \n\nWe can model this using a physics-inspired gradient descent approach:\n1. **F1 (Flying Distance)** acts as a tension force, pulling the path into a straight line.\n2. **F2 (School Noise Proximity)** acts as a repulsive force, pushing the path away from the school.\n3. **F3 (Base Station Signal Drop)** acts as an attractive force, pulling the path towards the base station.\n\nBy computing the relative gradients (`grad(F) / F`) for each objective at every point, we perfectly balance these three conflicting forces without needing to guess their exact weighting constants. We implement a lightweight Adam Optimizer from scratch in pure Python to iteratively adjust the Y-coordinates. Adam normalizes the gradients, preventing numerical instability if the drone gets too close to the school, and ensures smooth convergence within the 12-second timeout.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:33:07.618576",
+  "llm_cost": 0.022894,
+  "llm_model": null
+}

@@ -1,0 +1,14 @@
+{
+  "generation": 13,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 3,
+  "patch_name": "alt_paths_and_marginal_energy",
+  "patch_description": "This edit targets the main remaining weakness: each source-server pair currently relies only on three fixed server-rooted shortest-path trees, which limits path diversity. The prior recommendation suggests adding a small number of nearby non-tree alternatives, and that is exactly what this change does in a lightweight way.\n\nThe update introduces a single additional path variant per promising source-server pair using a shortest-path search that penalizes edges from the already selected base path. This tends to produce a nearby alternative with similar feasibility but sometimes better latency/energy tradeoff under the true objective. Because there are only a few servers, this remains computationally manageable.\n\nThe second refinement improves scoring fidelity: instead of charging the full server compute energy after assignment, it uses the marginal compute-energy increase caused by assigning the current task to that server. This better matches incremental decision-making in greedy/local-search assignment and helps avoid over-penalizing already-active servers, which often improves both latency and total energy together.\n\nOverall, this is a targeted change: preserve the strong server-precomputation structure, enrich candidate diversity with one extra path where it matters, and make assignment scoring better aligned with the actual system objective.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:36:17.987799",
+  "llm_cost": 0.04559,
+  "llm_model": null
+}

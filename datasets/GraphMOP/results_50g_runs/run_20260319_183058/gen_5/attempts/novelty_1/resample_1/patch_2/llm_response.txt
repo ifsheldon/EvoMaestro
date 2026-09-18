@@ -1,0 +1,57 @@
+<NAME>
+marginal_cost_routing
+</NAME>
+
+<DESCRIPTION>
+The original algorithm uses a fixed-weight Dijkstra and a simple heuristic for server assignment that doesn't fully account for the non-linear impact of server load or the specific arrival rates of tasks. 
+
+My new algorithm, `marginal_cost_routing`, improves performance by:
+1.  **Marginal Cost Analysis**: It models the assignment of each task as a marginal increase in total system cost (latency + energy). This includes the M/M/1 queueing delay impact on all tasks at a server, not just the new task.
+2.  **Efficient Path Precomputation**: It runs Dijkstra from each server node once, using a balanced weight ($base\_latency + 0.3 \cdot energy\_cost$) to find optimal paths for both objectives.
+3.  **Dynamic Load Management**: Instead of a hard utilization cap, it uses a steep penalty function for high utilization, allowing for better load balancing under heavy traffic.
+4.  **Energy Optimization**: It accounts for the marginal routing energy (based on payload size), dynamic compute energy, and the idle power cost of activating a server.
+</DESCRIPTION>
+
+<CODE>
+```python
+# EVOLVE-BLOCK-START
+def evolve_task_routing(
+    num_nodes,
+    edges,
+    server_nodes,
+    task_sources,
+    task_info,
+    server_info,
+):
+    """
+    Graph multi-objective routing problem.
+    Optimized using marginal cost analysis for latency and energy.
+    """
+    import heapq
+
+    # Build adjacency list
+    graph = [[] for _ in range(num_nodes)]
+    for u, v, base_latency, energy_cost, capacity in edges:
+        graph[u].append((v, base_latency, energy_cost, capacity))
+        graph[v].append((u, base_latency, energy_cost, capacity))
+
+    def dijkstra(start_node, weight_coeff):
+        """Standard Dijkstra to find paths minimizing (latency + coeff * energy)."""
+        dists = [float('inf')] * num_nodes
+        latencies = [0.0] * num_nodes
+        energies = [0.0] * num_nodes
+        parents = [-1] * num_nodes
+        dists[start_node] = 0.0
+        pq = [(0.0, start_node)]
+        
+        while pq:
+            d, u = heapq.heappop(pq)
+            if d > dists[u]:
+                continue
+            for v, bl, ec, _cap in graph[u]:
+                w = bl + weight_coeff * ec
+                if dists[u] + w < dists[v]:
+                    dists[v] = dists[u] + w
+                    latencies[v] = latencies[u] + bl
+                    energies[v] = energies[u] + ec
+                    

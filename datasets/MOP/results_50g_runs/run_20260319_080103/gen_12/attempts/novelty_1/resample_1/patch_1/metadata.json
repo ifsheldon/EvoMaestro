@@ -1,0 +1,14 @@
+{
+  "generation": 12,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "heuristic_gaussian_path",
+  "patch_description": "Replaces the straight line path with a heuristic curve using Gaussian functions. It bends the path away from the school to minimize noise (F2) and pulls it towards the base station to minimize signal drop (F3). The Gaussian functions ensure the path remains smooth, keeping the flying distance (F1) penalty low.",
+  "error_msg": null,
+  "timestamp": "2026-03-19T16:05:22.126581",
+  "llm_cost": 0.012808,
+  "llm_model": null
+}

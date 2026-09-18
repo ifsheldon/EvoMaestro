@@ -1,0 +1,14 @@
+{
+  "generation": 39,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 4,
+  "patch_name": "adaptive_capacity_aware_routing",
+  "patch_description": "1. Modify `dijkstra_from_server` to accept a `gamma` parameter and add `gamma / capacity` to the edge weight.\n2. Add an extra Dijkstra pass per server using `gamma = avg_payload` to generate capacity-aware paths.\n3. Build an `edge_dict` during graph construction to quickly look up edge capacities.\n4. Correct the `route_lat` calculation in candidate generation to explicitly include `payload / capacity`, ensuring the assignment model accurately evaluates and selects paths that avoid bottlenecks for heavy tasks.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:48:10.077371",
+  "llm_cost": 0.034862000000000004,
+  "llm_model": null
+}

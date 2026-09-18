@@ -1,0 +1,14 @@
+{
+  "generation": 42,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 3,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "multi_path_marginal_cost_router",
+  "patch_description": "The new algorithm uses a multi-path marginal cost approach to minimize latency and energy consumption. \n1. **Multi-Tree Preprocessing**: For each server, it computes three distinct Dijkstra trees using different edge weightings: one focused on latency (including capacity constraints), one on energy, and one balanced. This provides a diverse set of candidate paths for each source-server pair.\n2. **Marginal Cost Objective**: It uses a system-wide marginal cost function to guide task assignment. This function calculates the incremental increase in total system latency (including the queueing delay impact on existing tasks) and total system energy (routing energy plus incremental server dynamic energy).\n3. **Greedy Assignment with Refinement**: Tasks are first assigned greedily based on their marginal cost impact, prioritized by their total compute demand. A local search refinement pass then iterates through the assignments to find better server/path combinations that further reduce the total system cost.\n4. **Adaptive Scaling**: The algorithm adaptively scales the weight between latency and energy based on the graph's specific edge and task statistics, ensuring robust performance across different scenarios.",
+  "error_msg": "Could not extract code from patch string",
+  "timestamp": "2026-03-20T02:52:35.917304",
+  "llm_cost": 0.004867,
+  "llm_model": null
+}

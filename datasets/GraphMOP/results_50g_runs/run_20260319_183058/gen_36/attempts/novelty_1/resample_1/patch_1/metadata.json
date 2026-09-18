@@ -1,0 +1,14 @@
+{
+  "generation": 36,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "multi_tree_hyper_search_routing",
+  "patch_description": "The previous implementations used a single, fixed weight to balance the latency and energy of routing paths, which limited the algorithm's ability to choose paths that optimally trade off these two objectives for different tasks. Furthermore, the greedy assignment relied on fixed hyperparameters (like the utilization penalty and capacity cap), which might not be optimal for all problem instances.\n\nThis new program introduces two major improvements:\n1. **Pareto-Optimal Multi-Tree Precomputation**: Instead of computing a single shortest path tree per server, it computes multiple trees using a wide range of energy weights (from 0.0 to 50.0). This generates a rich set of Pareto-optimal paths for every source-server pair, allowing the greedy algorithm to dynamically pick the path that minimizes the exact marginal cost for each specific task.\n2. **Multi-Pass Hyperparameter Search**: Since the greedy assignment is very fast (O(1) per task using the precomputed trees), the program runs multiple passes with different hyperparameter combinations (energy tradeoff, utilization penalty, capacity cap, and task sorting strategy). It evaluates the exact true objective score (`total_latency + 1.5 * total_energy`) for each generated plan and returns the best one. This effectively turns the greedy heuristic into a powerful search algorithm that adapts to the specific characteristics of the input graph.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:48:44.482870",
+  "llm_cost": 0.08301800000000001,
+  "llm_model": null
+}

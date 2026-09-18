@@ -1,0 +1,14 @@
+{
+  "generation": 50,
+  "novelty_attempt": 1,
+  "resample_attempt": 2,
+  "patch_attempt": 4,
+  "success": true,
+  "num_applied": 4,
+  "patch_name": "adaptive_school_push_and_base_priority",
+  "patch_description": "This modification implements the recommended two-stage adaptive school repulsion. It first projects the drone's path based on the base station's attraction and tail bias, then calculates the clearance from the school at its x-coordinate. A sharp school push is then applied with an amplitude that adaptively increases if the clearance is small, following the suggested formula `amp = min(52.0, max(32.0, a + b / (clearance + c)))`. Additionally, the surrogate score weights have been rebalanced to prioritize minimizing F3 (Signal Loss) and F2 (School Noise).",
+  "error_msg": null,
+  "timestamp": "2026-03-19T16:31:04.879908",
+  "llm_cost": 0.0114585,
+  "llm_model": null
+}

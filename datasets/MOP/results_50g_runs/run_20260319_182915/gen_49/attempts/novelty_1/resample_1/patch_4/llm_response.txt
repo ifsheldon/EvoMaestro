@@ -1,0 +1,62 @@
+
+```
+
+Wait, I noticed the SEARCH block for `score` was truncated in my thought process. I must ensure it's full.
+
+Let's re-examine `SurrogateEvaluator.score` SEARCH block.
+```python
+    def score(self, ctx, ys):
+        pts = self._polyline_points(ctx, ys)
+
+        # F1 proxy: total length / straight-line length
+        total_len = 0.0
+        for i in range(1, len(pts)):
+            dx = pts[i][0] - pts[i - 1][0]
+            dy = pts[i][1] - pts[i - 1][1]
+            total_len += math.hypot(dx, dy)
+
+        straight = math.hypot(ctx.end[0] - ctx.start[0], ctx.end[1] - ctx.start[1]) + 1e-9
+        f1 = total_len / straight
+
+        # F2 proxy: school noise (high if too close)
+        sx, sy = ctx.school
+        f2 = 0.0
+        for (x, y) in pts[1:-1]:
+            d = math.hypot(x - sx, y - sy)
+            f2 += 1.0 / (d + 3.0)  # soft inverse distance
+        f2 /= max(1, ctx.num_points)
+
+        # F3 proxy: signal drop approximated by distance to base
+        bx, by = ctx.base
+        f3 = 0.0
+        for (x, y) in pts[1:-1]:
+            f3 += math.hypot(x - bx, y - by)
+        f3 /= max(1, ctx.num_points)
+
+        # Smoothness penalty
+        smooth = 0.0
+        for i in range(1, len(ys) - 1):
+            smooth += abs(ys[i + 1] - 2 * ys[i] + ys[i - 1])
+        smooth /= max(1, ctx.num_points - 2)
+
+        return (
+            self.w_dist * f1
+            + self.w_school * f2
+            + self.w_base * f3
+            + self.w_smooth * smooth
+        )
+```
+
+Final check on the `LocalSearchOptimizer` SEARCH block.
+```python
+class LocalSearchOptimizer:
+    """Deterministic multi-start local search in a compact parameter space."""
+    def __init__(self, generator, evaluator):
+        self.generator = generator
+        self.evaluator = evaluator
+
+    @staticmethod
+    def _clamp_params(p):
+        a_s, s_s, a_b, s_b, g_t, c_b = p
+        return (
+            max(0.0, min(80.0, a_

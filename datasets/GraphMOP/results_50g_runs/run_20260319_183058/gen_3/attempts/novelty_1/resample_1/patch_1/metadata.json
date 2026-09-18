@@ -1,0 +1,14 @@
+{
+  "generation": 3,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "regret_frontier_router",
+  "patch_description": "This redesign takes inspiration from the original program\u2019s use of shortest paths and projected server load, but replaces its one-pass greedy assignment with a fundamentally different two-level strategy:\n\n1. **Server-centric path frontier construction**: because there are few servers and many sources, the algorithm runs multiple Dijkstra passes from each server using different edge preferences (latency-focused, energy-focused, balanced). This creates a small path frontier per `(source, server)` instead of relying on a single fixed shortest-path metric.\n\n2. **Regret-based load-aware assignment**: rather than assigning sources in a static order, the method repeatedly selects the source whose best option is much better than its second-best option under the *current* server loads. This \u201cregret\u201d scheduling preserves scarce good server/path combinations for the sources that need them most.\n\n3. **Marginal queueing and energy scoring**: each candidate is evaluated with a surrogate multi-objective score that combines path latency, routing energy, server queueing pressure, and marginal compute energy. This is more coupled to system behavior than the original hop-count-heavy score.\n\n4. **Post-assignment local refinement**: after the initial regret allocation, the algorithm performs improvement passes that try to reroute a source to another server/path if it reduces the global surrogate objective while keeping server utilization safe.\n\nThe result is a novel hybrid of multi-criteria path frontiers, online regret matching, and local search refinement, tailored to the \u201cfew servers, many sources\u201d regime.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:32:07.062709",
+  "llm_cost": 0.065625,
+  "llm_model": null
+}

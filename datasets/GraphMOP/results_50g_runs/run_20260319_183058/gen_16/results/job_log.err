@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "/home/evolve/evolvis/GraphMOP/results_50g_runs/run_20260319_183058/gen_16/main.py", line 47, in run_experiment
+    avg_latency, avg_energy, final_score = grader.grade_silent(evolve_task_routing, timeout=12)
+                                                               ^^^^^^^^^^^^^^^^^^^
+NameError: name 'evolve_task_routing' is not defined

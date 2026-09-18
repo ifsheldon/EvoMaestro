@@ -1,0 +1,14 @@
+{
+  "generation": 11,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "smooth_gaussian_potential_field",
+  "patch_description": "The algorithm replaces the naive linear interpolation with a Gaussian-modulated potential field. Traditional pathfinding often uses piecewise heuristics which increase the F1 (Distance) penalty and lack smoothness. \n\nInstead, I model the drone path as a baseline linear trajectory modified by an \"attractor\" force. \n1. **Targeting Objectives**: Since the path needs to avoid the school (40, 20) and approach the base station (70, -30), both objectives are satisfied by a smooth deflection in the negative Y-direction.\n2. **Smoothness (F1)**: By using a Gaussian kernel centered near x=65, we ensure the deflection is infinitely differentiable, minimizing the \"extra distance\" penalty while maximizing the avoidance/proximity gains. \n3. **Boundary Constraints**: To maintain the start and end connection, the deflection is multiplied by a parabolic envelope $4 \\cdot t \\cdot (1-t)$, which pins the displacement to zero at the endpoints.\n4. **Weights**: The amplitude and sigma are tuned to prioritize the F3 (Signal Loss) reduction, as it is the most dominant penalty in the current evaluation.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:33:04.568241",
+  "llm_cost": 0.003155,
+  "llm_model": null
+}

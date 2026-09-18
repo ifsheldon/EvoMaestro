@@ -1,0 +1,14 @@
+{
+  "generation": 34,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 4,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "marginal_cost_assignment",
+  "patch_description": "Update the task assignment logic to use a more accurate marginal cost function. Instead of a heuristic score that only considers the task's own latency, we now calculate the marginal increase in total system latency (including the congestion externality on other tasks at the same server) and total system energy. This aligns the assignment decisions directly with the global optimization objectives.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:50:39.479513",
+  "llm_cost": 0.010841,
+  "llm_model": null
+}

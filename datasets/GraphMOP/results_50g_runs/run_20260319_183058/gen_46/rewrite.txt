@@ -1,0 +1,270 @@
+# EVOLVE-BLOCK-START
+def evolve_task_routing(
+    num_nodes,
+    edges,
+    server_nodes,
+    task_sources,
+    task_info,
+    server_info,
+):
+    import heapq
+    import math
+
+    # -----------------------------
+    # Data Preparation
+    # -----------------------------
+    graph = [[] for _ in range(num_nodes)]
+    edge_map = {}
+    for u, v, base_latency, energy_cost, capacity in edges:
+        cap = max(capacity, 1e-9)
+        graph[u].append((v, base_latency, energy_cost, cap))
+        graph[v].append((u, base_latency, energy_cost, cap))
+        edge_map[(u, v)] = (base_latency, energy_cost, cap)
+        edge_map[(v, u)] = (base_latency, energy_cost, cap)
+
+    servers = list(server_nodes)
+    sources = list(task_sources)
+    
+    # Calculate global task characteristics for adaptive routing
+    total_payload = 0.0
+    for src in sources:
+        total_payload += task_info[src][1]
+    avg_payload = total_payload / len(sources) if sources else 0.0
+
+    # -----------------------------
+    # Path Discovery (Server-Rooted Trees)
+    # -----------------------------
+    def reconstruct_path(parent, start, end):
+        if parent[end] == -1 and start != end:
+            return []
+        path = [end]
+        cur = end
+        while cur != start:
+            cur = parent[cur]
+            if cur == -1: return []
+            path.append(cur)
+        return path # Returns [end, ..., start] which is [source, ..., server]
+
+    def path_metrics(path, payload):
+        if not path or len(path) <= 1:
+            return 0.0, 0.0
+        lat = 0.0
+        ene = 0.0
+        # path is [source, ..., server]
+        for i in range(len(path) - 1):
+            u, v = path[i], path[i+1]
+            base_lat, edge_ene, cap = edge_map[(u, v)]
+            lat += base_lat + payload / cap
+            ene += edge_ene * (1.0 + 0.08 * payload / cap)
+        return lat, ene
+
+    def dijkstra(server, mode):
+        # mode 0: Latency focus, 1: Energy focus, 2: Balanced, 3: Capacity focus (Adaptive)
+        dist = [float('inf')] * num_nodes
+        parent = [-1] * num_nodes
+        dist[server] = 0.0
+        pq = [(0.0, server)]
+        
+        while pq:
+            d, u = heapq.heappop(pq)
+            if d > dist[u]: continue
+            for v, base_lat, edge_ene, cap in graph[u]:
+                if mode == 0:
+                    w = 1.4 * base_lat + 0.1 * edge_ene + 0.05 / cap
+                elif mode == 1:
+                    w = 0.1 * base_lat + 1.4 * edge_ene + 0.05 / cap
+                elif mode == 2:
+                    w = 0.8 * base_lat + 0.8 * edge_ene + 0.15 / math.sqrt(cap)
+                else: # Mode 3: Payload adaptive
+                    w = 1.0 * base_lat + 0.5 * edge_ene + avg_payload / cap
+                
+                if dist[u] + w < dist[v]:
+                    dist[v] = dist[u] + w
+                    parent[v] = u
+                    heapq.heappush(pq, (dist[v], v))
+        return parent
+
+    candidates = {src: {} for src in sources}
+    for srv in servers:
+        parents = [dijkstra(srv, m) for m in range(4)]
+        for src in sources:
+            arrival, payload, comp = task_info[src]
+            demand = arrival * comp
+            srv_mu, srv_idle, srv_dyn = server_info[srv]
+            
+            seen_paths = set()
+            best_cand = None
+            
+            for p_tree in parents:
+                path = reconstruct_path(p_tree, srv, src)
+                if not path: continue
+                tpath = tuple(path)
+                if tpath in seen_paths: continue
+                seen_paths.add(tpath)
+                
+                route_lat, route_ene = path_metrics(path, payload)
+                # Initial baseline heuristic for candidate selection
+                score = route_lat + route_ene + (demand / srv_mu) * srv_dyn
+                
+                if best_cand is None or score < best_cand['score']:
+                    best_cand = {
+                        "server": srv, "path": path, "score": score,
+                        "route_lat": route_lat, "route_ene": route_ene,
+                        "demand": demand, "arrival": arrival,
+                        "mu": srv_mu, "idle": srv_idle, "dyn": srv_dyn
+                    }
+            if best_cand:
+                candidates[src][srv] = best_cand
+
+    # BFS Fallback for any unreachable sources
+    for src in sources:
+        if not candidates[src]:
+            for srv in servers:
+                q = [(src, [src])]
+                v_bfs = {src}
+                while q:
+                    u, p = q.pop(0)
+                    if u == srv:
+                        arrival, payload, comp = task_info[src]
+                        rl, re = path_metrics(p, payload)
+                        mu, idle, dyn = server_info[srv]
+                        candidates[src][srv] = {
+                            "server": srv, "path": p, "score": rl + re,
+                            "route_lat": rl, "route_ene": re,
+                            "demand": arrival * comp, "arrival": arrival,
+                            "mu": mu, "idle": idle, "dyn": dyn
+                        }
+                        break
+                    for next_v, _, _, _ in graph[u]:
+                        if next_v not in v_bfs:
+                            v_bfs.add(next_v)
+                            q.append((next_v, p + [next_v]))
+                    if candidates[src]: break
+
+    # -----------------------------
+    # Marginal Cost Formulas
+    # -----------------------------
+    ENE_W = 1.05
+    SOFT_UTIL = 0.92
+
+    def q_sum_cost(demand_total, mu):
+        if demand_total >= mu * SOFT_UTIL:
+            base = (mu * SOFT_UTIL) / (mu - mu * SOFT_UTIL)
+            return base + (demand_total - mu * SOFT_UTIL) * 5000.0
+        return demand_total / (mu - demand_total)
+
+    def calculate_marginal(cand, current_demand, is_addition=True):
+        srv = cand["server"]
+        mu = cand["mu"]
+        arr = cand["arrival"]
+        
+        # Latency impact (Transmission Latency Rate + Server Queue Change)
+        route_lat_rate = arr * cand["route_lat"]
+        old_q = q_sum_cost(current_demand, mu)
+        new_q = q_sum_cost(current_demand + cand["demand"], mu) if is_addition else q_sum_cost(current_demand - cand["demand"], mu)
+        q_marginal = abs(new_q - old_q)
+        
+        lat_impact = route_lat_rate + q_marginal
+        
+        # Energy impact (Routing Rate + Compute Rate + Activation)
+        route_ene_rate = arr * cand["route_ene"]
+        compute_ene_rate = (cand["demand"] / mu) * cand["dyn"]
+        idle_impact = 0.0
+        if is_addition:
+            if current_demand < 1e-9: idle_impact = cand["idle"]
+        else:
+            if current_demand - cand["demand"] < 1e-9: idle_impact = cand["idle"]
+            
+        ene_impact = route_ene_rate + compute_ene_rate + idle_impact
+        
+        return lat_impact + ENE_W * ene_impact
+
+    # -----------------------------
+    # Assignment Logic
+    # -----------------------------
+    server_load = {s: 0.0 for s in servers}
+    unassigned = set(sources)
+    plan = {}
+
+    while unassigned:
+        best_regret = -1.0
+        best_src = None
+        best_ops = None
+
+        for src in list(unassigned):
+            opts = []
+            for srv, cand in candidates[src].items():
+                m_cost = calculate_marginal(cand, server_load[srv], True)
+                opts.append((m_cost, srv, cand))
+            
+            if not opts: continue
+            opts.sort(key=lambda x: x[0])
+            
+            primary = opts[0][0]
+            secondary = opts[1][0] if len(opts) > 1 else primary + 20.0
+            regret = secondary - primary
+            
+            # Weighted regret priority
+            priority = regret * (1.0 + (task_info[src][0] * task_info[src][2]) / 1.0)
+            
+            if priority > best_regret:
+                best_regret = priority
+                best_src = src
+                best_ops = opts
+
+        if not best_src: break
+        
+        # Assign best source
+        selected = best_ops[0]
+        # Avoid hard util limit if possible
+        for o in best_ops[:2]:
+            if (server_load[o[1]] + o[2]["demand"]) / o[2]["mu"] < 0.98:
+                selected = o
+                break
+        
+        _, assigned_srv, chosen_cand = selected
+        plan[best_src] = {"server": assigned_srv, "path": chosen_cand["path"]}
+        server_load[assigned_srv] += chosen_cand["demand"]
+        unassigned.remove(best_src)
+
+    # -----------------------------
+    # Local Improvement (Relocation)
+    # -----------------------------
+    for _ in range(3):
+        improved = False
+        sorted_keys = sorted(plan.keys(), key=lambda x: task_info[x][0] * task_info[x][2], reverse=True)
+        for src in sorted_keys:
+            cur_srv = plan[src]["server"]
+            cur_cand = candidates[src][cur_srv]
+            cur_cost = calculate_marginal(cur_cand, server_load[cur_srv] - cur_cand["demand"], True)
+            
+            best_move = None
+            min_new_cost = cur_cost
+            
+            for next_srv, cand in candidates[src].items():
+                if next_srv == cur_srv: continue
+                move_cost = calculate_marginal(cand, server_load[next_srv], True)
+                
+                # Check relocation gain
+                # we compare: (marginal cost of keeping on A) vs (marginal cost of moving to B)
+                # But moving also relieves A. Our calculate_marginal is already a 'delta'.
+                if move_cost < min_new_cost - 1e-4:
+                    min_new_cost = move_cost
+                    best_move = (next_srv, cand)
+            
+            if best_move:
+                next_srv, next_cand = best_move
+                server_load[cur_srv] -= cur_cand["demand"]
+                server_load[next_srv] += next_cand["demand"]
+                plan[src] = {"server": next_srv, "path": next_cand["path"]}
+                improved = True
+        if not improved: break
+
+    # Final validity handling
+    for src in sources:
+        if src not in plan:
+            fallback_srv = servers[0]
+            plan[src] = {"server": fallback_srv, "path": [src] if src == fallback_srv else []}
+
+    return plan
+# EVOLVE-BLOCK-END

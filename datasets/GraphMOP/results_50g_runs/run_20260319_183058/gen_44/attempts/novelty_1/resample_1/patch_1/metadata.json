@@ -1,0 +1,14 @@
+{
+  "generation": 44,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "dynamic_regret_bipath",
+  "patch_description": "Key parameters in the current approach are: fixed path-discovery payload (`100.0`), only two path trade-off settings (`lambda=0.1, 2.0`), static regret ordering computed once at zero load, saturation threshold (`0.99*mu`), local-search pass count (`3`), and a simplified queueing marginal formula that does not track server arrival intensity explicitly.\n\nThe new configuration changes both modeling and search:\n\n1. **Richer candidate generation with adaptive representative payloads and more trade-off settings.**\n   - Replaces the single fixed payload with three representative payloads derived from the workload distribution: small, mean, and large.\n   - Replaces 2 path lambdas with 4 mixed latency-energy-capacity weight settings.\n   - This improves path diversity while keeping runtime manageable because the number of servers is small.\n\n2. **More accurate server congestion model using both load and arrival rate.**\n   - Track per-server:\n     - `srv_load = sum(arrival * comp)`\n     - `srv_arr = sum(arrival)`\n   - Candidate evaluation uses the queue term change\n     `new_arr/(mu-new_load) - old_arr/(mu-old_load)`,\n     which better matches aggregate latency impact than the previous derivative approximation.\n\n3. **Dynamic regret ordering instead of frozen zero-load regret.**\n   - Every few assignments, recompute regret on a small active pool of unassigned tasks using current server state.\n   - Parameters:\n     - `refresh_every = 4`\n     - `active_pool = min(len(unassigned), 10)`\n   - This directly follows the recommendation and better adapts priorities as servers saturate.\n\n4. **Better objective balancing.**\n   - Candidate score uses:\n     - routing latency\n     - queueing marginal latency\n     - routing energy\n     - dynamic compute energy\n     - a softened first-use idle energy activation penalty\n     - a mild utilization regularizer\n   - Parameters are adjusted from the previous `0.5` energy weight to a more balanced `energy_w = 0.43`, plus a small utilization penalty to reduce unstable crowding.\n\n5. **Stronger refinement.**\n   - Multi-pass local improvement over sources ordered by descending work.\n   - Parameters:\n     - `max_refine_passes = 6`\n   - This is more effective than the prior 3-pass refinement while remaining lightweight.\n\nOverall, the algorithm differs materially from the current program by using multi-profile server-rooted path candidates, dynamic regret reassignment, and a queue-aware marginal cost that reflects evolving server congestion more faithfully.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:49:28.575247",
+  "llm_cost": 0.0741875,
+  "llm_model": null
+}

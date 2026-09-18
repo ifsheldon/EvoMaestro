@@ -1,0 +1,14 @@
+{
+  "generation": 37,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "two_candidate_server_trees_incremental_scoring",
+  "patch_description": "This edit introduces a bounded path-diversity strategy plus a stronger assignment objective.\n\n1) **Up to 2 precomputed path candidates per server**  \nFor each server, we run two server-rooted Dijkstra trees with different latency/energy route weights. This cheaply creates alternate source\u2192server paths that can trade off transmission latency vs routing energy. We keep the second tree only if it is structurally different (different parent map on reachable nodes), avoiding redundant work.\n\n2) **Incremental queue-aware assignment scoring**  \nThe assignment objective is changed from a static per-source score to a marginal system-impact score:\n- latency term includes transmission + queueing, plus queue externality on already assigned arrivals at that server,\n- energy term includes routing + dynamic compute + first-use idle activation cost (discounted),\n- a light utilization regularizer discourages near-saturation choices.\n\n3) **Path reconstruction robustness**  \nSelected `(server, candidate_tree)` is tracked and reconstructed with loop/length safeguards to keep valid simple paths.\n\nThis remains efficient (few servers, many sources) while exploring a small but useful route set per server.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:46:38.223496",
+  "llm_cost": 0.058887499999999995,
+  "llm_model": null
+}

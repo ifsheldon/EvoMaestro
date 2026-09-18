@@ -1,0 +1,106 @@
+database_config:
+  archive_criteria:
+    combined_score: 1.0
+  archive_selection_strategy: fitness
+  archive_size: 20
+  db_path: /home/evolve/evolvis/GraphMOP/results_50g_runs/run_20260319_183058/programs.sqlite
+  elite_selection_ratio: 0.3
+  enable_dynamic_islands: false
+  enforce_island_separation: true
+  exploitation_alpha: 1.0
+  exploitation_ratio: 0.2
+  island_elitism: true
+  island_selection_strategy: uniform
+  island_spawn_strategy: initial
+  island_spawn_subtree_size: 1
+  migration_interval: 1000
+  migration_rate: 0.01
+  num_archive_inspirations: 1
+  num_beams: 5
+  num_islands: 6
+  num_top_k_inspirations: 1
+  parent_selection_lambda: 10.0
+  parent_selection_strategy: power_law
+  stagnation_threshold: 100
+evolution_config:
+  callback_url: null
+  code_embed_sim_threshold: 0.95
+  embedding_model: text-embedding-3-small
+  eval_timeout: null
+  evolve_prompts: false
+  init_program_path: /home/evolve/evolvis/GraphMOP/initial.py
+  inspiration_sort_order: ascending
+  job_type: local
+  language: python
+  llm_dynamic_selection: ucb
+  llm_dynamic_selection_kwargs:
+    exploration_coef: 2.0
+  llm_kwargs:
+    max_tokens: 16384
+    temperatures:
+    - 0.0
+    - 0.5
+    - 1.0
+  llm_models:
+  - gpt-5.3-codex
+  - gpt-5.4
+  - gemini-3-pro-preview
+  - gemini-3.1-pro-preview
+  - gemini-3-flash-preview
+  max_api_costs: null
+  max_db_workers: 4
+  max_novelty_attempts: 3
+  max_patch_attempts: 10
+  max_patch_resamples: 3
+  max_proposal_jobs: 10
+  meta_llm_kwargs: {}
+  meta_llm_models:
+  - gpt-5.4
+  meta_max_recommendations: 5
+  meta_rec_interval: 5
+  novelty_function_path: null
+  novelty_llm_kwargs: {}
+  novelty_llm_models: null
+  num_generations: 50
+  patch_type_probs:
+  - 0.3
+  - 0.5
+  - 0.2
+  patch_types:
+  - diff
+  - full
+  - cross
+  prompt_archive_size: 10
+  prompt_epsilon: 0.1
+  prompt_evo_top_k_programs: 3
+  prompt_evolution_interval: null
+  prompt_llm_kwargs: {}
+  prompt_llm_models: null
+  prompt_patch_type_probs:
+  - 0.7
+  - 0.3
+  prompt_patch_types:
+  - diff
+  - full
+  prompt_percentile_recompute_interval: 20
+  prompt_ucb_exploration_constant: 1.0
+  reasoning_embed_sim_threshold: 0.95
+  results_dir: /home/evolve/evolvis/GraphMOP/results_50g_runs/run_20260319_183058
+  sample_single_meta_rec: true
+  task_sys_msg: 'You are an expert algorithm engineer. Modify the evolve_task_routing
+    function for an undirected graph with a few server nodes and many task source
+    nodes. Each task source must be assigned to a valid server using a valid simple
+    path. Minimize two objectives simultaneously: 1) end-to-end latency, including
+    transmission latency over hops and server queueing delay; 2) total system energy,
+    including routing energy and server compute energy. Return a dict keyed by source
+    node with fields ''server'' and ''path''. Lower score is better.'
+  use_reasoning_novelty: false
+  use_text_feedback: true
+job_config:
+  activate_script: /home/evolve/evolvis/.venv/bin/activate
+  conda_env: null
+  eval_program_path: /home/evolve/evolvis/GraphMOP/evaluate.py
+  extra_cmd_args: {}
+  time: 00:05:00
+results_directory: /home/evolve/evolvis/GraphMOP/results_50g_runs/run_20260319_183058
+timestamp: '2026-03-20T02:30:58.248829'

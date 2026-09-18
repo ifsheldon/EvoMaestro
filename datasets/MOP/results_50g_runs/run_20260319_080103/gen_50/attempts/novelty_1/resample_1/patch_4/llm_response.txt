@@ -1,0 +1,49 @@
+<NAME>
+adaptive_two_stage_gaussian_projection
+</NAME>
+
+<DESCRIPTION>
+The `adaptive_two_stage_gaussian_projection` algorithm implements a direct analytical construction of the drone path using a two-stage potential field approach. 
+1. **Broad Base Attraction**: It first calculates a broad Gaussian pull toward the base station signal coordinates to minimize signal loss (F3). 
+2. **Clearance-Aware School Repulsion**: Following the recommendation, it evaluates the path's clearance from the school *after* the base attraction is applied. It then applies a localized Gaussian push away from the school with an adaptive amplitude: `amp = min(52.0, max(32.0, 30.0 + 110.0 / (clearance + 5.0)))`. This ensures optimal noise reduction (F2) without excessive distance penalties.
+3. **Smooth Geometric Synthesis**: The path is synthesized by adding these Gaussian offsets to a linear baseline, multiplied by a sinusoidal taper. This ensures the path is $C^\infty$ smooth and adheres strictly to the start and end points, minimizing total distance (F1).
+</DESCRIPTION>
+
+<CODE>
+# EVOLVE-BLOCK-START
+import math
+
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    Constructs a smooth drone path using a two-stage adaptive Gaussian projection.
+    Optimizes for distance (F1), school noise (F2), and signal loss (F3).
+    """
+    x0, y0 = start
+    x1, y1 = end
+    sx, sy = school
+    bx, by = base
+
+    if num_points <= 0:
+        return []
+
+    # Longitudinal span
+    dx = x1 - x0
+    if abs(dx) < 1e-9:
+        # Handle vertical or near-vertical paths
+        return [y0 + (y1 - y0) * i / (num_points + 1.0) for i in range(1, num_points + 1)]
+
+    # --- Stage 1: Base Attraction Setup ---
+    # Broad Gaussian field for signal strength (F3)
+    sigma_base = 0.42 * abs(dx)
+    
+    # Linear height at base station x-coordinate
+    y_lin_bx = y0 + (y1 - y0) * (bx - x0) / dx
+    t_bx = (bx - x0) / dx
+    taper_bx = math.sin(math.pi * max(0.0, min(1.0, t_bx)))
+    
+    # Amplitude required to pull the path toward the base station
+    amp_base = (by - y_lin_bx) / (taper_bx + 0.1)
+
+    # --- Stage 2: Adaptive School Repulsion Setup ---
+    # Narrow Gaussian field for noise reduction (F2)
+    sigma

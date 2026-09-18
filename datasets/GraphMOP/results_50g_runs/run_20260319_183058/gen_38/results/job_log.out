@@ -1,0 +1,12 @@
+Evaluation error: unexpected indent (main.py, line 3)
+Correctness and error status saved to /home/evolve/evolvis/GraphMOP/results_50g_runs/run_20260319_183058/gen_38/results/correct.json
+Metrics saved to /home/evolve/evolvis/GraphMOP/results_50g_runs/run_20260319_183058/gen_38/results/metrics.json
+Evaluation failed: unexpected indent (main.py, line 3)
+Metrics:
+  combined_score: 0.0
+  execution_time_mean: 0.0
+  execution_time_std: 0.0
+  num_successful_runs: 0
+  num_valid_runs: 0
+  num_invalid_runs: 0
+  all_validation_errors: []

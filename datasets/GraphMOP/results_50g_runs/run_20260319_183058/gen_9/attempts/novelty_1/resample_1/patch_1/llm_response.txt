@@ -1,0 +1,50 @@
+q_delay_cost = arr_rate * D_new + A * (D_new - D_old)
+            
+            srv_eng_cost = dyn_pwr * load_increase / srv_rate
+            if old_load == 0:
+                srv_eng_cost += idle_pwr
+                
+            t_lat = server_trees[srv]['lat'][src]
+            r_eng = server_trees[srv]['eng'][src]
+            
+            delta_lat = arr_rate * t_lat + q_delay_cost
+            delta_eng = arr_rate * r_eng + srv_eng_cost
+            
+            score = delta_lat + W_eng * delta_eng
+            
+            if score < best_score:
+                best_score = score
+                best_srv = srv
+                
+        if best_srv is None:
+            reachable = [s for s in server_nodes if server_trees[s]['dist'][src] != float('inf')]
+            if reachable:
+                best_srv = min(reachable, key=lambda s: server_trees[s]['dist'][src])
+            else:
+                best_srv = server_nodes[0]
+                
+        if server_trees[best_srv]['dist'][src] == float('inf'):
+            plan[src] = {"server": best_srv, "path": []}
+        else:
+            path = []
+            curr = src
+            while curr != -1:
+                path.append(curr)
+                curr = server_trees[best_srv]['parent'][curr]
+            plan[src] = {"server": best_srv, "path": path}
+            
+        projected_load[best_srv] += load_increase
+        projected_arr_rate[best_srv] += arr_rate
+```
+
+This is incredibly clean and mathematically rigorous!
+Let's think if `W_eng = 1.0` is the best choice.
+In the previous code, `score = t_lat + 0.8 * r_eng + ...`
+Maybe `W_eng = 1.0` is good. What if we use `W_eng = 1.5`?
+The grader's final score was `latency + 1.5 * energy` approximately.
+Let's check:
+Latency: 2.33; Energy: 1.97; Score: 5.29.
+2.33 + 1.5 * 1.97 = 5.285.
+Latency: 2.57; Energy: 2.03; Score: 6.05.
+2.57 + 1.5 * 2.03 = 5.615. Wait, 5.615 is not 6.05.
+What if `Score = Latency + Energy * 1.7`?

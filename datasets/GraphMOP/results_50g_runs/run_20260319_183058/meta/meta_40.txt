@@ -1,0 +1,353 @@
+# INDIVIDUAL PROGRAM SUMMARIES
+
+The following are summaries of individual programs evaluated since the last meta update:
+
+**Program Name: Greedy Server Assignment with Weighted Shortest Paths**
+- **Implementation**: Builds an undirected graph from the edge list and uses Dijkstra’s algorithm with a custom edge weight `base_latency + 0.35 * energy_cost` to compute source-to-server paths. It greedily processes higher-demand sources first, assigns each to the server with the best heuristic score based on hop count, projected utilization, idle power, and dynamic power, while skipping servers above 90% projected utilization.
+- **Performance**: The program is correct and passes validation tests, achieving latency 2.57, energy 2.03, and a combined Graph MOP score of 6.05.
+- **Feedback**: The heuristic produces valid routing plans but only moderate multi-objective performance, suggesting the scoring and path cost proxy do not fully balance latency and energy. Evaluation recommends reducing both latency and energy together while preserving valid paths.
+**Program Identifier:** Generation 0 - Patch Name initial_program - Correct Program: True
+
+**Program Name: Multi-Tree Greedy Server Routing**
+- **Implementation**: Builds an undirected graph with per-edge latency, energy, and capacity, then precomputes three Dijkstra shortest-path trees per server using latency-focused, energy-focused, and balanced edge weights. It generates deduplicated path candidates for each source-server pair, assigns heavier tasks first with a greedy score combining path latency/energy, queue-delay and compute-energy proxies, then performs a one-pass local reassignment refinement using projected server loads.
+- **Performance**: Passed all validation tests with latency 2.30, energy 1.96, and Graph MOP score 5.23 (combined score reported as -5.23 to maximize).
+- **Feedback**: The heuristic is valid and reasonably balanced, but the evaluation indicates both latency and energy still need to be reduced together. Likely limitations are the small candidate set from only three server-rooted trees and the approximate queue/energy scoring, which can restrict better global routing-load tradeoffs.
+**Program Identifier:** Generation 1 - Patch Name load_aware_multicriteria_routing - Correct Program: True
+
+**Program Name: Precomputed Server Tree Routing**
+- **Implementation**: Builds an undirected adjacency list and precomputes a Dijkstra shortest-path tree from each server using a combined edge weight of latency plus 0.4 times energy, storing parent pointers for path reconstruction. It then greedily assigns task sources in descending compute-load order to the server with the best heuristic score combining transmission latency, routing energy, M/M/1 queueing delay, and server power terms, with a 95% utilization cap and fallback to the nearest reachable server.
+- **Performance**: The program is correct and passes validation, achieving latency 2.33, energy 1.97, and final Graph MOP score 5.29.
+- **Feedback**: The server-side precomputation reduces repeated shortest-path work and keeps routing valid, but the fixed heuristic weights and greedy load packing did not minimize latency and energy enough to produce a lower overall score. Evaluation suggests further improving the joint latency-energy tradeoff while preserving valid paths.
+**Program Identifier:** Generation 2 - Patch Name server_centric_routing_trees - Correct Program: True
+
+**Program Name: Multi-Mode Regret Routing Heuristic**
+- **Implementation**: Builds an undirected graph and generates per-source/per-server candidates using three server-centric Dijkstra variants with latency/balance/energy-weighted edge costs, then scores paths with payload-aware latency/energy and server demand estimates. It assigns tasks via regret-based greedy selection with utilization-aware marginal queue penalties, applies BFS/final validity fallbacks, and performs two local-improvement reassignment passes to reduce overloaded or inefficient placements.
+- **Performance**: The program is correct and passes validation, achieving latency 2.31, energy 1.96, and graph MOP score 5.23 (reported as combined score -5.23 to maximize).
+- **Feedback**: The heuristic is producing valid routes with balanced latency-energy behavior, but the evaluation indicates there is still room to jointly reduce both objectives. In particular, the weighted surrogate scoring and limited local search likely yield solid but not fully Pareto-efficient assignments.
+**Program Identifier:** Generation 3 - Patch Name regret_frontier_router - Correct Program: True
+
+**Program Name: Greedy Server-Rooted Routing Heuristic**
+- **Implementation**: Builds an undirected graph and precomputes Dijkstra shortest-path trees from each server using a composite edge weight that adaptively scales latency, energy, and inverse capacity. It then assigns higher-demand sources greedily with server load, queueing, and incremental energy penalties, caches reconstructed paths, and performs a single-source local reassignment pass for improvement.
+- **Performance**: The program is correct and passes validation, achieving latency 2.31, energy 1.96, and final Graph MOP score 5.23.
+- **Feedback**: The adaptive multi-term scoring and load-aware greedy assignment produce valid balanced routes, but the current tradeoff does not yet minimize latency and energy jointly as well as possible. Evaluation suggests further tuning of the routing/server cost weights or stronger post-assignment optimization could reduce both metrics simultaneously.
+**Program Identifier:** Generation 8 - Patch Name load_aware_pareto_routing - Correct Program: True
+
+**Program Name: Greedy Server-Weighted Shortest Routing**
+- **Implementation**: Builds an undirected graph and precomputes, for each server, Dijkstra shortest-path trees using a fixed edge weight of `base_latency + 0.35 * energy_cost`, while also tracking pure latency and energy along those paths. Tasks are greedily processed in descending `arrival_rate * compute_demand`, assigned to the server minimizing a combined score of path latency, approximate queue delay `1/(service_rate-load)`, routing energy scaled by payload, and server dynamic compute energy, with a least-utilized-server fallback when no feasible server passes the load check.
+- **Performance**: The program is correct and passes validation, achieving latency 2.33, energy 1.97, and final graph MOP score 5.31.
+- **Feedback**: The heuristic is valid but only moderately effective, suggesting the fixed path weighting and greedy assignment do not fully balance latency and energy jointly. Evaluation specifically indicates room to reduce both metrics simultaneously while preserving valid routing paths.
+**Program Identifier:** Generation 4 - Patch Name marginal_cost_routing - Correct Program: True
+
+**Program Name: Precomputed Server-Tree Greedy Routing**
+- **Implementation**: Builds an undirected adjacency list and precomputes one Dijkstra shortest-path tree per server using a combined edge weight of latency + 1.5×energy, storing parents for path reconstruction. It then greedily assigns task sources in descending compute-load order to the server with the lowest marginal score based on transmission latency, M/M/1-style queue delay, routing energy, dynamic power, and one-time idle power activation, with a 95% utilization cap and a nearest-reachable fallback.
+- **Performance**: The program is correct and passes validation, achieving latency 2.30, energy 1.96, and graph multi-objective score 5.22.
+- **Feedback**: The precomputation cuts routing-search cost from source×server Dijkstra calls to server-only Dijkstra calls, making the approach efficient and structurally sound. Evaluation indicates the heuristic is valid but still leaves room to jointly reduce latency and energy, likely because the fixed weighting and greedy assignment do not fully optimize the tradeoff.
+**Program Identifier:** Generation 9 - Patch Name marginal_cost_routing - Correct Program: True
+
+**Program Name: Greedy Server-Tree Task Routing**
+- **Implementation**: Builds an undirected adjacency list and precomputes server-rooted shortest-path trees with Dijkstra using a blended latency-energy edge weight, then assigns tasks greedily by estimated server score based on route latency, routing energy, hop count, queueing pressure, and server power. It also limits choices to top-k candidate servers, applies two rounds of local reassignment improvement, and reconstructs source-to-server paths from stored parent pointers.
+- **Performance**: Combined score was 0.0, and the program failed validation tests, yielding incorrect overall behavior.
+- **Feedback**: The heuristic design is reasonably sophisticated, but correctness is undermined by an implementation error: `if tree["dist"][src] == float("inf"]:` contains a bracket mismatch that causes the program to fail. As a result, none of the routing, load-balancing, or refinement logic could be reliably evaluated despite the intended multi-objective strategy.
+**Program Identifier:** Generation 10 - Patch Name server_tree_local_refine - Correct Program: False
+
+**Program Name: Multi-Lambda Pareto Routing with Local Search**
+- **Implementation**: Builds an undirected weighted graph and generates per-source route candidates by running Dijkstra with several latency-energy scalarization weights, then deduplicates and Pareto-prunes paths by route latency and energy. It assigns tasks greedily using server load, queue-delay, and compute-energy estimates, then performs a short best-response local search over candidate server-path choices under utilization constraints.
+- **Performance**: The program is correct and passed validation, achieving latency 2.306969, energy 1.961332, and final Graph MOP score 5.227055.
+- **Feedback**: The mixed routing/server-cost heuristic produces valid balanced solutions but does not yet minimize latency and energy jointly as well as possible. The evaluation specifically suggests improving both objectives simultaneously, indicating the current scalarization, queue penalties, or candidate selection may be leaving better tradeoffs unexplored.
+**Program Identifier:** Generation 11 - Patch Name pareto_lagrangian_local_search - Correct Program: True
+
+**Program Name: Greedy Multi-Criteria Server Routing**
+- **Implementation**: Builds an undirected graph with edge latency/energy/capacity attributes, precomputes three server-rooted Dijkstra trees using different weighted objectives, then generates a small deduplicated candidate path set per source-server pair including one penalized alternative path. Task assignment is done greedily in descending compute demand using a score that combines path latency, routing energy, queue-delay and incremental server-energy models, followed by a one-pass local reassignment refinement.
+- **Performance**: Passed validation and achieved latency 2.31, energy 1.96, with final Graph MOP score 5.23.
+- **Feedback**: The heuristic is valid and reasonably balanced, but the current weighted scoring and limited candidate exploration leave room to reduce both latency and energy further. Evaluation specifically suggests improving the joint latency-energy tradeoff while preserving valid routing paths.
+**Program Identifier:** Generation 13 - Patch Name alt_paths_and_marginal_energy - Correct Program: True
+
+**Program Name: Multi-Profile Dijkstra Local Search**
+- **Implementation**: Builds an undirected graph with per-edge latency, energy, and capacity, then precomputes source-to-server candidate paths by running Dijkstra from each server under four latency/energy weight profiles. It assigns tasks greedily using a queue-delay-based cost, tracks server and edge loads incrementally, and then performs random local search until an 11-second time limit to try alternative candidate assignments.
+- **Performance**: Combined score was -999999999.00 with evaluation ending in a compilation/runtime timeout.
+- **Feedback**: The main issue is the expensive implementation: repeated shortest-path runs, full path reconstruction for many source/server/profile combinations, and a local search loop that repeatedly recomputes total cost likely caused the timeout. Although the heuristic mixes latency, energy, server utilization, and capacity penalties, it did not complete within the grader limits and failed validation.
+**Program Identifier:** Generation 6 - Patch Name precompute_local_search - Correct Program: False
+
+**Program Name: Multi-Profile SA Task Routing**
+- **Implementation**: Builds an undirected adjacency list, generates candidate source-to-server paths by running reverse Dijkstra from each server under several latency/energy/hop weight profiles, then assigns tasks greedily by estimated load-aware score. It refines assignments with simulated annealing using server queue-delay and energy cost deltas, while tracking per-server load and arrival rates until a time-based cutoff.
+- **Performance**: Combined score was -999999999.00 with status `Compilation/Runtime Timeout`.
+- **Feedback**: The heavy preprocessing over all servers, weight profiles, and sources plus a long simulated annealing loop caused the solution to exceed the 12-second limit. The fallback path construction is also fragile because it assumes reachability, contributing to correctness/validation failures in addition to the timeout.
+**Program Identifier:** Generation 7 - Patch Name server_centric_sa_routing - Correct Program: False
+
+**Program Name: Lambda-Dijkstra Local Search Routing**
+- **Implementation**: Builds an undirected graph and generates per-source/server path candidates by running Dijkstra with several latency-energy tradeoff weights, then Pareto-prunes paths per server. It assigns tasks greedily by estimated incremental routing/server cost and refines assignments with multi-start local search over different energy weights using exact O(1) server load deltas and a smooth near-capacity server penalty.
+- **Performance**: The program is correct and passes validation, achieving latency 2.30, energy 1.97, and final Graph MOP score 5.24.
+- **Feedback**: The weighted shortest-path plus server-aware local search gives a solid balanced solution, but the evaluation indicates both latency and energy still have room to improve. Candidate diversity is limited by a small fixed lambda set and the final objective uses a simple summed score, which may restrict better joint latency-energy tradeoffs.
+**Program Identifier:** Generation 12 - Patch Name exact_delta_multistart_search - Correct Program: True
+
+**Program Name: Queue-Energy Heuristic Cost Function**
+- **Implementation**: Implements a candidate server cost function that combines route latency/energy, queue growth based on inverse slack \((1/(\mu-\lambda))\), dynamic and idle power costs, and a quadratic utilization penalty above 85%, while rejecting candidates with projected utilization at or above 0.98. The experiment wrapper evaluates `evolve_task_routing` with `GraphRoutingGrader.grade_silent` under a 12-second timeout and falls back to infinite metrics on exceptions.
+- **Performance**: The program failed evaluation with a combined score of -999999999.00 and a compilation/runtime timeout status.
+- **Feedback**: Although the cost model is detailed and tries to balance latency, queuing, and energy, the overall program did not complete successfully within the time limit and did not pass validation. This suggests the surrounding routing procedure or integration is missing, too slow, or runtime-fragile despite the heuristic scoring logic.
+**Program Identifier:** Generation 16 - Patch Name none - Correct Program: False
+
+**Program Name: Multi-Tree Load-Aware Task Routing**
+- **Implementation**: Builds an undirected graph, precomputes multiple server-rooted Dijkstra trees with different latency/energy/capacity weight blends, then generates per-source candidate server-path pairs and scores them using exact path latency/energy. It assigns tasks with a load-aware objective that includes queue-delay penalties, server utilization, and compute energy, followed by a one-pass local improvement pass and fallback path construction for feasibility.
+- **Performance**: The program is valid and passes all tests, achieving latency 2.30, energy 1.96, and final Graph MOP score 5.22.
+- **Feedback**: The heuristic is robust and stable due to strong near-saturation queue penalties and candidate diversification, but the current weighted scoring still leaves room to reduce latency and energy together. Evaluation specifically suggests improving the tradeoff calibration so both routing and server-selection decisions become jointly more efficient.
+**Program Identifier:** Generation 17 - Patch Name server_rooted_multitree_routing - Correct Program: True
+
+**Program Name: Regret-Greedy Dijkstra Task Routing**
+- **Implementation**: Builds an undirected graph and precomputes source-to-server candidate paths with Dijkstra using a combined edge weight of transmission latency plus 0.4×network energy. It then assigns tasks with a regret-ordered greedy heuristic based on marginal latency/energy and server queue/load estimates, followed by up to 5 rounds of local reassignment refinement.
+- **Performance**: The program passed validation and achieved latency 2.30, energy 1.96, and Graph MOP score 5.23.
+- **Feedback**: The approach is valid and reasonably balanced, but the evaluation indicates both latency and energy still need to be reduced simultaneously. The fixed weighted shortest-path objective and simple greedy/local-search assignment likely limit Pareto efficiency.
+**Program Identifier:** Generation 14 - Patch Name marginal_regret_routing - Correct Program: True
+
+**Program Name: Greedy Regret-Based Multiobjective Routing**
+- **Implementation**: Builds an undirected graph and generates candidate source-to-server paths by running Dijkstra twice from each server with two fixed latency/energy trade-off weights, using a nominal payload during path discovery. It then assigns tasks with a regret-ordered greedy heuristic based on marginal latency, queueing load, and energy cost, followed by a short local search refinement over current assignments.
+- **Performance**: The program passed validation and achieved latency 2.30, energy 1.96, and final Graph MOP score 5.22.
+- **Feedback**: The approach is correct and produces valid paths, but the current candidate generation and scoring heuristics do not reduce latency and energy enough simultaneously. The evaluation suggests improving the path selection and assignment trade-offs to lower both objectives at once.
+**Program Identifier:** Generation 15 - Patch Name marginal_regret_routing - Correct Program: True
+
+**Program Name: Missing Routing Function Wrapper**
+- **Implementation**: The program only defines a `run_experiment(**kwargs)` wrapper that instantiates `GraphRoutingGrader` and calls `grade_silent(evolve_task_routing, timeout=12)`, with exception handling that prints a traceback and returns infinite metrics on failure. Aside from comments about a possible BFS fallback and large-graph check, no actual routing algorithm or `evolve_task_routing` implementation is provided.
+- **Performance**: The evaluated result was a runtime/compilation timeout with a combined score of -999999999.00, indicating complete failure.
+- **Feedback**: The core task-routing function appears to be missing or unresolved, so the grader cannot execute a valid solution. Because the implementation consists only of the evaluation harness, it does not pass validation tests and provides no effective graph-routing behavior.
+**Program Identifier:** Generation 19 - Patch Name none - Correct Program: False
+
+**Program Name: Regret-Based Multi-Path Server Routing**
+- **Implementation**: Builds an undirected graph with latency, energy, and capacity attributes, then generates per-source/per-server candidates using four server-centric Dijkstra variants with different latency-energy-capacity weightings plus a BFS fallback for reachability. It scores candidates with payload-aware path metrics and an M/M/1-inspired server load surrogate, assigns tasks via regret-based greedy selection, and performs two local improvement passes to rebalance load and reduce queue pressure.
+- **Performance**: Correct on all validation tests, achieving latency 2.31, energy 1.96, and final Graph MOP score 5.23.
+- **Feedback**: The heuristic is valid and reasonably balanced, but the evaluation indicates it still needs to reduce latency and energy together rather than trading one off too heavily against the other. The weighted shortest-path modes and load penalties help robustness, though the current surrogate appears only moderately effective at finding lower joint-cost routes.
+**Program Identifier:** Generation 20 - Patch Name activation_aware_scoring_and_tree_diversity - Correct Program: True
+
+**Program Name: Regret-Aware Multi-Mode Server Routing**
+- **Implementation**: Builds an undirected graph, generates per-server candidate paths using several weighted Dijkstra modes plus BFS fallback, and scores assignments with a surrogate objective combining route latency, route energy, and server-load/queue penalties. It then constructs the routing plan with regret-aware greedy selection under soft/hard utilization thresholds and refines assignments through several local relocation passes.
+- **Performance**: The program is correct and validation-safe, achieving latency 2.30, energy 1.96, and final graph MOP score 5.22 (reported as combined score -5.22 to maximize).
+- **Feedback**: The heuristic is robust and produces valid paths, but the current weighted-surrogate and load-balancing choices do not yet reduce latency and energy enough simultaneously. Evaluation suggests improving path/server selection so both objectives decrease together rather than trading one off against the other.
+**Program Identifier:** Generation 21 - Patch Name regret_activation_routing - Correct Program: True
+
+**Program Name: Greedy Server-Weighted Dijkstra Routing**
+- **Implementation**: Builds an undirected adjacency list, precomputes shortest-path trees from each server using Dijkstra with edge weights `base_latency + 0.5 * energy_cost * average_payload`, then greedily assigns tasks in descending load order. Server selection uses a composite marginal score combining route latency, queueing growth from current server load, transmission energy, dynamic compute energy, and one-time idle power, with path reconstruction via stored parents.
+- **Performance**: The program is correct and passes validation, achieving latency 2.33, energy 1.97, and graph MOP score 5.30 (combined score reported as -5.30 to maximize).
+- **Feedback**: The heuristic produces valid paths and balanced latency/energy tradeoffs, but the evaluation indicates there is room to reduce both metrics further. In particular, the fixed average-payload path weighting and greedy per-task assignment may miss better joint routing/server choices.
+**Program Identifier:** Generation 5 - Patch Name marginal_cost_routing - Correct Program: True
+
+**Program Name: Exact Marginal Cost Routing Skeleton**
+- **Implementation**: The file only defines `run_experiment`, which instantiates `GraphRoutingGrader` and calls `grade_silent(evolve_task_routing, timeout=12)` inside a try/except wrapper. Although the header describes a regret-based greedy assignment with exact marginal cost queueing/energy evaluation and local search refinement, that routing function is not actually implemented in the provided code.
+- **Performance**: The program achieved a combined score of 0.0 and is marked incorrect, failing validation.
+- **Feedback**: The main implementation issue is that `evolve_task_routing` is missing/undefined, so the grader cannot evaluate the intended algorithm and falls back to infinite metrics on exception. As a result, none of the described optimization ideas affect performance because the core routing logic was never provided.
+**Program Identifier:** Generation 23 - Patch Name exact_marginal_cost_routing - Correct Program: False
+
+**Program Name: Multi-Alpha Greedy Server Routing**
+- **Implementation**: Builds an undirected graph and precomputes multiple Dijkstra shortest-path trees per server using scalarized latency-energy weights with several alpha values to generate diverse routing candidates. It then performs load-aware greedy task assignment using M/M/1-style queue-delay and compute-energy proxies, followed by a single-source local improvement pass and final path repair/validation.
+- **Performance**: The program is correct and passes validation tests, achieving latency 2.33, energy 1.97, and graph MOP score 5.31 (combined score reported as -5.31 to maximize).
+- **Feedback**: The multi-criteria candidate generation and load-sensitive assignment produced valid balanced solutions, but the current weighted proxy and greedy/local-search strategy still leave room to reduce latency and energy together. Evaluation specifically suggests improving both objectives simultaneously while preserving valid paths.
+**Program Identifier:** Generation 24 - Patch Name server_diverse_multicriteria_routing - Correct Program: True
+
+**Program Name: Server-Rooted Heuristic Task Routing**
+- **Implementation**: Builds an undirected adjacency list and precomputes a Dijkstra shortest-path tree from each server using a blended latency-plus-energy edge weight, then assigns tasks greedily in descending arrival_rate × compute_demand order. Server selection uses a heuristic incremental score combining transmission latency, M/M/1-style queue delay, routing energy, dynamic compute energy, first-use idle power, and a utilization penalty, with cached path reconstruction from server-rooted parent links.
+- **Performance**: The program is correct and passes validation, achieving latency 2.30, energy 1.96, and final Graph MOP score 5.22.
+- **Feedback**: The approach is effective and valid, but the current weighted routing and greedy load-placement heuristic still leaves room to reduce latency and energy together. Evaluation specifically suggests improving the latency-energy tradeoff while preserving valid paths.
+**Program Identifier:** Generation 25 - Patch Name marginal_dualobjective_server_trees - Correct Program: True
+
+**Program Name: Greedy Multi-Tree Server Routing**
+- **Implementation**: Builds an undirected graph with edge latency/energy/capacity data, precomputes three Dijkstra trees per server using latency-, energy-, and balanced-weight modes, and generates a small deduplicated candidate path set plus one penalized alternative path per source-server pair. It then assigns tasks greedily in descending compute-load order using a score that combines path latency, routing energy, queue-delay and server-energy estimates, followed by a restricted repair pass that offloads tasks from the most utilized servers.
+- **Performance**: The program is correct and passes validation, achieving latency 2.31, energy 1.96, and final Graph MOP score 5.23.
+- **Feedback**: The heuristic candidate generation and load-aware greedy assignment produce valid solutions with balanced latency and energy, but the resulting score indicates room to improve both objectives together. Evaluation specifically suggests reducing latency and energy simultaneously while preserving valid routing paths.
+**Program Identifier:** Generation 27 - Patch Name restricted_server_focused_repair - Correct Program: True
+
+**Program Name: Multi-Mode Server-Tree Greedy Routing**
+- **Implementation**: Builds an undirected graph, precomputes six Dijkstra shortest-path trees per server using different weighted latency/energy/capacity heuristics, then reconstructs and deduplicates candidate paths for each source-server pair. Tasks are assigned with a greedy load-aware objective that combines path latency, path energy, queueing and server energy deltas, followed by two local-improvement passes to reduce assignment cost.
+- **Performance**: The program is correct and passes validation, achieving latency 2.30, energy 1.97, and final Graph MOP score 5.24.
+- **Feedback**: The diverse path-generation plus load-sensitive scoring produced valid balanced routes, but the combined objective still leaves room to reduce both latency and energy together. Evaluation suggests improving the tradeoff in the scoring weights or candidate selection to push the final score lower.
+**Program Identifier:** Generation 18 - Patch Name marginal_objective_routing - Correct Program: True
+
+**Program Name: Regret-Guided Multi-Tree Task Routing**
+- **Implementation**: Builds an undirected graph, precomputes three Dijkstra parent trees per server using latency-, energy-, and balanced-weighted edge costs, then reconstructs unique candidate paths and evaluates them with payload-adjusted latency/energy metrics. Task assignment is done greedily by regret order using a marginal server-load cost model with queueing-based penalties and a single refinement pass to reconsider placements.
+- **Performance**: The program is correct and passes validation, achieving latency 2.30, energy 1.96, and final Graph MOP score 5.22.
+- **Feedback**: The multi-criteria routing plus marginal-load heuristic produced valid solutions with balanced latency and energy, but the final score indicates room to improve both objectives further at the same time. Evaluation specifically suggests lowering latency and energy simultaneously while preserving valid paths.
+**Program Identifier:** Generation 22 - Patch Name regret_marginal_refiner - Correct Program: True
+
+**Program Name: Regret-Guided Multi-Tree Task Routing**
+- **Implementation**: Builds an undirected graph, precomputes four Dijkstra shortest-path trees per server under different latency/energy/capacity weightings, and keeps up to three unique candidate paths per source-server pair after metric-based pruning. It then assigns tasks with a feasibility-weighted regret heuristic using projected server load, soft/hard utilization penalties, and marginal server delay/energy costs, followed by a 3-pass remove/reinsert local search for reassignment improvements.
+- **Performance**: The program is correct and passes validation, achieving latency 2.306969, energy 1.961332, and final graph MOP score 5.227055.
+- **Feedback**: The mixed path-generation and load-aware assignment strategy produced valid balanced solutions, but the evaluator indicates there is still room to reduce both latency and energy together. The main optimization opportunity appears to be improving the routing/cost blending so candidate selection and local search find jointly better latency-energy tradeoffs.
+**Program Identifier:** Generation 28 - Patch Name capacity_regret_router - Correct Program: True
+
+**Program Name: Greedy Marginal-Cost Server Routing**
+- **Implementation**: Builds an undirected adjacency list and runs Dijkstra from each server using a combined routing weight of latency plus 1.25×energy to precompute parent trees, path latency, and path energy. It then greedily assigns task sources in descending arrival-rate×compute-demand order using a marginal-cost score that combines transmission latency, M/M/1 queueing delay, routing energy, dynamic/idle server power, and a utilization penalty under a 0.94 capacity cap, with shortest-distance fallback selection.
+- **Performance**: The program is correct and passes validation, achieving latency 2.30, energy 1.96, and graph MOP score 5.22 (reported combined score to maximize: -5.22).
+- **Feedback**: The heuristic produces valid paths and balanced load-aware assignments, but the current weighting and greedy marginal objective did not reduce latency and energy enough simultaneously. Evaluation suggests improving the latency-energy tradeoff, likely by tuning the routing/energy weights or using a less myopic assignment strategy.
+**Program Identifier:** Generation 30 - Patch Name marginal_cost_balanced_routing - Correct Program: True
+
+**Program Name: Multi-Tree Greedy Routing with Local Search**
+- **Implementation**: Builds an undirected graph and precomputes multiple Dijkstra shortest-path trees per server using latency-plus-energy weighted objectives across several alpha values, then generates a small candidate set of source-server-path options. It assigns tasks with a regret- and feasibility-based greedy ordering under server utilization thresholds, then refines the plan with local relocation, limited pairwise swaps, and final path repair/fallback handling.
+- **Performance**: The program is correct and passes validation, achieving latency 2.31, energy 1.96, and overall graph MOP score 5.23.
+- **Feedback**: The heuristic balances routing latency, routing/compute energy, and queue-delay via utilization penalties, which produced a valid mid-range solution but did not jointly minimize both objectives enough. Evaluation specifically suggests reducing latency and energy simultaneously, indicating the current proxy cost and limited search may leave better Pareto tradeoffs unexplored.
+**Program Identifier:** Generation 32 - Patch Name capacity_regret_routing - Correct Program: True
+
+**Program Name: Greedy Server Assignment with Local Search**
+- **Implementation**: Builds an undirected adjacency list and precomputes per-server shortest-path trees using Dijkstra on a combined latency+energy edge weight. It then greedily assigns higher compute-demand sources to servers based on incremental latency/energy and queue-delay estimates, followed by a bounded local-search reassignment loop to improve server choices before reconstructing paths from stored parent pointers.
+- **Performance**: The program passed validation and achieved latency 2.30, energy 1.96, and Graph MOP score 5.23 (reported as combined score -5.23 to maximize).
+- **Feedback**: The approach is correct and produces valid paths, but the evaluation indicates there is still room to reduce both latency and energy simultaneously. The fixed scalarization weight and greedy-plus-single-move refinement likely limit Pareto-quality improvements.
+**Program Identifier:** Generation 26 - Patch Name local_search_routing - Correct Program: True
+
+**Program Name: Multi-Path Greedy Server Assignment**
+- **Implementation**: Builds an undirected graph and generates candidate source-to-server routes using several Dijkstra passes with different latency/energy/capacity weights, plus one adaptive weighting based on server dynamic energy. It then assigns tasks with a regret-ordered greedy marginal-cost heuristic that models queueing and server energy, followed by a short local search refinement over alternative candidates.
+- **Performance**: The program is correct and passes validation, achieving latency 2.30, energy 1.96, and final Graph MOP score 5.23.
+- **Feedback**: The multi-objective routing and load-aware assignment produce valid solutions, but the current heuristics do not reduce latency and energy enough simultaneously. Evaluation suggests further tuning of path weighting and assignment logic to lower both metrics while preserving valid paths.
+**Program Identifier:** Generation 29 - Patch Name diverse_adaptive_path_generation - Correct Program: True
+
+**Program Name: Hybrid Multi-Mode Regret Routing**
+- **Implementation**: Builds an undirected graph and generates per-source/per-server routing candidates using multiple Dijkstra weight modes plus BFS fallback, scoring each by path latency, path energy, and server power/service characteristics. It then assigns tasks with a regret-aware greedy heuristic under utilization thresholds, followed by local relocation passes that try to reduce queueing and overload cost while preserving valid source-to-server paths.
+- **Performance**: The program is correct and passes validation, achieving latency 2.31, energy 1.96, and Graph MOP score 5.23.
+- **Feedback**: The hybrid candidate generation and load-aware assignment produced valid solutions with balanced latency and energy, but the final score indicates room to improve both objectives together. Evaluation specifically suggests reducing latency and energy simultaneously, so the current weighting and relocation strategy likely still leaves some Pareto inefficiency.
+**Program Identifier:** Generation 33 - Patch Name hybrid_regret_queue_router - Correct Program: True
+
+**Program Name: Regret-Aware Multi-Server Routing**
+- **Implementation**: Builds an undirected graph, generates per-source/per-server candidate paths using several server-rooted Dijkstra weight modes plus BFS fallback, and scores them with a surrogate combining route latency, route energy, server dynamic/idle power, and queue-utilization penalties. It then assigns tasks through a regret- and scarcity-aware greedy construction, followed by bounded local relocation passes that move sources between servers when the exact surrogate delta improves.
+- **Performance**: Correct on all validation tests, with latency 2.30, energy 1.98, and final Graph MOP score 5.24 (reported as combined score to maximize: -5.24, so lower is better).
+- **Feedback**: The approach is robust and validity-safe, but the current surrogate and assignment heuristics did not reduce latency and energy enough together. Evaluation specifically suggests improving joint latency-energy tradeoffs rather than only balancing server utilization and queue stability.
+**Program Identifier:** Generation 35 - Patch Name scarcity_aware_regret_and_tighter_queueing - Correct Program: True
+
+**Program Name: Greedy Multi-Tree Server Routing**
+- **Implementation**: Builds an undirected adjacency list and precomputes up to two Dijkstra shortest-path trees per server using different latency/energy weights to provide limited route diversity. It then greedily assigns sources in descending task heaviness, scoring each server-path option with marginal transmission latency, queueing impact, routing energy, dynamic compute energy, first-use idle activation cost, and a utilization penalty, with fallback to the best reachable precomputed route.
+- **Performance**: The program is correct and passes validation, achieving latency 2.30, energy 1.96, and Graph MOP score 5.22 (combined score to maximize: -5.22).
+- **Feedback**: The heuristic is effective enough to produce valid low-cost routes, but the limited two-tree candidate set and greedy incremental assignment likely restrict joint latency-energy optimization. Evaluation specifically indicates the solution should further reduce both latency and energy simultaneously while preserving valid paths.
+**Program Identifier:** Generation 37 - Patch Name two_candidate_server_trees_incremental_scoring - Correct Program: True
+
+**Program Name: Multi-Tree Greedy Routing**
+- **Implementation**: Builds an undirected graph, precomputes four server-rooted Dijkstra trees with different weighted latency/energy/capacity objectives, then generates a small candidate path set per source-server pair including one penalized alternative route. It assigns tasks greedily using a score that combines path latency/energy with marginal queue-delay and server-energy estimates from projected server load, followed by up to four local-improvement passes to reassign tasks.
+- **Performance**: Passed validation and achieved latency 2.30, energy 1.97, and final Graph MOP score 5.24.
+- **Feedback**: The heuristic is valid and reasonably balanced, but the evaluation indicates both latency and energy still need to be reduced together. The fixed edge-weight mixtures, capped candidate set, and greedy/local-search assignment likely limit exploration of better joint routing-server tradeoffs.
+**Program Identifier:** Generation 31 - Patch Name hybrid_marginal_local_search - Correct Program: True
+
+**Program Name: Greedy Pareto Server Routing**
+- **Implementation**: Builds an undirected adjacency list, then precomputes multiple Dijkstra shortest-path trees from each server using a range of latency/energy scalarization weights to approximate Pareto path choices. It assigns sources with a multi-pass greedy heuristic over a small hyperparameter grid, scoring server-path options by transmission latency, M/M/1-style queue delay, routing energy, server compute energy, and utilization penalties, then keeps the best evaluated plan.
+- **Performance**: The program is correct and passes validation, achieving latency 2.304111, energy 1.959833, and final Graph MOP score 5.215922.
+- **Feedback**: The weighted multi-tree search and greedy load-aware assignment produce valid solutions with balanced latency and energy, but the resulting score suggests the tradeoff tuning is still suboptimal. Evaluation specifically indicates there is room to reduce both latency and energy simultaneously while preserving valid paths.
+**Program Identifier:** Generation 36 - Patch Name multi_tree_hyper_search_routing - Correct Program: True
+
+**Program Name: Incomplete Energy-Latency Proxy Routing**
+- **Implementation**: The evolved block computes a proxy objective as `route_lat + W_E * task_en`, where `task_en` combines payload-routing cost, work/rate dynamic power, and a small idle-power term. However, the snippet does not define or return a valid `evolve_task_routing` implementation, so the grader cannot evaluate a complete routing policy.
+- **Performance**: The combined score was 0.0, and validation failed with the program marked incorrect.
+- **Feedback**: The main issue is structural incompleteness rather than just poor tuning: required variables/functions are missing or undefined, which causes evaluation failure. While the intended approach balances latency and energy through a weighted proxy, it does not pass tests because the implementation is not integrated into a runnable routing algorithm.
+**Program Identifier:** Generation 38 - Patch Name none - Correct Program: False
+
+**Program Name: Greedy Multi-Tree Task Routing**
+- **Implementation**: Builds an undirected graph, precomputes multiple Dijkstra shortest-path trees per server using latency/energy-capacity weighted objectives, and generates a small candidate set of source-server-path assignments. It then assigns tasks with a feasibility- and regret-based greedy heuristic, followed by local relocation and limited pairwise swap improvement under server utilization, queue-delay, and energy proxy costs.
+- **Performance**: The program is correct and passes validation tests, achieving latency 2.31, energy 1.96, and final Graph MOP score 5.23.
+- **Feedback**: The heuristic balancing of routing latency, queueing delay, and compute/routing energy produced a valid mid-quality solution, but the evaluation indicates both latency and energy still need to be reduced together. Candidate pruning and proxy-cost weighting likely limit exploration, leaving room for better joint optimization.
+**Program Identifier:** Generation 39 - Patch Name adaptive_capacity_aware_routing - Correct Program: True
+
+**Program Name: Precomputed Server-Tree Greedy Routing**
+- **Implementation**: Builds an undirected adjacency list and precomputes Dijkstra shortest-path trees from each server under two weighted routing modes, then greedily assigns task sources in descending compute demand using projected queueing-delay and energy marginal costs. The implementation tracks projected server load/arrival rates and reconstructs source-to-server paths from stored parent pointers, with overload and unreachable fallbacks.
+- **Performance**: Combined score was -999999999.00 with a compilation/runtime timeout, so no valid latency or energy results were obtained.
+- **Feedback**: The approach aims to reduce repeated shortest-path computation, but the stored server trees are created as a list of mode entries and later accessed like a dict (`server_trees[srv]['dist']`), which likely causes runtime failure before evaluation completes. Even aside from that bug, the extra precomputation for both modes increases overhead and the second mode is never actually used in assignment.
+**Program Identifier:** Generation 40 - Patch Name capacity_sensitive_routing_mode - Correct Program: False
+
+# GLOBAL INSIGHTS SCRATCHPAD
+
+The following are global insights about optimization approaches and their effectiveness:
+
+## Successful Algorithmic Patterns
+- **The strongest validated pattern is still the compact multi-tree + load-aware marginal assignment design, now matched again by the current analyzed program.** The current best analyzed code, **Generation 36 / `multi_tree_hyper_search_routing`**, achieved **latency `2.304111`, energy `1.959833`, score `5.215922`**, tying the previously leading **Generation 21 / `regret_activation_routing`**. In the code, the winning structure is:
+  - **server-rooted Dijkstra precompute**
+  - **small set of distinct route trees per server**
+  - **online scoring using projected server load, queue delay, routing energy, and compute energy**
+  - **selection of the best full plan over several assignment parameter settings**  
+  This reinforces the earlier conclusion that **cheap route precompute plus richer assignment evaluation** is the best-performing family.
+
+- **Assignment-model quality continues to matter more than broader candidate-path generation.** The current analyzed program uses a large scalarization grid (`energy_weights = [0.0 ... 50.0]`) but still wins because path diversity is paired with a **marginal cost model** including:
+  - queueing increase from `1 / (srv_rate - load)`
+  - dynamic compute energy `dyn_pwr * (load_increase / srv_rate)`
+  - optional server activation cost via `idle_pwr`
+  - utilization penalty  
+  This outperformed or matched broader-route heuristics such as:
+  - **Generation 31 / `hybrid_marginal_local_search`**: `5.24`
+  - **Generation 39 / `adaptive_capacity_aware_routing`**: `5.23`  
+  The evidence still favors **better server assignment economics over larger search neighborhoods**.
+
+- **Hyperparameter multi-pass greedy search is effective when the scoring surrogate is already strong.** The current best analyzed program searches over `(energy_tradeoff, util_penalty_weight, util_cap, sort_strategy)` and keeps the best exact evaluated plan, reaching **`5.215922`**. This did better than single-pass greedy/local-search variants:
+  - **Generation 31**: four local-improvement passes but only `5.24`
+  - **Generation 39**: regret + relocation + limited swaps but only `5.23`  
+  The pattern is that **careful first-pass calibration through small hyperparameter grids can beat heavier post-processing**.
+
+- **Balanced latency/energy server scoring remains the most reliable way to reach the top score band.** The current best analyzed program and the earlier best both explicitly combine:
+  - transmission latency,
+  - routing energy,
+  - queueing sensitivity,
+  - server dynamic energy,
+  - and server activation/idle cost.  
+  Programs with this balanced treatment stay in the **`5.215922–5.23`** band, while heuristics with weaker or less calibrated tradeoff handling drift slightly worse.
+
+## Ineffective Approaches
+- **Expanding route diversity without improving the assignment surrogate did not help.** Although **Generation 31 / `hybrid_marginal_local_search`** and **Generation 39 / `adaptive_capacity_aware_routing`** both used multiple trees and candidate alternatives, they still scored only **`5.24`** and **`5.23`** respectively. Evaluator feedback for both explicitly said **latency and energy still need to be reduced together**, indicating that **candidate expansion alone did not move the Pareto tradeoff**.
+
+- **Heavier local improvement machinery continued to underperform the cleaner marginal-greedy designs.**  
+  - **Generation 31** added **up to four local-improvement reassignment passes** but reached only **`5.24`**.
+  - **Generation 39** added **local relocation and limited pairwise swaps** but stayed at **`5.23`**.  
+  This matches earlier global evidence that **more search after a weaker initial assignment is less valuable than a sharper initial marginal score**.
+
+- **Structurally incomplete or internally inconsistent implementations fail completely regardless of heuristic intent.**
+  - **Generation 38 / `none`** failed validation with score **`0.0`** because the routing function was incomplete and not runnable.
+  - **Generation 40 / `capacity_sensitive_routing_mode`** timed out / failed with **`-999999999.00`**, likely due to accessing a list of precomputed tree modes as if it were a dict.  
+  These failures show that **integration correctness and internal data-structure consistency are decisive** before any routing tradeoff matters.
+
+- **Unused or weakly integrated extra precomputation adds overhead without score benefit.** In **Generation 40**, a second routing mode was precomputed but never meaningfully used in assignment, and the extra complexity contributed to failure. This supports the broader pattern that **extra precompute is only useful when tightly connected to the online decision logic**.
+
+## Implementation Insights
+- **What makes the current best analyzed program effective is its exact split between offline route generation and online marginal evaluation.** In code, it:
+  - builds one undirected adjacency list,
+  - runs **server-rooted Dijkstra** for multiple scalarizations,
+  - stores `lat`, `eng`, and `parent`,
+  - greedily assigns tasks using evolving `projected_load` and `projected_arr`,
+  - then evaluates the completed plan with an exact aggregate objective.  
+  This is a strong implementation pattern because it keeps routing lookup cheap while preserving **load-sensitive assignment decisions**.
+
+- **The current best’s scoring function is the key implementation detail behind its top score.** For each candidate `(server, tree)`, it computes:
+  - routing latency via `arr_rate * t_lat`
+  - routing energy via `arr_rate * r_eng`
+  - queue-delay marginal effect using both the new task and existing server arrivals
+  - compute energy increment `dyn_pwr * (load_increase / srv_rate)`
+  - activation energy `idle_pwr` when `old_load == 0`
+  - quadratic utilization penalty  
+  This concrete formula is much closer to the successful Generation 21 marginal-evaluation style than to the weaker broad-candidate/local-search programs.
+
+- **Deduplicating route trees by identical parent arrays is a useful implementation refinement.** The current best analyzed program skips storing a tree if its `parent` structure matches the previous one for that server. That preserves the benefit of a wide scalarization sweep while avoiding some redundant storage and iteration. This is consistent with prior insight that **compact, unique candidate sets are enough when evaluation is accurate**.
+
+- **Exact end-of-pass plan evaluation helps the hyperparameter search stay grounded.** After constructing a plan, the current best code recomputes total latency and energy from:
+  - final projected server loads,
+  - queue delays,
+  - idle + dynamic server energy,
+  - per-task route latency/energy.  
+  This implementation detail likely helps explain why its multi-pass greedy search reached **`5.215922`**, whereas similar heuristics without equally disciplined plan evaluation settled at **`5.23–5.24`**.
+
+## Performance Analysis
+- **The current analyzed program is now in the top tier, tying the previously strongest known result.**  
+  - **Generation 36 / `multi_tree_hyper_search_routing`**: **`5.215922`**, latency **`2.304111`**, energy **`1.959833`**
+  - **Generation 21 / `regret_activation_routing`**: previously cited at the same **`5.215922`**  
+  This confirms that the benchmark’s best-known performance is not unique to one architecture, but both top results share the same core trait: **strong marginal server-assignment scoring**.
+
+- **The validated competitor cluster remains very tight, with differences concentrated in the third decimal place.**
+  - **Generation 39**: `5.23`, `2.31 / 1.96`
+  - **Generation 31**: `5.24`, `2.30 / 1.97`
+  - current best analyzed program: `5.215922`, `2.304111 / 1.959833`  
+  The absolute gap is small, but in this problem it is consistent and meaningful: the best program trims both latency and energy slightly, rather than trading one off against the other.
+
+- **Programs with richer route generation but weaker assignment calibration continued to stall just above the best score.** Generation 31 and 39 both used multiple trees and additional candidate handling, yet neither beat **`5.215922`**. This strengthens the earlier observed correlation that **score quality tracks the assignment objective more strongly than the number of route alternatives**.
+
+- **Failure cases remain sharply separated from the valid heuristic family.**
+  - Valid multi-tree greedy systems cluster around **`5.215922–5.24`**
+  - Incomplete/buggy systems collapse to **`0.0`** or **`-999999999.00`**  
+  So the main competitive story is within the narrow valid band, where the current best analyzed program stands out by matching the best-known result through **better-calibrated marginal scoring, not radical architectural change**.
+
+# META RECOMMENDATIONS
+
+The following are actionable recommendations for the next program generations:
+
+1. **Replace the current queue term with an exact server-state delta objective during assignment.** Instead of scoring with `arr_rate * q_delay_new + projected_arr * (q_new - q_old)`, compute a fuller marginal queue contribution such as `projected_arr_new/(mu-new_load) - projected_arr_old/(mu-old_load)` or another exact delta of the end-of-pass queue formula. This directly extends the strongest validated pattern—load-aware marginal assignment—and is the most likely way to improve the tiny remaining calibration gap without changing the overall architecture.
+
+2. **Add dynamic regret-based task selection on top of the current multi-pass greedy search.** Every few assignments, recompute for a small active pool of unassigned tasks the gap between their best and second-best `(server, tree)` choices under current projected loads, then assign the highest-regret task next. This preserves the current best program’s strong marginal scorer while borrowing the proven Generation 21 idea that assignment order should react to evolving saturation rather than stay fixed.
+
+3. **Compress route candidates per `(source, server)` to a tiny non-dominated set instead of iterating all distinct trees blindly.** After building the server-rooted trees, reconstruct each source-to-server option and keep only the best route plus at most one alternate if it is genuinely path-distinct and offers a meaningful latency/energy tradeoff not dominated by the first. This follows the evidence that compact, high-quality path diversity helps, while broad candidate expansion by itself has not beaten the top score band.
+
+4. **Add a very small repair phase focused only on overloaded or high-derivative servers.** After the greedy assignment, rank servers by utilization or queue sensitivity `1/(mu-load)^2`, then try relocating tasks from the top 1–3 hottest servers to their next-best precomputed alternatives using the same marginal score; optionally test a bounded one-swap move for tasks with near-tied choices. This is a targeted extension of the winning greedy design and avoids the broad local-search machinery that previously underperformed.
+
+5. **Make route preprocessing slightly more adaptive by adding one conditional fourth tree only for clearly energy- or congestion-sensitive cases.** For servers attracting many high-arrival or high-compute tasks, generate one extra Dijkstra tree with a stronger mixed weight such as `lat + w_e*eng + gamma/capacity`, and only retain it if it yields new non-dominated source paths. This respects the successful “cheap offline precompute + richer online assignment” structure while testing a narrow, evidence-consistent way to improve routing quality without exploding candidate count.

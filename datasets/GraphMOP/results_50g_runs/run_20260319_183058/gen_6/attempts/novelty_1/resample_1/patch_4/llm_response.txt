@@ -1,0 +1,223 @@
+<NAME>
+precompute_local_search
+</NAME>
+
+<DESCRIPTION>
+Precomputes multiple Pareto candidate paths from servers using several weight structures, evaluates the true network physics bounds continuously (queueing delays and energy draw), and executes highly targeted simulated hill climbing to slide variables uniformly away from bottlenecks.
+</DESCRIPTION>
+
+<CODE>
+```python
+# EVOLVE-BLOCK-START
+def evolve_task_routing(
+    num_nodes,
+    edges,
+    server_nodes,
+    task_sources,
+    task_info,
+    server_info,
+):
+    import heapq
+    import time
+    import random
+
+    start_time = time.time()
+    
+    graph = [[] for _ in range(num_nodes)]
+    edge_dict = {}
+    for u, v, L, E, C in edges:
+        graph[u].append((v, L, E, C))
+        graph[v].append((u, L, E, C))
+        e = tuple(sorted((u, v)))
+        edge_dict[e] = (L, E, C)
+
+    # Precompute paths from servers
+    # We will use a few weight combinations: w_L * L + w_E * E
+    weight_profiles = [(1.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.2)]
+    
+    # candidates[source] = list of (server, path, path_L, path_E)
+    candidates = {src: [] for src in task_sources}
+    
+    for server in server_nodes:
+        for w_L, w_E in weight_profiles:
+            dist = [float('inf')] * num_nodes
+            parent = [-1] * num_nodes
+            dist[server] = 0.0
+            heap = [(0.0, server)]
+            
+            while heap:
+                d, u = heapq.heappop(heap)
+                if d > dist[u]:
+                    continue
+                for v, L, E, C in graph[u]:
+                    w = w_L * L + w_E * E
+                    if dist[u] + w < dist[v]:
+                        dist[v] = dist[u] + w
+                        parent[v] = u
+                        heapq.heappush(heap, (dist[v], v))
+            
+            for src in task_sources:
+                if dist[src] != float('inf'):
+                    # Reconstruct path from src to server
+                    path = []
+                    curr = src
+                    valid = True
+                    while curr != server:
+                        path.append(curr)
+                        curr = parent[curr]
+                        if curr == -1:
+                            valid = False
+                            break
+                    if valid:
+                        path.append(server)
+                        # Calculate path L and E
+                        p_L, p_E = 0.0, 0.0
+                        for i in range(len(path)-1):
+                            e = tuple(sorted((path[i], path[i+1])))
+                            p_L += edge_dict[e][0]
+                            p_E += edge_dict[e][1]
+                        
+                        # Check if this path is already in candidates
+                        if not any(p == path for s, p, pl, pe in candidates[src]):
+                            candidates[src].append((server, path, p_L, p_E))
+
+    # Ensure every source has at least one candidate
+    for src in task_sources:
+        if not candidates[src]:
+            # Fallback: just find any path to the first server
+            server = server_nodes[0]
+            dist = [float('inf')] * num_nodes
+            parent = [-1] * num_nodes
+            dist[src] = 0.0
+            heap = [(0.0, src)]
+            while heap:
+                d, u = heapq.heappop(heap)
+                if u == server: break
+                if d > dist[u]: continue
+                for v, L, E, C in graph[u]:
+                    if dist[u] + L < dist[v]:
+                        dist[v] = dist[u] + L
+                        parent[v] = u
+                        heapq.heappush(heap, (dist[v], v))
+            path = []
+            curr = server
+            while curr != -1:
+                path.append(curr)
+                curr = parent[curr]
+            path.reverse()
+            p_L, p_E = 0.0, 0.0
+            for i in range(len(path)-1):
+                e = tuple(sorted((path[i], path[i+1])))
+                p_L += edge_dict[e][0]
+                p_E += edge_dict[e][1]
+            candidates[src].append((server, path, p_L, p_E))
+
+    # State variables
+    assignment = {} # src -> candidate_idx
+    server_load = {s: 0.0 for s in server_nodes}
+    edge_load = {e: 0.0 for e in edge_dict}
+    
+    def add_load(src, c_idx, sign):
+        server, path, p_L, p_E = candidates[src][c_idx]
+        rate, _, comp = task_info[src]
+        load = rate * comp
+        server_load[server] += sign * load
+        for i in range(len(path)-1):
+            e = tuple(sorted((path[i], path[i+1])))
+            edge_load[e] += sign * rate
+
+    # Initial greedy assignment
+    for src in task_sources:
+        best_idx = 0
+        best_cost = float('inf')
+        rate, _, comp = task_info[src]
+        load = rate * comp
+        
+        for i, (server, path, p_L, p_E) in enumerate(candidates[src]):
+            s_rate, s_idle, s_dyn = server_info[server]
+            new_load = server_load[server] + load
+            if new_load >= 0.95 * s_rate:
+                cost = float('inf')
+            else:
+                util = new_load / s_rate
+                q_delay = 1.0 / (s_rate - new_load)
+                cost = p_L + q_delay + 0.1 * (p_E + s_dyn * util)
+            
+            if cost < best_cost:
+                best_cost = cost
+                best_idx = i
+                
+        if best_cost == float('inf'):
+            best_idx = 0 # fallback
+            
+        assignment[src] = best_idx
+        add_load(src, best_idx, 1)
+
+    # Cost function for local search
+    def calc_total_cost():
+        total_cost = 0.0
+        # Server cost
+        for s in server_nodes:
+            s_rate, s_idle, s_dyn = server_info[s]
+            load = server_load[s]
+            if load >= 0.99 * s_rate:
+                total_cost += 1e9 * (load - 0.99 * s_rate + 1)
+            else:
+                util = load / s_rate
+                q_delay = load / (s_rate - load)
+                total_cost += q_delay + 0.1 * (s_idle + s_dyn * util)
+        
+        # Edge cost
+        for e, load in edge_load.items():
+            cap = edge_dict[e][2]
+            if load >= 0.99 * cap:
+                total_cost += 1e9 * (load - 0.99 * cap + 1)
+                
+        # Path cost
+        for src in task_sources:
+            c_idx = assignment[src]
+            _, _, p_L, p_E = candidates[src][c_idx]
+            rate = task_info[src][0]
+            total_cost += rate * (p_L + 0.1 * p_E)
+            
+        return total_cost
+
+    current_cost = calc_total_cost()
+    
+    # Local search
+    iterations = 0
+    while time.time() - start_time < 11.0:
+        iterations += 1
+        src = random.choice(task_sources)
+        if len(candidates[src]) <= 1:
+            continue
+            
+        old_idx = assignment[src]
+        new_idx = random.randint(0, len(candidates[src]) - 1)
+        if old_idx == new_idx:
+            continue
+            
+        # Swap
+        add_load(src, old_idx, -1)
+        add_load(src, new_idx, 1)
+        
+        new_cost = calc_total_cost()
+        if new_cost < current_cost:
+            current_cost = new_cost
+            assignment[src] = new_idx
+        else:
+            # Revert
+            add_load(src, new_idx, -1)
+            add_load(src, old_idx, 1)
+
+    # Build final plan
+    plan = {}
+    for src in task_sources:
+        c_idx = assignment[src]
+        server, path, _, _ = candidates[src][c_idx]
+        plan[src] = {"server": server, "path": path}
+        
+    return plan
+# EVOLVE-BLOCK-END
+```
+</CODE>

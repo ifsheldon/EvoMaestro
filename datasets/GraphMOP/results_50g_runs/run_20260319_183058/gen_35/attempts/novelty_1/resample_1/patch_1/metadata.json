@@ -1,0 +1,14 @@
+{
+  "generation": 35,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 3,
+  "patch_name": "scarcity_aware_regret_and_tighter_queueing",
+  "patch_description": "This edit improves assignment quality in two coordinated ways.\n\nFirst, it makes the regret ordering explicitly scarcity-aware. The current construction phase prioritizes tasks mostly by the gap between their best and second-best placements, with a demand boost. That still allows flexible tasks to consume scarce low-load server capacity too early. The new priority computes how many candidate servers remain \u201csafe\u201d for each source under the current partial assignment: below the soft-utilization target and with modest queue-cost increase. Sources with fewer safe options get boosted, while highly flexible sources are slightly deprioritized. This better preserves rare good placements for harder tasks.\n\nSecond, it slightly strengthens queue/activation tradeoffs by using a more M/M/1-like queue term in server_state_cost and a somewhat more latency-sensitive path set. This is intended to reduce placements that look cheap initially but create avoidable queueing pressure, while still keeping energy competitive.\n\nThese are targeted changes only within the evolve block and preserve the required output format and validity behavior.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:45:39.796822",
+  "llm_cost": 0.0634475,
+  "llm_model": null
+}

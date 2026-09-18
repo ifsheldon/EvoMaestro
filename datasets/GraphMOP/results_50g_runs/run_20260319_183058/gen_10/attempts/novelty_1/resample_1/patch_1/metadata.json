@@ -1,0 +1,14 @@
+{
+  "generation": 10,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "server_tree_local_refine",
+  "patch_description": "This proposal crosses over the two prior implementations by keeping the efficient server-rooted precomputation from the current program while reintroducing the simpler, more stable routing bias of the earlier version.\n\nKey ideas:\n- Precompute one shortest-path tree per server, reducing repeated source-server searches.\n- Store transmission latency, routing energy, and hop count for every server-to-node route.\n- Use a blended assignment score that directly models:\n  - transmission latency,\n  - routing energy,\n  - queueing pressure from projected server utilization,\n  - server compute energy.\n- Keep the greedy load-aware assignment, but improve it with a lightweight local refinement pass that can reassign sources after the first allocation if the approximate global objective improves.\n- Always reconstruct valid simple paths from the server trees.\n\nThis combines the efficiency of the current program with the stronger assignment simplicity of the earlier one, while adding a cheap second-stage improvement step that often lowers both latency and energy.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:34:13.198112",
+  "llm_cost": 0.0475225,
+  "llm_model": null
+}

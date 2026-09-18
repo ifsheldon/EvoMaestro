@@ -1,0 +1,14 @@
+{
+  "generation": 14,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 3,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "marginal_cost_regret_routing",
+  "patch_description": "The algorithm uses a marginal-cost-based greedy assignment followed by an iterative local search to minimize the combined latency and energy objectives. \n\nKey features:\n1.  **Marginal Cost Function**: Instead of simple per-task metrics, the assignment and local search use a global marginal cost that accounts for the impact of a task on *all* other tasks sharing the same server. This includes the change in total queueing delay ($N/(\\mu - L)$) and the discrete impact of server idle power.\n2.  **Multi-Objective Dijkstra**: A scalarized weight $(latency + 0.8 \\cdot energy)$ is used during pathfinding to find paths that naturally balance both objectives.\n3.  **Iterative Refinement**: A best-response local search iteratively reassigns tasks to servers that minimize the total system cost, effectively handling the non-linear queueing delay and discrete idle power costs.\n4.  **Robust Queueing Model**: The cost function includes a safety margin and a high penalty for server saturation to ensure stability and low latency.",
+  "error_msg": "Could not extract code from patch string",
+  "timestamp": "2026-03-20T02:40:02.889024",
+  "llm_cost": 0.0052245,
+  "llm_model": null
+}

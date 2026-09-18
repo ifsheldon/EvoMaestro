@@ -1,0 +1,256 @@
+<NAME>
+guided_dp_crossover
+</NAME>
+
+<DESCRIPTION>
+This version crosses the strong dynamic-programming path search with the smoother guide-curve heuristic.
+
+Argumentation:
+- The best prior score came from the DP/grid formulation, so that remains the core optimizer.
+- The weaker heuristic still had a useful idea: build a smooth guided curve that bends away from the school and toward the base. I use that guide to define a tighter, higher-resolution search band instead of a coarse global Y-grid.
+- The DP objective approximates the three goals directly: short segments for F1, inverse-distance penalty near the school for F2, and distance-to-base penalty for F3.
+- After DP, a light anchored smoothing pass reduces grid artifacts without drifting too far from the optimized path, then a small final base-attraction correction improves signal behavior.
+
+This keeps the same input/output behavior, preserves the required markers, and should be more efficient and better aligned with the multi-objective score.
+</DESCRIPTION>
+
+<CODE>
+```python
+# EVOLVE-BLOCK-START
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    Hybrid guided-DP path optimizer:
+    1) build a smooth guide curve that bends away from school and toward base
+    2) run dynamic programming on a narrow band around that guide
+    3) lightly smooth with guide anchoring, then restore a bit of base attraction
+
+    Returns:
+        list[float]: Y-coordinates for evenly spaced interior X positions
+    """
+    import math
+
+    x_start, y_start = start
+    x_end, y_end = end
+    sx, sy = school
+    bx, by = base
+
+    if num_points <= 0:
+        return []
+
+    N = num_points
+    dx = (x_end - x_start) / (N + 1)
+    span_x = abs(x_end - x_start)
+
+    # ------------------------------------------------------------------
+    # Stage 1: build a guided smooth target curve
+    # ------------------------------------------------------------------
+    school_sigma = max(8.0, 0.15 * span_x)
+    base_sigma = max(10.0, 0.22 * span_x)
+
+    # Prefer the side away from school that also trends toward base
+    if abs(by - sy) > 6.0:
+        repel_dir = -1.0 if by < sy else 1.0
+    else:
+        mid_line = 0.5 * (y_start + y_end)
+        repel_dir = -1.0 if mid_line <= sy else 1.0
+
+    school_clearance = 22.0
+    school_gain = 0.85
+    base_gain = 0.62
+    tail_gain = 0.20
+    max_dev = 34.0
+
+    xs = [x_start + (i + 1) * dx for i in range(N)]
+    guide = []
+
+    for i, x in enumerate(xs):
+        t = (i + 1) / (N + 1)
+        y_line = y_start + t * (y_end - y_start)
+
+        ws = math.exp(-((x - sx) ** 2) / (2.0 * school_sigma ** 2))
+        wb = math.exp(-((x - bx) ** 2) / (2.0 * base_sigma ** 2))
+
+        y_safe = sy + repel_dir * school_clearance
+        y = y_line + school_gain * ws * (y_safe - y_line)
+
+        # Pull toward base near its x-region and mildly in the tail
+        pull = base_gain * wb + tail_gain * (t * t)
+        y += pull * (by - y)
+
+        # Cap deviation to control path length
+        upper = y_line + max_dev
+        lower = y_line - max_dev
+        if y > upper:
+            y = upper
+        elif y < lower:
+            y = lower
+
+        guide.append(float(y))
+
+    # ------------------------------------------------------------------
+    # Stage 2: dynamic programming in a narrow band around the guide
+    # ------------------------------------------------------------------
+    # Narrow adaptive band improves resolution vs. the older global grid.
+    band_half = 18.0
+    M = 41  # odd count so guide lies near center candidate
+    if M == 1:
+        offsets = [0.0]
+    else:
+        offsets = [(-band_half + 2.0 * band_half * j / (M - 1)) for j in range(M)]
+
+    y_cands = [[guide[i] + off for off in offsets] for i in range(N)]
+
+    # Objective weights tuned from previous best DP behavior
+    weight_dist = 1.0
+    weight_noise = 360.0 * abs(dx)
+    weight_signal = 0.028 * abs(dx)
+
+    # Optional gentle curvature penalty to encourage smoothness already in DP
+    curve_weight = 0.010
+
+    inf = float("inf")
+    dp_prev = [inf] * M
+    parent = [[-1] * M for _ in range(N)]
+
+    # First point
+    mid_x = x_start + 0.5 * dx
+    for j in range(M):
+        yj = y_cands[0][j]
+        mid_y = 0.5 * (y_start + yj)
+
+        seg_cost = weight_dist * math.hypot(dx, yj - y_start)
+        d_school_sq = (mid_x - sx) ** 2 + (mid_y - sy) ** 2
+        noise_cost = weight_noise / (d_school_sq + 10.0)
+        signal_cost = weight_signal * math.hypot(mid_x - bx, mid_y - by)
+
+        # Keep DP near the guide but not too rigid
+        guide_cost = 0.002 * (yj - guide[0]) ** 2
+
+        dp_prev[j] = seg_cost + noise_cost + signal_cost + guide_cost
+
+    # Remaining points
+    for i in range(1, N):
+        curr = [inf] * M
+        mid_x = x_start + (i + 0.5) * dx
+
+        # Precompute midpoint environmental costs for all (k,j)
+        mid_env = [[0.0] * M for _ in range(M)]
+        for k in range(M):
+            yk = y_cands[i - 1][k]
+            row = mid_env[k]
+            for j in range(M):
+                yj = y_cands[i][j]
+                mid_y = 0.5 * (yk + yj)
+                d_school_sq = (mid_x - sx) ** 2 + (mid_y - sy) ** 2
+                noise_cost = weight_noise / (d_school_sq + 10.0)
+                signal_cost = weight_signal * math.hypot(mid_x - bx, mid_y - by)
+                row[j] = noise_cost + signal_cost
+
+        for j in range(M):
+            yj = y_cands[i][j]
+            best_cost = inf
+            best_k = -1
+
+            # Narrow transition window for efficiency and smoothness
+            k_lo = max(0, j - 10)
+            k_hi = min(M, j + 11)
+
+            for k in range(k_lo, k_hi):
+                yk = y_cands[i - 1][k]
+                c = dp_prev[k]
+                c += weight_dist * math.hypot(dx, yj - yk)
+                c += mid_env[k][j]
+                c += 0.002 * (yj - guide[i]) ** 2
+
+                # Gentle second-difference proxy using guide / start anchor
+                if i == 1:
+                    ykm1 = y_start
+                else:
+                    pk = parent[i - 1][k]
+                    ykm1 = y_cands[i - 2][pk] if pk >= 0 else guide[i - 2]
+                c += curve_weight * (yj - 2.0 * yk + ykm1) ** 2
+
+                if c < best_cost:
+                    best_cost = c
+                    best_k = k
+
+            curr[j] = best_cost
+            parent[i][j] = best_k
+
+        dp_prev = curr
+
+    # Terminal transition to end
+    end_mid_x = x_start + (N + 0.5) * dx
+    best_final = inf
+    best_idx = -1
+
+    for k in range(M):
+        yk = y_cands[N - 1][k]
+        mid_y = 0.5 * (yk + y_end)
+        seg_cost = weight_dist * math.hypot(dx, y_end - yk)
+        d_school_sq = (end_mid_x - sx) ** 2 + (mid_y - sy) ** 2
+        noise_cost = weight_noise / (d_school_sq + 10.0)
+        signal_cost = weight_signal * math.hypot(end_mid_x - bx, mid_y - by)
+        total = dp_prev[k] + seg_cost + noise_cost + signal_cost
+        if total < best_final:
+            best_final = total
+            best_idx = k
+
+    # Backtrack
+    path = [0.0] * N
+    idx = best_idx
+    for i in range(N - 1, -1, -1):
+        path[i] = float(y_cands[i][idx])
+        idx = parent[i][idx] if i > 0 else -1
+
+    # ------------------------------------------------------------------
+    # Stage 3: anchored smoothing + mild post base pull
+    # ------------------------------------------------------------------
+    y_coords = path
+    smooth_alpha = 0.30
+    anchor_alpha = 0.18
+
+    for _ in range(3):
+        new_y = [0.0] * N
+        for i in range(N):
+            left = y_start if i == 0 else y_coords[i - 1]
+            right = y_end if i == N - 1 else y_coords[i + 1]
+            avg_nb = 0.5 * (left + right)
+            new_y[i] = (
+                (1.0 - smooth_alpha - anchor_alpha) * y_coords[i]
+                + smooth_alpha * avg_nb
+                + anchor_alpha * guide[i]
+            )
+        y_coords = new_y
+
+    # Restore slight attraction toward the base in its x-neighborhood
+    post_base_pull = 0.12
+    for i, x in enumerate(xs):
+        wb = math.exp(-((x - bx) ** 2) / (2.0 * base_sigma ** 2))
+        y_coords[i] += post_base_pull * wb * (by - y_coords[i])
+
+    return [float(y) for y in y_coords]
+# EVOLVE-BLOCK-END
+
+import sys
+import os
+
+# 将当前目录加入系统路径以便导入同级文件
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from drone_evaluation import DroneGrader
+
+def run_experiment(**kwargs):
+    """供 Shinka 触发的单次实验方法"""
+    grader = DroneGrader()
+
+    # 捕获异常防止大模型写出死循环炸毁测评机
+    try:
+        avg_f1, avg_f2, avg_f3, final_score = grader.grade_silent(evolve_drone_path, timeout=12)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        avg_f1, avg_f2, avg_f3, final_score = float('inf'), float('inf'), float('inf'), float('inf')
+
+    return avg_f1, avg_f2, avg_f3, final_score
+```
+</CODE>

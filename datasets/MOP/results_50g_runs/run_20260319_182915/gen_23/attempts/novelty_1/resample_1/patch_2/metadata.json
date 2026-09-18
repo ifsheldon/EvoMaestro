@@ -1,0 +1,14 @@
+{
+  "generation": 23,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 2,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "super_gaussian_path_synthesis",
+  "patch_description": "This approach replaces the iterative physics-based simulation with a closed-form analytical synthesis. It models the drone path as a linear baseline modulated by a \"Super-Gaussian\" warping field.\n\nKey advantages:\n1. **Perfect Smoothness**: By using infinitely differentiable functions (Sine and Gaussian), we minimize the distance penalty (F1) far more effectively than iterative methods, which can introduce microscopic wiggles or local instabilities.\n2. **Signal Maximization (F3)**: It uses a Super-Gaussian (exponent 4) centered at the base station. This creates a flatter \"well\" than a standard Gaussian, allowing the drone to stay in the high-signal zone for a longer duration of its flight, significantly reducing signal drop.\n3. **Guaranteed Constraints**: The sine-envelope ensures that the path starts and ends exactly at the target coordinates while providing a smooth transition.\n4. **Efficiency**: The path is generated in a single O(N) pass, avoiding the computational overhead and potential convergence issues of multi-iteration gradient descent.\n5. **Multi-Objective Balance**: The warping naturally pushes the path away from the school (F2) while pulling it towards the base station (F3) in a single unified curve, as the school and base station are positioned such that a downward bend satisfies both objectives.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:37:57.920982",
+  "llm_cost": 0.005912499999999999,
+  "llm_model": null
+}

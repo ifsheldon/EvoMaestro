@@ -1,0 +1,122 @@
+<NAME>
+marginal_cost_routing
+</NAME>
+
+<DESCRIPTION>
+The previous implementation performed an expensive Dijkstra search for every source-server pair and used a simplified server score that ignored the non-linear impact of queueing. 
+
+My new algorithm, `marginal_cost_routing`, introduces these optimizations:
+1. **O(S) Path Precomputation**: Instead of $O(T \times S)$ path searches, it runs Dijkstra from each server node once ($O(S \times E \log N)$). Because the graph is undirected, $dist(server, source) = dist(source, server)$, drastically reducing computation time.
+2. **Marginal Total Cost Analysis**: For server assignment, it calculates the marginal increase in total system latency and energy. It uses an M/M/1 queueing model derivative ($\rho/(1-\rho)$) to account for how a new task affects the latency of all other tasks already assigned to that server.
+3. **Task-Load Ranking**: Heavy tasks (high arrival rate $\times$ high compute) are prioritized in the greedy assignment phase to ensures efficient resource utilization.
+4. **Energy-Aware Metrics**: It defines path weights and server scores using a weighted combination of transmission energy (payload-dependent) and dynamic compute power.
+</DESCRIPTION>
+
+<CODE>
+```python
+# EVOLVE-BLOCK-START
+def evolve_task_routing(
+    num_nodes,
+    edges,
+    server_nodes,
+    task_sources,
+    task_info,
+    server_info,
+):
+    import heapq
+
+    # Construct the graph once
+    graph = [[] for _ in range(num_nodes)]
+    for u, v, lat, en, cap in edges:
+        graph[u].append((v, lat, en))
+        graph[v].append((u, lat, en))
+
+    # To optimize, we run Dijkstra from all server_nodes instead of task_sources.
+    # We store the shortest paths discovered from each server node.
+    memo = {}
+    for s_node in server_nodes:
+        # Distance metric combines path latency and base energy cost
+        dists = [float('inf')] * num_nodes
+        parent = [-1] * num_nodes
+        p_lat = [0.0] * num_nodes
+        p_energy = [0.0] * num_nodes
+        
+        dists[s_node] = 0.0
+        pq = [(0.0, s_node)]
+        
+        while pq:
+            d, u = heapq.heappop(pq)
+            if d > dists[u]:
+                continue
+            for v, l, e in graph[u]:
+                # Combine latency and energy in shortest path choice
+                weight = l + 0.2 * e 
+                if dists[u] + weight < dists[v]:
+                    dists[v] = dists[u] + weight
+                    parent[v] = u
+                    p_lat[v] = p_lat[u] + l
+                    p_energy[v] = p_energy[u] + e
+                    heapq.heappush(pq, (dists[v], v))
+        memo[s_node] = (parent, p_lat, p_energy)
+
+    # State for load balancing
+    current_loads = {s: 0.0 for s in server_nodes}
+    plan = {}
+
+    # Sort tasks by their traffic pressure (arrival_rate * compute_demand)
+    # This helps fit larger tasks into the system first.
+    ranked_tasks = sorted(
+        task_sources, 
+        key=lambda s: task_info[s][0] * task_info[s][2], 
+        reverse=True
+    )
+
+    for src in ranked_tasks:
+        arr, pay, comp = task_info[src]
+        t_load = arr * comp # instructions per second
+        
+        best_server = None
+        min_marginal_cost = float('inf')
+        
+        for s in server_nodes:
+            srv_par, srv_plat, srv_pen = memo[s]
+            # Ensure connectivity
+            if srv_par[src] == -1 and src != s:
+                continue
+            
+            srv_mu, srv_idle, srv_dyn = server_info[s]
+            old_l = current_loads[s]
+            new_l = old_l + t_load
+            
+            # Use M/M/1 marginal delay increase based on utilization rho / (1-rho)
+            if new_l >= 0.99 * srv_mu:
+                score = 1e15 # Avoid system overload
+            else:
+                # System Latency: path_latency of this source flow + queueing of existing flows
+                # Expected number of tasks in system (Little's Law) is rho / (1 - rho)
+                m_lat = (new_l / (srv_mu - new_l)) - (old_l / (srv_mu - old_l))
+                flow_lat = arr * srv_plat[src]
+                
+                # Total marginal energy (Transmission + Dynamic Power)
+                m_energy = arr * (srv_pen[src] * pay) + srv_dyn * (t_load / srv_mu)
+                
+                # Consolidation incentive: include server idle power if turning on
+                if old_l == 0:
+                    m_energy += srv_idle
+                
+                # Combined Multi-objective score
+                score = (flow_lat + m_lat) + 0.5 * m_energy
+                
+            if score < min_marginal_cost:
+                min_marginal_cost = score
+                best_server = s
+                
+        # Assign best server and reconstruct path (Source -> ... -> Server)
+        if best_server is None:
+            # Fallback in case of disconnected graph
+            best_server = server_nodes[0]
+            path = [src, best_server]
+        else:
+            srv_par = memo[best_server][0]
+            path = []
+            curr = src

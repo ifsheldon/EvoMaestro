@@ -1,0 +1,14 @@
+{
+  "generation": 42,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "pareto_multi_tree_router",
+  "patch_description": "The new algorithm improves upon the initial implementation by using a more robust three-tree preprocessing strategy and explicit Pareto-style filtering for path candidates. Instead of a single shortest-path tree per server, it computes three distinct Dijkstra trees for each server based on diverse prioritizing weights: latency-focused, energy-focused, and a balanced metric. \n\nKey improvements:\n1. **Diverse Path Candidates**: For each source-server pair, it generates multiple candidate paths and filters them to retain only those that are non-dominated (Pareto-optimal) in terms of both network latency and energy consumption. This ensures the router explores a material tradeoff between the two primary objectives.\n2. **Total System Objective**: The greedy assignment and local refinement phases are guided by an exact calculation of the change in the total system objective function, which includes both the routing costs of the individual task and the system-wide queueing delay and server energy impacts.\n3. **Queueing Stability Management**: It uses a more accurate queueing latency model ($W_s / (\\mu_s - W_s)$) and strictly enforces a server load stability threshold (0.98 utilization).\n4. **Normalized Objective Weights**: It adaptively scales the weight coefficient (gamma) between latency and energy based on the graph's specific edge statistics, balancing the two scales regardless of the units used.",
+  "error_msg": "Could not extract code from patch string",
+  "timestamp": "2026-03-20T02:49:53.478640",
+  "llm_cost": 0.0056005,
+  "llm_model": null
+}

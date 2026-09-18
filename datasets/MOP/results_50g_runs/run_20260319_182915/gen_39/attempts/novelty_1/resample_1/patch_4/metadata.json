@@ -1,0 +1,14 @@
+{
+  "generation": 39,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 4,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "seed_expansion_and_gradient_polish",
+  "patch_description": "The previous highest-performing solutions married exact path energy gradients with an Adam-style optimizer, but were limited by starting their trajectory from a naive straight line. The current generation features a robust, broad search over shape parameters, but stops at a grid minimum and misses the pinpoint optimization.\n\nThis change elegantly merges the two approaches:\n1. It expands the initialization seed geometries by modifying the internal `build_path` builder directly. We inject asymmetric configurations (such as bumps starting slightly before or after the school position, as well as a \"bridge\" between the school and base station). This creates \"targeted basin coverage\" for paths curving smartly around the obstacles.\n2. After utilizing the surrogate model to select the best coarsely estimated seed string configuration, a 250-step exact active contour optimization (with standard Adam descent properties pushing on length, smoothness, repulsion, and attraction) is deployed directly on top of the deterministic seed constraint.\n\nThis avoids blind convergence while securing the tightest possible score margins on effectively matching all objectives together (Distance F1, Proximity Noise F2, and Target Signal F3).",
+  "error_msg": "No changes applied",
+  "timestamp": "2026-03-20T02:50:37.936352",
+  "llm_cost": 0.026476,
+  "llm_model": null
+}

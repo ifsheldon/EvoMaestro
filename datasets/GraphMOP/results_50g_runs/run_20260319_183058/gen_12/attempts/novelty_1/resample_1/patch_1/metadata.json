@@ -1,0 +1,14 @@
+{
+  "generation": 12,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "exact_delta_multistart_search",
+  "patch_description": "This algorithm improves upon the previous approaches by introducing an exact O(1) delta-cost evaluation for moving a task between servers. Instead of recomputing the entire system cost (which is O(N)), we mathematically isolate the change in total system latency and energy caused by a single task reassignment. This allows the local search to be orders of magnitude faster, enabling us to search over the entire Pareto front of paths for *all* servers.\n\nKey insights:\n1. **Exact Delta Evaluation**: The change in total system latency and energy when moving a task can be computed in O(1) time by only looking at the old and new servers' load and user counts.\n2. **Continuous Penalty Function**: We replace hard capacity cutoffs with a smooth, differentiable Taylor expansion penalty for queue delay near the server's capacity limit. This prevents the local search from getting stuck in disconnected feasible regions.\n3. **Multi-Start Trade-off Search**: Because the local search is now extremely fast, we run it multiple times from the initial greedy assignment using different scalarization weights (`alpha` ranging from 0.0 to 5.0). This generates a Pareto front of complete routing plans, from which we select the one that minimizes the balanced overall score.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:39:14.232997",
+  "llm_cost": 0.082942,
+  "llm_model": null
+}

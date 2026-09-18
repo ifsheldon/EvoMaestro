@@ -1,0 +1,14 @@
+{
+  "generation": 41,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 2,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "quadrature_surrogate_search",
+  "patch_description": "The improved program adopts a strategy of generating multiple candidate paths using a Gaussian potential field and selecting the best one based on a more rigorous surrogate scoring method. \n\n1. **High-Fidelity Scoring**: Instead of evaluating metrics only at vertices, it uses a three-point quadrature (sampling at 1/4, 1/2, and 3/4 of each segment). This better approximates the continuous integrals of school noise (F2) and signal loss (F3), catching cases where a segment might graze a penalty zone between nodes.\n2. **Deterministic Grid Search**: It searches over a grid of parameters for the Gaussian repulsion (school_amp, school_sigma) and attraction (base_pull, base_sigma). This allows the path to adapt to different geometric configurations of start, end, school, and base.\n3. **Optimized Potential Field**: The path is constructed as a baseline straight line modified by a repulsion offset from the school and an attraction pull towards the base station's Y-coordinate, weighted by distance-based Gaussian kernels.\n4. **Enhanced Laplacian Smoothing**: Two passes of alpha-smoothing are applied to the final result to minimize the distance penalty (F1) and ensure a natural, flyable trajectory.",
+  "error_msg": null,
+  "timestamp": "2026-03-19T16:13:52.362955",
+  "llm_cost": 0.009358,
+  "llm_model": null
+}

@@ -1,0 +1,14 @@
+{
+  "generation": 1,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "potential_field_gaussian_deformation",
+  "patch_description": "The proposed algorithm employs a **Potential Field with Gaussian Deformation** approach. Instead of a simple linear interpolation or a rigid geometric fix, this method treats the problem as a physical system where features in the environment exert \"forces\" on the path.\n\n1.  **Baseline Path:** It starts with a standard linear trajectory to maintain horizontal efficiency.\n2.  **Attraction (F3 - Signal Drop):** The base station (70, -30) acts as an attractor. A Gaussian kernel centered at the base station's X-coordinate pulls the path vertically towards the base station's Y-coordinate. This significantly reduces the signal drop penalty (F3) which was the primary cost driver.\n3.  **Repulsion (F2 - School Noise):** The school (40, 20) acts as a repulsor. A separate Gaussian kernel pushes the path vertically away from the school. This minimizes noise proximity (F2).\n4.  **Gaussian Continuity:** Using Gaussian functions ensures that path modifications are localized and infinitely differentiable (C-infinity continuous). This results in a smooth curve that adds very little total distance (F1) compared to sharp turns or piecewise linear corrections.\n\nBy balancing these fields, the algorithm creates a path that \"bends\" intuitively towards the signal and away from the noise, optimizing all three objectives simultaneously through a sum of localized kernel influences.",
+  "error_msg": "Could not extract code from patch string",
+  "timestamp": "2026-03-19T16:02:40.762382",
+  "llm_cost": 0.003569,
+  "llm_model": null
+}

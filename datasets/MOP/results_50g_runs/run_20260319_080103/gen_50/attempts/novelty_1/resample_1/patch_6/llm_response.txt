@@ -1,0 +1,104 @@
+<NAME>
+analytical_dual_gaussian_projection
+</NAME>
+
+<DESCRIPTION>
+The `analytical_dual_gaussian_projection` algorithm replaces the iterative gradient descent with a direct, two-stage geometric construction. 
+
+1. **Broad Signal Alignment (F3)**: It first calculates a Gaussian "pull" toward the base station. By determining the exact amplitude required to shift the linear baseline to the base station's y-coordinate at its x-location, it minimizes the signal drop penalty (F3) far more effectively than iterative methods.
+2. **Adaptive Clearance-Aware Repulsion (F2)**: Following the project recommendations, it performs a two-stage calculation. It estimates the path's position at the school's x-coordinate *after* applying the base pull, then calculates an adaptive repulsion amplitude based on the remaining clearance. This ensures that the school-push is only as strong as necessary (within the optimized range of 32.0 to 52.0), balancing noise reduction with distance efficiency.
+3. **Harmonic Endpoint Smoothing (F1)**: To ensure perfect adherence to endpoints and C-infinity smoothness, the Gaussian displacements are modulated by a sinusoidal taper function. This creates a natural, aerodynamic curve that minimizes the total flying distance (F1) while ensuring the path returns exactly to the start and end coordinates.
+</DESCRIPTION>
+
+<CODE>
+# EVOLVE-BLOCK-START
+import math
+
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    Synthesizes an optimized drone path using direct analytical Gaussian projection.
+    
+    Objectives:
+    - F1: Minimize distance (via analytical smoothness and sine tapering)
+    - F2: Minimize school noise (via adaptive repulsion based on post-base-pull clearance)
+    - F3: Minimize signal drop (via prioritized base-station attraction)
+    """
+    if num_points <= 0:
+        return []
+
+    x0, y0 = start
+    x1, y1 = end
+    sx, sy = school
+    bx, by = base
+
+    # Longitudinal span and basic safety checks
+    dx_total = x1 - x0
+    safe_dx = max(1e-9, abs(dx_total))
+    
+    # Handle vertical or near-vertical paths
+    if abs(dx_total) < 1e-9:
+        return [float(y0 + (y1 - y0) * i / (num_points + 1.0)) for i in range(1, num_points + 1)]
+
+    # Boundary constraints for path clamping
+    y_low = min(y0, y1, sy, by) - 120.0
+    y_high = max(y0, y1, sy, by) + 120.0
+
+    # 1. Base Attraction Calculation (Prioritizing F3)
+    # Target pull: adjust path height at bx to be close to by
+    sigma_base = 0.46 * safe_dx
+    t_bx = (bx - x0) / dx_total
+    # Clamp taper to avoid division by zero near endpoints
+    t_bx_clamped = max(0.05, min(0.95, t_bx))
+    taper_bx_clamped = math.sin(math.pi * t_bx_clamped)
+    
+    y_lin_bx = y0 + (y1 - y0) * t_bx
+    # Determine the amplitude needed to bridge the gap to 'by'
+    # 0.97 factor balances signal strength with path distance
+    amp_base = ((by - y_lin_bx) / taper_bx_clamped) * 0.97
+
+    # 2. Adaptive School Push Calculation (Prioritizing F2)
+    sigma_school = 0.16 * safe_dx
+    t_sx = (sx - x0) / dx_total
+    taper_sx = math.sin(math.pi * max(0.0, min(1.0, t_sx)))
+    
+    # Estimate path height at school including the base pull influence
+    gauss_base_at_sx = math.exp(-0.5 * ((sx - bx) / sigma_base)**2)
+    y_lin_sx = y0 + (y1 - y0) * t_sx
+    y_est_at_sx = y_lin_sx + (amp_base * gauss_base_at_sx) * taper_sx
+    
+    # Clearance from school
+    clearance = abs(y_est_at_sx - sy)
+    
+    # Adaptive formula: amp = min(52, max(32, a + b / (clearance + c)))
+    # Parameters tuned to prioritize noise clearance while respecting distance
+    push_mag = min(52.0, max(32.0, 31.0 + 126.0 / (clearance + 6.0)))
+    dir_school = -1.0 if (y_est_at_sx < sy) else 1.0
+    amp_school = dir_school * push_mag
+
+    # 3. Final Path Construction
+    ys_output = []
+    for i in range(1, num_points + 1):
+        # Sample x-coordinate
+        x = x0 + (i * dx_total) / (num_points + 1.0)
+        t = (x - x0) / dx_total
+        t_clamped = max(0.0, min(1.0, t))
+        
+        # Linear component
+        y_lin = y0 + (y1 - y0) * t_clamped
+        
+        # Gaussian field components
+        offset_base = amp_base * math.exp(-0.5 * ((x - bx) / sigma_base)**2)
+        offset_school = amp_school * math.exp(-0.5 * ((x - sx) / sigma_school)**2)
+        
+        # Sine taper smooths deformation to 0 at endpoints (x0, y0) and (x1, y1)
+        taper = math.sin(math.pi * t_clamped)
+        
+        y_final = y_lin + (offset_base + offset_school) * taper
+        
+        # Clamp and append
+        y_final = max(y_low, min(y_high, y_final))
+        ys_output.append(float(y_final))
+
+    return ys_output
+# EVOLVE-BLOCK-END
+</CODE>

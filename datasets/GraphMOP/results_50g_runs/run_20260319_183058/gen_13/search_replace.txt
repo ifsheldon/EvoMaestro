@@ -1,0 +1,231 @@
+<NAME>
+alt_paths_and_marginal_energy
+</NAME>
+
+<DESCRIPTION>
+This edit targets the main remaining weakness: each source-server pair currently relies only on three fixed server-rooted shortest-path trees, which limits path diversity. The prior recommendation suggests adding a small number of nearby non-tree alternatives, and that is exactly what this change does in a lightweight way.
+
+The update introduces a single additional path variant per promising source-server pair using a shortest-path search that penalizes edges from the already selected base path. This tends to produce a nearby alternative with similar feasibility but sometimes better latency/energy tradeoff under the true objective. Because there are only a few servers, this remains computationally manageable.
+
+The second refinement improves scoring fidelity: instead of charging the full server compute energy after assignment, it uses the marginal compute-energy increase caused by assigning the current task to that server. This better matches incremental decision-making in greedy/local-search assignment and helps avoid over-penalizing already-active servers, which often improves both latency and total energy together.
+
+Overall, this is a targeted change: preserve the strong server-precomputation structure, enrich candidate diversity with one extra path where it matters, and make assignment scoring better aligned with the actual system objective.
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+    def path_metrics(path, payload):
+        # Transmission latency + routing energy approximations.
+        # Mildly capacity-aware, robust across varying scales.
+        if not path or len(path) == 1:
+            return 0.0, 0.0
+        tlat = 0.0
+        teng = 0.0
+        for i in range(len(path) - 1):
+            u, v = path[i], path[i + 1]
+            key = (u, v) if u < v else (v, u)
+            lat, ene, cap = edge_attr[key]
+            ratio = payload / (cap + 1e-9)
+            tlat += lat + 0.05 * ratio
+            teng += ene * (1.0 + 0.02 * ratio)
+        return tlat, teng
+
+    def queue_delay(load, service_rate, compute_demand):
+=======
+    def path_metrics(path, payload):
+        # Transmission latency + routing energy approximations.
+        # Mildly capacity-aware, robust across varying scales.
+        if not path or len(path) == 1:
+            return 0.0, 0.0
+        tlat = 0.0
+        teng = 0.0
+        for i in range(len(path) - 1):
+            u, v = path[i], path[i + 1]
+            key = (u, v) if u < v else (v, u)
+            lat, ene, cap = edge_attr[key]
+            ratio = payload / (cap + 1e-9)
+            tlat += lat + 0.05 * ratio
+            teng += ene * (1.0 + 0.02 * ratio)
+        return tlat, teng
+
+    def alternative_path_with_penalty(source, target, payload, base_path):
+        # One nearby non-tree alternative by penalizing edges from the base path.
+        if source == target:
+            return [source]
+        penalized = set()
+        for i in range(len(base_path) - 1):
+            a, b = base_path[i], base_path[i + 1]
+            penalized.add((a, b) if a < b else (b, a))
+
+        dist = [float("inf")] * num_nodes
+        parent = [-1] * num_nodes
+        dist[source] = 0.0
+        heap = [(0.0, source)]
+
+        while heap:
+            d, u = heapq.heappop(heap)
+            if d != dist[u]:
+                continue
+            if u == target:
+                break
+            for v, lat, ene, cap in graph[u]:
+                key = (u, v) if u < v else (v, u)
+                ratio = payload / (cap + 1e-9)
+                w = lat + 0.22 * ene + 0.03 * ratio
+                if key in penalized:
+                    w += 0.35 + 0.10 * lat + 0.05 * ene
+                nd = d + w
+                if nd < dist[v]:
+                    dist[v] = nd
+                    parent[v] = u
+                    heapq.heappush(heap, (nd, v))
+
+        if parent[target] == -1:
+            return []
+
+        path = [target]
+        cur = target
+        seen = {target}
+        while cur != source:
+            cur = parent[cur]
+            if cur == -1 or cur in seen:
+                return []
+            path.append(cur)
+            seen.add(cur)
+        path.reverse()
+        return path
+
+    def queue_delay(load, service_rate, compute_demand):
+>>>>>>> REPLACE
+</DIFF>
+
+<DIFF>
+<<<<<<< SEARCH
+    def compute_energy(load, service_rate, idle_power, dynamic_power):
+        if service_rate <= 1e-12:
+            return 1e9
+        util = min(1.0, max(0.0, load / service_rate))
+        return 0.02 * idle_power + dynamic_power * (util ** 1.15)
+
+    # ---------- Build candidate path sets ----------
+    candidates = {}
+    for src in task_sources:
+        payload = task_info[src][1]
+        per_server = {}
+        for s in server_nodes:
+            server_cands = []
+            trees = server_trees[s]
+            # up to 3 candidates from the 3 precomputed trees
+            for mode in (0, 1, 2):
+                _, parent = trees[mode]
+                p = reconstruct_path_from_server_tree(src, s, parent)
+                if not p:
+                    continue
+                lat, ene = path_metrics(p, payload)
+                server_cands.append((lat, ene, p))
+            # Deduplicate by path signature
+            if server_cands:
+                uniq = {}
+                for lat, ene, p in server_cands:
+                    key = tuple(p)
+                    cur = uniq.get(key)
+                    if cur is None or (lat + 0.5 * ene) < (cur[0] + 0.5 * cur[1]):
+                        uniq[key] = (lat, ene, p)
+                per_server[s] = list(uniq.values())
+        candidates[src] = per_server
+=======
+    def compute_energy(load, service_rate, idle_power, dynamic_power):
+        if service_rate <= 1e-12:
+            return 1e9
+        util = min(1.0, max(0.0, load / service_rate))
+        return 0.02 * idle_power + dynamic_power * (util ** 1.15)
+
+    # ---------- Build candidate path sets ----------
+    candidates = {}
+    for src in task_sources:
+        payload = task_info[src][1]
+        per_server = {}
+        for s in server_nodes:
+            server_cands = []
+            trees = server_trees[s]
+            # up to 3 candidates from the 3 precomputed trees
+            for mode in (0, 1, 2):
+                _, parent = trees[mode]
+                p = reconstruct_path_from_server_tree(src, s, parent)
+                if not p:
+                    continue
+                lat, ene = path_metrics(p, payload)
+                server_cands.append((lat, ene, p))
+
+            # Add one nearby non-tree alternative for the best current candidate.
+            if server_cands:
+                server_cands.sort(key=lambda x: x[0] + 0.45 * x[1] + 0.02 * (len(x[2]) - 1))
+                alt = alternative_path_with_penalty(src, s, payload, server_cands[0][2])
+                if alt and tuple(alt) != tuple(server_cands[0][2]):
+                    lat, ene = path_metrics(alt, payload)
+                    server_cands.append((lat, ene, alt))
+
+            # Deduplicate by path signature
+            if server_cands:
+                uniq = {}
+                for lat, ene, p in server_cands:
+                    key = tuple(p)
+                    cur = uniq.get(key)
+                    if cur is None or (lat + 0.5 * ene) < (cur[0] + 0.5 * cur[1]):
+                        uniq[key] = (lat, ene, p)
+                # Keep only a small elite set per source-server pair.
+                kept = list(uniq.values())
+                kept.sort(key=lambda x: x[0] + 0.55 * x[1] + 0.02 * (len(x[2]) - 1))
+                per_server[s] = kept[:4]
+        candidates[src] = per_server
+>>>>>>> REPLACE
+</DIFF>
+
+<DIFF>
+<<<<<<< SEARCH
+            service_rate, idle_power, dynamic_power = server_info[s]
+            new_load = projected_load[s] + demand
+            # soft overload filter
+            if new_load >= 0.985 * service_rate:
+                continue
+
+            qd = queue_delay(new_load, service_rate, comp)
+            ce = compute_energy(new_load, service_rate, idle_power, dynamic_power)
+
+            for lat, ene, p in cands:
+                # small hop penalty to avoid unnecessarily long paths
+                hop_pen = 0.03 * (len(p) - 1)
+                score = W_LAT * (lat + qd + hop_pen) + W_ENE * (ene + ce)
+
+                # tiny stickiness bonus in local refinement to reduce churn
+                if current_server is not None and s == current_server:
+                    score *= 0.998
+
+                if best is None or score < best[0]:
+                    best = (score, s, p)
+=======
+            service_rate, idle_power, dynamic_power = server_info[s]
+            old_load = projected_load[s]
+            new_load = old_load + demand
+            # soft overload filter
+            if new_load >= 0.985 * service_rate:
+                continue
+
+            qd = queue_delay(new_load, service_rate, comp)
+            ce_before = compute_energy(old_load, service_rate, idle_power, dynamic_power)
+            ce_after = compute_energy(new_load, service_rate, idle_power, dynamic_power)
+            ce = ce_after - ce_before
+
+            for lat, ene, p in cands:
+                # small hop penalty to avoid unnecessarily long paths
+                hop_pen = 0.03 * (len(p) - 1)
+                score = W_LAT * (lat + qd + hop_pen) + W_ENE * (ene + ce)
+
+                # tiny stickiness bonus in local refinement to reduce churn
+                if current_server is not None and s == current_server:
+                    score *= 0.998
+
+                if best is None or score < best[0]:
+                    best = (score, s, p)
+>>>>>>> REPLACE
+</DIFF>

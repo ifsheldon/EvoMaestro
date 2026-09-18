@@ -1,0 +1,14 @@
+{
+  "generation": 4,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 2,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "marginal_cost_routing_optimization",
+  "patch_description": "This update introduces a more theoretically grounded approach to task routing and server selection:\n1.  **Dynamic Dijkstra Weighting**: The pathfinding now uses a combined weight of `base_latency + payload_size * energy_cost`, directly minimizing the transmission latency and routing energy for each specific task.\n2.  **Marginal Cost Server Selection**: Instead of a heuristic score, we calculate the marginal increase in total system latency and energy. This includes:\n    *   **Transmission Latency & Routing Energy**: From the optimal path found by Dijkstra.\n    *   **Marginal Queueing Delay**: Using an M/M/1 queueing model to estimate how adding load to a server affects the delay of all tasks at that server.\n    *   **Marginal Compute Energy**: The additional dynamic power consumed by the server to process the task.\n3.  **Improved Robustness**: The server selection includes a softer capacity limit (98%) and a fallback mechanism to ensure tasks are always assigned to a reachable server if possible.\n4.  **Task Prioritization**: Tasks are processed in order of their load impact, improving the efficiency of the greedy assignment.",
+  "error_msg": "No changes applied",
+  "timestamp": "2026-03-20T02:33:50.997016",
+  "llm_cost": 0.0032310000000000004,
+  "llm_model": null
+}

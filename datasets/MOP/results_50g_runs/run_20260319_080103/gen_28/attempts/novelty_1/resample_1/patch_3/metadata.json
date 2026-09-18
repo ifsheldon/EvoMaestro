@@ -1,0 +1,14 @@
+{
+  "generation": 28,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 3,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "pinned_gaussian_spline",
+  "patch_description": "The new algorithm uses a **Pinned Gaussian Basis Function** approach. Instead of iteratively applying forces, it treats the path as a linear baseline plus a smooth displacement function. This displacement is constructed from Gaussian kernels that are \"pinned\" (forced to zero) at the start and end points to ensure the path strictly adheres to the boundary conditions. \n\nKey advantages:\n1. **F3 Optimization**: It calculates the exact amplitude needed for the Gaussian to pass directly through the base station's Y-coordinate at its X-coordinate, minimizing signal loss.\n2. **F2 Optimization**: It checks if the base-attraction path gets too close to the school. If so, it solves a 2x2 system of linear equations to find the amplitudes for two Gaussians (one for the base, one for the school) that simultaneously hit the base station and maintain a safe buffer from the school.\n3. **F1 Optimization**: By using broad Gaussian kernels ($\\sigma = 0.25 \\times \\text{span}$), the resulting curve is mathematically smooth ($C^\\infty$), avoiding the wiggles or sharp turns that increase path length.",
+  "error_msg": "Could not extract code from patch string",
+  "timestamp": "2026-03-19T16:11:53.424397",
+  "llm_cost": 0.0047715,
+  "llm_model": null
+}

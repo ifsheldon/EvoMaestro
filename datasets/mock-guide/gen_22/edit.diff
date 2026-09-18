@@ -1,0 +1,17 @@
+--- a/original.py
++++ b/original.py
+@@ -1,12 +1,12 @@
+ # EVOLVE-BLOCK-START
+ import random
+ 
+ def compute(seed: int = 42) -> float:
+     random.seed(seed)
+-    x = sum(random.gauss(0, 1) for _ in range(18))
+-    return abs(x) * 1.37
++    x = sum(random.gauss(0, 1) for _ in range(31))
++    return abs(x) * 0.57
+ 
+ def run_experiment(seed: int = 1) -> float:
+     return compute(seed)
+ 
+ # EVOLVE-BLOCK-END

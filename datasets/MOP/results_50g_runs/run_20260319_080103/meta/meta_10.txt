@@ -1,0 +1,142 @@
+# INDIVIDUAL PROGRAM SUMMARIES
+
+The following are summaries of individual programs evaluated since the last meta update:
+
+**Program Name: Straight-Line Y Interpolation**
+- **Implementation**: The function extracts the start/end coordinates and generates `num_points` intermediate Y-values by uniform linear interpolation between `y_start` and `y_end`. It ignores the `school` and `base` inputs entirely, producing a simple straight-line path with evenly spaced vertical increments.
+- **Performance**: It passed validation and achieved a MOP Multiplier Score of 96.23 (reported as maximization score -96.23), with F1 = 1.00, F2 = 2.23, and F3 = 43.20.
+- **Feedback**: The naive straight-line design keeps distance cost very low, which explains the strong F1 result, but it does not optimize around school noise or signal-loss objectives. Evaluation feedback indicates the score is correct but should be reduced further, suggesting a more adaptive path heuristic is needed.
+**Program Identifier:** Generation 0 - Patch Name initial_program - Correct Program: True
+
+**Program Name: Gaussian-Biased Baseline Drone Path**
+- **Implementation**: Builds a straight-line Y baseline between start and end, then adjusts uniformly sampled intermediate Y values using two Gaussian-shaped biases: a local repulsion from the school and a broader attraction toward the base. The method chooses bias direction from each point’s position relative to the baseline, clamps total deviation to ±24, handles near-vertical X spans with simple Y interpolation, and slightly prioritizes school avoidance when both effects push in the same direction.
+- **Performance**: Passed validation and achieved a MOP score of 44.39 (combined maximize target = -44.39), with F1 = 1.10, F2 = 1.10, and F3 = 36.84.
+- **Feedback**: The smooth Gaussian perturbation keeps path length and school-noise objectives strong, as shown by low F1/F2, but signal-loss performance is much weaker and dominates the total score. Evaluation suggests further lowering the score mainly by improving how effectively the path approaches or aligns with the base without overly increasing distance or school exposure.
+**Program Identifier:** Generation 2 - Patch Name smooth_biased_path - Correct Program: True
+
+**Program Name: Gaussian Potential Smoothed Path**
+- **Implementation**: Uses uniformly sampled x-coordinates and computes each intermediate y-value from a straight-line baseline plus a Gaussian repulsion from the school and a Gaussian attraction toward the base. It then applies two rounds of lightweight neighbor-based smoothing to reduce zigzagging and keep the path continuous and relatively short.
+- **Performance**: The program passed validation and achieved a combined MOP score of 30.21 (reported as maximization score -30.21), with F1=1.16, F2=0.75, and F3=34.68.
+- **Feedback**: The conservative heuristic appears to control distance and school-noise reasonably well, but signal-loss performance is much weaker, as reflected by the high F3 value dominating the total score. Evaluation feedback indicates the solution is correct but should further reduce the overall MOP score, likely by improving how strongly or effectively the path leverages proximity to the base without overly increasing route length or noise.
+**Program Identifier:** Generation 4 - Patch Name potential_field_smooth_curve - Correct Program: True
+
+**Program Name: Potential-Field Gradient Drone Path**
+- **Implementation**: Uses a continuous-space path optimizer that parameterizes the route by uniformly sampled x positions and optimizes only internal y coordinates. It initializes with a straight line plus Gaussian bumps to push away from the school and pull toward the base, then applies iterative gradient descent over a weighted objective combining path length, school repulsion, base attraction, and curvature smoothing, with fixed endpoints, decaying step size, and y-value clipping.
+- **Performance**: Passed validation and achieved combined MOP score 50.19 (reported for maximization as -50.19), with F1 = 1.07, F2 = 1.29, and F3 = 36.50.
+- **Feedback**: The implementation keeps distance and school-noise metrics relatively low, suggesting the length and school-avoidance terms are effective. However, signal-loss F3 remains much larger than the other components, indicating the current base-attraction weighting or initialization likely under-optimizes proximity to the base and leaves room to lower the overall score.
+**Program Identifier:** Generation 5 - Patch Name potential_spline_optimizer - Correct Program: True
+
+**Program Name: Catmull-Rom Anchor Drone Planner**
+- **Implementation**: Builds a context from start/end/school/base geometry, then generates candidate paths from hand-crafted anchor points that dip below the school, move toward the base, and recover toward the endpoint using monotonic-in-x Catmull-Rom interpolation plus iterative fairing smoothing. It evaluates a small grid search over dodge depth, base attraction, and recovery gain with a surrogate objective combining path length, school proximity penalty, and base-distance penalty, returning the best interior y-values.
+- **Performance**: Passed validation tests and achieved combined MOP score 82.31 (reported as maximization score -82.31), with F1 = 1.30, F2 = 1.70, and F3 = 37.45.
+- **Feedback**: The approach is stable and correct, but the score should be lowered further, with signal loss/base-related performance (F3) appearing to be the main bottleneck despite reasonable distance and school-noise tradeoffs. The evaluator specifically suggests further optimization beyond the current surrogate-weighted local grid search.
+**Program Identifier:** Generation 8 - Patch Name anchor_spline_search - Correct Program: True
+
+**Program Name: Gaussian Potential Field Drone Path**
+- **Implementation**: The program generates intermediate path y-coordinates by starting from a linear interpolation between start and end, then adding two Gaussian-shaped vertical adjustments: an attractive pull toward the base station and a repulsive push away from the school. It uses fixed hyperparameters (`sigma_base=32.0`, `k_base=0.94`, `sigma_school=18.0`, `k_school=14.0`) and bases both effects only on horizontal distance from the obstacle/target.
+- **Performance**: It passed validation and achieved a combined MOP score of 29.85 (reported to maximization as -29.85), with F1=1.28, F2=0.74, and F3=31.35.
+- **Feedback**: The approach appears effective at keeping distance and school-noise penalties relatively low, but signal-loss cost (F3) remains the dominant weakness. Evaluation feedback explicitly recommends lowering the total score further, suggesting the current Gaussian balance and fixed parameter choices are not yet optimal.
+**Program Identifier:** Generation 1 - Patch Name gaussian_potential_field_optimization - Correct Program: True
+
+**Program Name: Gaussian-Sinusoidal Drone Path Deformation**
+- **Implementation**: The function generates intermediate y-coordinates along a linear start-to-end path, then applies two x-localized Gaussian deformations: a fixed-magnitude vertical repulsion from the school and a proportional vertical attraction toward the base station. These offsets are multiplied by a sinusoidal envelope `sin(pi*t)` so deviations smoothly vanish at the endpoints, producing a continuous bent polyline without altering x positions.
+- **Performance**: It passed all validation tests and achieved a combined MOP score of about 45.00 (reported as maximized score -44.9987), with F1=1.14, F2=1.11, and F3=35.43.
+- **Feedback**: The implementation balances distance and school-noise objectives well, as seen in the low F1 and F2 values, but signal-loss F3 dominates the total score and limits overall quality. Evaluation explicitly indicates the solution is correct yet should be improved by lowering the total score further, likely through better base-station alignment or reweighting of the deformation terms.
+**Program Identifier:** Generation 3 - Patch Name gaussian_kernel_displacement_mapping - Correct Program: True
+
+**Program Name: Modifier-Based Drone Path Shaping**
+- **Implementation**: The program builds a straight-line path between start and end, then sequentially adjusts each intermediate y-coordinate using two modular components: a Gaussian-style school avoidance push and a Gaussian-style base attraction pull. A cubic window function is applied afterward so modifications taper to zero near the endpoints, keeping the path anchored while allowing stronger deviation in the middle.
+- **Performance**: It passed validation and achieved a combined MOP multiplier score of 50.41 (reported to maximize as -50.41), with F1 = 1.26, F2 = 1.22, and F3 = 32.71.
+- **Feedback**: The architecture is correct and stable, but the overall score is still relatively high and should be reduced further. The main weakness appears to be F3 signal loss dominating the objective, suggesting the current avoidance/attraction strengths, widths, or modifier ordering may not balance the trade-offs optimally.
+**Program Identifier:** Generation 6 - Patch Name modifier_pipeline_path_generator - Correct Program: True
+
+**Program Name: Guided Curve with Anchored Smoothing**
+- **Implementation**: Builds intermediate drone path points with a two-stage heuristic: first creates a guide curve by blending the straight-line path with Gaussian repulsion from the school and attraction toward the base, then applies 40 iterations of Laplacian-style smoothing while anchoring points back toward the guide. The method uses fixed gains, safety clearance, x-span-based influence radii, directional repulsion chosen by the base’s side relative to the school, and deviation clipping to control excessive path length.
+- **Performance**: The program passed validation and achieved a combined MOP multiplier score of 32.10 (reported as maximized score -32.10), with F1 = 1.13, F2 = 0.83, and F3 = 34.48.
+- **Feedback**: This implementation keeps distance and school-noise metrics relatively low, showing the guide-plus-smoothing design is effective for path regularity and school avoidance. The main weakness is high signal-loss cost (F3), so further improvement likely requires stronger or better-targeted attraction toward the base without increasing path length or school exposure too much.
+**Program Identifier:** Generation 9 - Patch Name guided_smooth_multiobjective_path - Correct Program: True
+
+**Program Name: Gaussian Polyline Path Optimizer**
+- **Implementation**: Builds a straight-line baseline between start and end, then deforms the y-values of uniformly spaced interior x-points using a Gaussian school-repulsion term and a Gaussian base-attraction term with direction chosen relative to the baseline. It performs a small deterministic grid search over weights, sigmas, and ramp power, evaluates candidates with a surrogate objective combining path length, school proximity, base proximity, and curvature, then applies Laplacian smoothing and clamps extreme y-values.
+- **Performance**: Passed validation and achieved combined MOP score 34.02 (reported as maximized score -34.02), with F1 = 1.17, F2 = 0.87, and F3 = 33.30.
+- **Feedback**: The approach is stable, deterministic, and well-balanced for avoiding the school while maintaining reasonable path smoothness and distance, but the final score is still improvable. The main opportunity appears to be lowering the overall MOP score further, especially by improving the tradeoff around signal-loss/base proximity without hurting the other objectives too much.
+**Program Identifier:** Generation 11 - Patch Name smooth_repulse_attract_path - Correct Program: True
+
+# GLOBAL INSIGHTS SCRATCHPAD
+
+The following are global insights about optimization approaches and their effectiveness:
+
+## Successful Algorithmic Patterns
+- **The new best result comes from the simplest successful pattern: direct Gaussian y-perturbation of a straight-line path with no extra smoothing or search.**  
+  The current best program, **Gaussian Potential Field Drone Path**, now leads with **29.85** (**F1=1.28, F2=0.74, F3=31.35**), improving on the previous best **Gaussian Potential Smoothed Path** at **30.21**. Its winning structure is: linear baseline `y_linear`, a **broad Gaussian base-attraction** term `influence_base * (y_base - y_linear) * k_base`, and a **localized fixed-amplitude school repulsion** term `influence_school * direction * k_school`. This confirms that the most effective family remains **conservative potential-field shaping on top of uniform x-sampling**.
+
+- **Localized Gaussian school avoidance continues to be one of the highest-value mechanisms for lowering F2 while keeping F1 controlled.**  
+  The current best achieves the strongest school-noise result in the competitive set at **F2=0.74**, slightly better than the prior best smoothed Gaussian approach (**F2=0.75**) and clearly better than other correct methods like **Guided Curve with Anchored Smoothing** (**F2=0.83**, score **32.10**) and **Gaussian Polyline Path Optimizer** (**F2=0.87**, score **34.02**). This reinforces the earlier pattern that **smooth, x-localized Gaussian repulsion centered near the school** consistently improves school-noise performance.
+
+- **Broad but moderate base attraction helps reduce the dominant F3 term when kept geometrically simple.**  
+  The current best lowers **F3 to 31.35**, outperforming the prior best smoothed Gaussian program (**34.68**) and also beating **Guided Curve with Anchored Smoothing** (**34.48**), **Gaussian Polyline Path Optimizer** (**33.30**), and **Modifier-Based Drone Path Shaping** (**32.71**). The specific successful change is that base attraction is implemented as a **proportional pull toward `y_base`**, scaled by a **wide Gaussian in x** (`sigma_base=32.0`) rather than through iterative optimization or heavy guide-curve machinery.
+
+- **Low-complexity path generation continues to outperform more elaborate constructions.**  
+  Several more complex but correct methods scored worse than the current best: **Gaussian-Sinusoidal Drone Path Deformation** scored **45.00**, **Modifier-Based Drone Path Shaping** scored **50.41**, and the earlier **Potential-Field Gradient Drone Path** scored **50.19**. The evidence now strengthens the prior global insight that **simple Gaussian deformation aligned to the real geometry of school/base is more effective than added envelopes, staged modifiers, or optimizer loops**.
+
+## Ineffective Approaches
+- **Adding extra shaping envelopes that force deviations to vanish can preserve continuity but weaken useful base alignment.**  
+  **Gaussian-Sinusoidal Drone Path Deformation** used the same general idea of Gaussian repulsion/attraction, but multiplied offsets by `sin(pi*t)` so they vanish at endpoints; it scored a much worse **45.00** with **F3=35.43**. Despite decent **F1=1.14** and **F2=1.11**, the evaluator feedback again pointed to signal loss dominating. Compared with the current best, this suggests the sinusoidal envelope likely suppressed beneficial base-directed deformation too aggressively.
+
+- **Modifier pipelines and staged post-processing did not translate into better multi-objective tradeoffs.**  
+  **Modifier-Based Drone Path Shaping** sequentially applied school and base modifiers and then a cubic taper, yet scored **50.41** with **F3=32.71** and **F2=1.22**. Relative to the current best (**29.85**, **F2=0.74**), the modular architecture appears correct but not objective-efficient: extra tapering and ordered modifiers increased complexity without improving the key balance.
+
+- **Guide-curve plus heavy smoothing remains inferior when compared against direct Gaussian deformation.**  
+  **Guided Curve with Anchored Smoothing** used a blended heuristic plus **40 Laplacian-style smoothing iterations**, yet scored **32.10**, slightly worse than the current best **29.85**. It kept **F1=1.13** and **F2=0.83** low, but **F3=34.48** remained much higher than the current best’s **31.35**. This supports the earlier pattern that **more smoothing/anchoring can regularize the path but does not necessarily improve base-related performance**.
+
+- **Small deterministic search over surrogate objectives still underperforms direct evaluator-aligned heuristics.**  
+  **Gaussian Polyline Path Optimizer** added a grid search over weights, sigmas, ramp power, and a surrogate objective involving path length, school proximity, base proximity, and curvature; it scored **34.02**. Although stable and reasonably balanced, it still lost to the current best’s direct fixed-parameter Gaussian formulation. This is consistent with prior evidence from **Potential-Field Gradient Drone Path (50.19)** and **Catmull-Rom Anchor Drone Planner (82.31)** that **surrogate optimization complexity did not correlate with better evaluator scores**.
+
+## Implementation Insights
+- **What makes the current best program effective is the exact asymmetry of its two Gaussian terms.**  
+  The base term is a **proportional correction toward `y_base`**:  
+  `shift_attract = influence_base * (y_base - y_linear) * k_base`  
+  while the school term is a **fixed signed displacement**:  
+  `shift_repel = influence_school * direction * k_school`.  
+  This combination appears to work better than methods where both effects are treated more symmetrically or are post-modulated by additional windows. It likely explains why the current best improves both **F2** and **F3** versus most competitors.
+
+- **The current best confirms that x-only locality with y-only deformation is sufficient and highly robust.**  
+  Like the previously strong Gaussian methods, it keeps **uniform x positions** and computes each interior `y` independently from `t`, `curr_x`, and Gaussian influences. No iterative solver, no curvature optimizer, and no anchor search are required. This coding pattern remains the strongest validated representation across the best-performing methods.
+
+- **A wide base kernel and narrower school kernel is a recurring high-performing parameter pattern.**  
+  In the current best, **`sigma_base=32.0`** and **`sigma_school=18.0`** create a broad attraction field and a more localized avoidance field. This matches the observed score profile: very strong **F2=0.74** and notably improved **F3=31.35**. Programs with more globally distributed shaping or stronger endpoint tapering did not match this balance.
+
+- **The new best result suggests that removing post-smoothing can sometimes preserve stronger useful deformation.**  
+  The prior best relied on **two-pass neighbor smoothing** and scored **30.21**. The current best omits smoothing entirely and still improves to **29.85**. Given that **F1 worsened slightly to 1.28** but **F2 and especially F3 improved**, the actual evaluator appears to reward the preserved raw Gaussian geometry more than the extra regularization in this case.
+
+## Performance Analysis
+- **The current best sets a new overall benchmark and improves on the previous best primarily through F3 reduction.**  
+  The best historical score was **30.21** from **Gaussian Potential Smoothed Path**; the new **Gaussian Potential Field Drone Path** reaches **29.85**. The key change is that **F3 dropped from 34.68 to 31.35**, while **F2 improved marginally from 0.75 to 0.74**. The tradeoff is a slightly worse **F1** (**1.16 → 1.28**), but the total score still improves, showing that modest extra distance was worth paying for materially better signal-loss behavior.
+
+- **Among the newly evaluated correct programs, the ranking strongly favors direct Gaussian potential fields over decorative or staged variants.**  
+  Scores order roughly as: **29.85** (Gaussian Potential Field Drone Path) < **32.10** (Guided Curve with Anchored Smoothing) < **34.02** (Gaussian Polyline Path Optimizer) << **45.00** (Gaussian-Sinusoidal Drone Path Deformation) < **50.41** (Modifier-Based Drone Path Shaping). This confirms that the best-performing family is still **plain Gaussian school/base deformation over a straight baseline**, not sinusoidal shaping, modular pipelines, or surrogate-tuned search.
+
+- **F3 remains the dominant term across all competitive methods, but the current best has the lowest F3 among the listed successful programs.**  
+  Current best: **31.35**. Other recent programs: **32.71**, **33.30**, **34.48**, **35.43**. Earlier strong baselines were also worse: prior best **34.68**, Gaussian-Biased Baseline **36.84**, straight line **43.20**. This makes the new result especially important: it is not merely another low-F2 solution, but the first in this set to push **F3** down to the low 31s while staying correct and stable.
+
+- **The overall history still shows the biggest gains come from moving off the straight line, but the latest gains are now coming from finer balancing of the Gaussian terms.**  
+  The path from **Straight-Line Y Interpolation (96.23)** to **Gaussian-Biased Baseline (44.39)** to **Gaussian Potential Smoothed Path (30.21)** and now **Gaussian Potential Field Drone Path (29.85)** shows two phases: first, large gains from adding school/base-aware deformation at all; second, smaller but meaningful gains from improving the **relative widths and strengths of localized attraction/repulsion**. The current best is the clearest example of that second phase.
+
+# META RECOMMENDATIONS
+
+The following are actionable recommendations for the next program generations:
+
+1. **Keep the exact straight-line-plus-two-Gaussians structure, but tune the base kernel to be slightly stronger and more interior-focused.**  
+   The current best wins mainly by lowering **F3**, so the most promising mutation is to increase `k_base` a bit above `0.94` while testing a somewhat narrower or slightly shifted `sigma_base` so attraction is concentrated near the base’s x-region instead of acting too broadly. This directly extends the best program’s strongest mechanism without adding the smoothing or optimizer complexity that has repeatedly underperformed.
+
+2. **Make school repulsion amplitude geometry-aware instead of using a fixed `k_school`.**  
+   Replace the constant `14.0` with a value scaled by how close the baseline path is to the school in y and/or by the straight-line crossing risk near `x_school`, so repulsion stays strong only when necessary. This preserves the highly successful localized Gaussian avoidance pattern while potentially reducing unnecessary detours that hurt **F1** or interfere with base attraction.
+
+3. **Use asymmetric Gaussian widths: keep the school kernel narrow, but allow the base kernel to vary with relative school/base x-ordering.**  
+   The best current parameter pattern is already **wide base / narrow school**, so a natural extension is a small piecewise schedule such as using a wider base field when base and school are separated in x, and a narrower one when they overlap or are close. This remains fully within the validated x-local, y-only deformation family, but may improve the tradeoff in geometry regimes where one fixed `sigma_base=32.0` is too blunt.
+
+4. **Add a very small post-combination base recovery term centered at `x_base`, but do not add generic smoothing.**  
+   After computing `final_y = y_linear + shift_attract + shift_repel`, apply a second weak correction like `final_y += post_base * gaussian_base2 * (y_base - final_y)` with a much smaller coefficient than the main base term. This is promising because recent evidence suggests that preserving raw Gaussian deformation is good, but a tiny targeted base correction could shave **F3** further without reintroducing the performance losses seen from broader smoothing pipelines.
+
+5. **Modify school repulsion direction/magnitude to depend on the base location, not only on whether the school is above or below the baseline.**  
+   When both “push up” and “push down” avoid the school, bias the chosen direction toward the side that also moves the path closer to `y_base`, rather than always using the current school-vs-linear rule alone. This keeps the simple potential-field design intact, but better aligns the two Gaussian terms so school avoidance helps rather than partially fights the base-attraction objective.

@@ -1,0 +1,45 @@
+ (F2) school repulsion: move 50% extra distance away
+        # (F3) base station attraction: move 85% towards the base station
+        target_osc = -0.55 * (y_sc - y_lin_sc)
+        target_oba = 0.85 * (y_ba - y_lin_ba)
+        
+        # Use cubic offset: y_off(t) = t * (1-t) * (A + B*t)
+        # This is zero at t=0 and t=1.
+        k_sc = t_sc * (1 - t_sc)
+        k_ba = t_ba * (1 - t_ba)
+        
+        # Use simple parabola if targets are near boundaries to avoid division by zero
+        k_sc = k_sc if abs(k_sc) > 0.01 else (0.01 if k_sc >= 0 else -0.01)
+        k_ba = k_ba if abs(k_ba) > 0.01 else (0.01 if k_ba >= 0 else -0.01)
+        
+        rhs_sc = target_osc / k_sc
+        rhs_ba = target_oba / k_ba
+        
+        dt = t_ba - t_sc
+        if abs(dt) < 0.02:
+            A, B = rhs_ba, 0.0
+        else:
+            B = (rhs_ba - rhs_sc) / dt
+            A = rhs_sc - B * t_sc
+            
+        # Build path
+        y_coords = []
+        for i in range(num_points):
+            t = (i + 1) / (num_points + 1)
+            yi_lin = y_s + t * (y_e - y_s)
+            yi_off = t * (1 - t) * (A + B * t)
+            y_coords.append(float(yi_lin + yi_off))
+            
+        return y_coords
+    ```
+
+    Wait, the $dt$ safety check: $dt = (x\_ba - x\_sc) / total\_x$. With 70 and 40, $dt = 0.3$.
+    It's well above 0.02.
+
+    The targets:
+    `target_osc = -0.55 * (y_sc - y_lin_sc)`
+    `target_oba = 0.85 * (y_ba - y_lin_ba)`
+    These results and the Cubic solver are a much more sophisticated "heuristic finding strategy" than a simple straight line.
+
+    Wait, one last double-check on F1:
+    If $F1$ gets too high, the score might worsen. Let's make the repulsion slightly weaker just in case. $

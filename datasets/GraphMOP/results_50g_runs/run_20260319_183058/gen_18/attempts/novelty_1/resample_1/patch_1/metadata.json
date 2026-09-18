@@ -1,0 +1,14 @@
+{
+  "generation": 18,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "marginal_objective_routing",
+  "patch_description": "Aligns the greedy assignment and local search scoring with the true marginal contributions to the global sum of latencies and total system energy. Uses 6 diverse routing modes per server and a 2-pass local improvement phase.",
+  "error_msg": "Could not extract code from patch string",
+  "timestamp": "2026-03-20T02:41:46.400341",
+  "llm_cost": 0.024037999999999997,
+  "llm_model": null
+}

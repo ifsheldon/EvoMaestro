@@ -1,0 +1,50 @@
+# EVOLVE-BLOCK-START
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    Fundamentally improves the path by applying a Gaussian Potential Field deflection.
+    This creates a smooth curve that optimizes Distance (F1), School avoidance (F2),
+    and Signal Gain (F3) simultaneously.
+    """
+    import math
+
+    x_s, y_s = start
+    x_e, y_e = end
+    
+    # Pre-calculate steps for linear interpolation baseline
+    x_step = (x_e - x_s) / (num_points + 1)
+    y_step = (y_e - y_s) / (num_points + 1)
+    
+    y_coords = []
+    
+    # Parameters for the smooth bend logic
+    # Peak attraction/repulsion centered between school (40) and base (70)
+    center_x = 65.0
+    sigma = 36.0  # Controls the 'width' of the curve to keep it smooth for F1
+    amplitude = 30.5  # Controls the intensity of the dip towards the base station (y=-30)
+
+    for i in range(1, num_points + 1):
+        # 1. Calculate current x and linear path y
+        curr_x = x_s + i * x_step
+        y_linear = y_s + i * y_step
+        
+        # 2. Progress ratio t (ranges from 0 to 1)
+        t = i / (num_points + 1)
+        
+        # 3. Calculate Gaussian influence based on distance from the target optimization zone
+        # influence = e^(-(x - center)^2 / (2 * sigma^2))
+        influence = math.exp(-((curr_x - center_x)**2) / (2 * (sigma**2)))
+        
+        # 4. Apply a smooth boundary envelope 4*t*(1-t) 
+        # This ensures the displacement is 0 at start (t=0) and end (t=1)
+        envelope = 4.0 * t * (1.0 - t)
+        
+        # 5. Calculate final Y
+        # We subtract the shift because both being away from y=20 (school) 
+        # and towards y=-30 (base) requires moving in the negative Y direction.
+        shift = amplitude * influence * envelope
+        y_final = y_linear - shift
+        
+        y_coords.append(float(y_final))
+        
+    return y_coords
+# EVOLVE-BLOCK-END

@@ -1,0 +1,14 @@
+{
+  "generation": 27,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "restricted_server_focused_repair",
+  "patch_description": "Replaces the uniform one-pass local improvement loop with a multi-pass restricted local search. By sorting the servers by utilization and only considering tasks assigned to the top 3 \"hot\" servers for reassignment, the algorithm aggressively tackles the structural bottlenecks of high queueing delay (and its corresponding dynamic energy penalties limit).",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:43:30.475850",
+  "llm_cost": 0.026577999999999997,
+  "llm_model": null
+}

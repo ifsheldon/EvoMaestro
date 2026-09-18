@@ -1,0 +1,14 @@
+{
+  "generation": 28,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 4,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "pinned_gaussian_spline_solver",
+  "patch_description": "The new algorithm uses a **Pinned Gaussian Basis Function** approach combined with a **Linear System Solver**. \n\n1.  **Pinned Basis Functions**: It defines smooth Gaussian kernels that are mathematically \"pinned\" to zero at the start and end points. This ensures the path always starts and ends exactly at the required coordinates while maintaining $C^\\infty$ smoothness (minimizing F1).\n2.  **Target Displacement**: It calculates the required Y-axis displacement at the school's X-coordinate (to stay 32 units away) and the base station's X-coordinate (to hit it exactly).\n3.  **Analytical Solution**: Instead of iterative forces, it solves a 2x2 system of linear equations to find the exact amplitudes for the school-repulsion and base-attraction kernels. This ensures the path simultaneously satisfies the school avoidance (F2) and base station proximity (F3) targets.\n4.  **Global Smoothness**: By using a wide kernel ($\\sigma = 0.3 \\times \\text{span}$), the algorithm produces a single, elegant curve that bends away from the school and towards the base station without any sharp turns or oscillations.",
+  "error_msg": "Could not extract code from patch string",
+  "timestamp": "2026-03-19T16:13:12.317313",
+  "llm_cost": 0.0051045,
+  "llm_model": null
+}

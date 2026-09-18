@@ -1,0 +1,14 @@
+{
+  "generation": 37,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "hierarchical_gaussian_coarse_to_fine",
+  "patch_description": "I propose replacing the single-scale 12-control coordinate descent with a hierarchical coarse-to-fine optimization over the same Gaussian control family.\n\nWhy this should help:\n1. **Better global geometry first**: a small control model (5 controls) explores large-shape bending more reliably, reducing risk of early local minima.\n2. **Then refine details**: interpolate the coarse solution into 12 controls and continue local optimization for fine adjustments.\n3. **Directional priors aligned with objectives**: initialization explicitly bends away from school and toward base using line-relative direction signs, which matches the requested behavior and usually improves F2/F3 tradeoff.\n4. **Still objective-aligned**: score remains the exact proxy product `F1 * F2 * F3`, so improvements directly target evaluator behavior.\n5. **Smoothness maintained**: same Gaussian basis plus a tiny final smoothing pass keeps path realistic and prevents noisy overfitting.\n\nThis is a targeted edit only inside the evolve block.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:42:33.158030",
+  "llm_cost": 0.06817999999999999,
+  "llm_model": null
+}

@@ -1,0 +1,60 @@
+<NAME>
+marginal_cost_routing
+</NAME>
+
+<DESCRIPTION>
+The previous approach used an inefficient O(T*S) path-finding strategy and a fixed heuristic that didn't scale with task-specific payloads or non-linear queueing costs. 
+
+My new algorithm, `marginal_cost_routing`, introduces the following improvements:
+1. **O(S) Complexity**: It precomputes shortest paths using Dijkstra beginning from each server node once, rather than from each task source. This drastically reduces runtime for large source counts.
+2. **Marginal Incremental Costing**: The server selection score now calculates the marginal latency increase using the M/M/1 queuing model ($1 / (\mu - \lambda)$), which accounts for the exponential delay increase as server capacity is reached.
+3. **Payload-Aware Path Heuristic**: Edge weights in Dijkstra are now balanced using the average payload size ($latency + \alpha \cdot energy\_cost \cdot payload_{avg}$), ensuring paths are optimized for both time and energy.
+4. **Dynamic Energy Scoring**: It weights the energy increase (routing energy + dynamic compute energy) against latency to ensure a multi-objective balance, leading to lower overall scores.
+</DESCRIPTION>
+
+<CODE>
+```python
+# EVOLVE-BLOCK-START
+def evolve_task_routing(
+    num_nodes,
+    edges,
+    server_nodes,
+    task_sources,
+    task_info,
+    server_info,
+):
+    import heapq
+
+    # Build adjacency list
+    graph = [[] for _ in range(num_nodes)]
+    for u, v, base_latency, energy_cost, capacity in edges:
+        graph[u].append((v, base_latency, energy_cost))
+        graph[v].append((u, base_latency, energy_cost))
+
+    # Calculate global average payload to use in path discovery
+    if not task_sources:
+        return {}
+    
+    pay_sum = 0.0
+    for s in task_sources:
+        pay_sum += task_info[s][1]
+    avg_payload = pay_sum / len(task_sources)
+
+    # Precompute Dijkstra paths from all server nodes once
+    # Path selection weight is a combination of latency and transmission energy cost
+    server_lookup = {}
+    for snode in server_nodes:
+        dists = [float('inf')] * num_nodes
+        parent = [-1] * num_nodes
+        p_lat = [0.0] * num_nodes
+        p_en = [0.0] * num_nodes
+        
+        dists[snode] = 0.0
+        pq = [(0.0, snode)]
+        
+        while pq:
+            d, u = heapq.heappop(pq)
+            if d > dists[u]:
+                continue
+            for v, bl, ec in graph[u]:
+                # Multi-objective weight

@@ -1,0 +1,14 @@
+{
+  "generation": 22,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "geometry_aware_gradient_energy_optimizer",
+  "patch_description": "Applying a multi-objective optimization framework initialized by a geometry-aware Gaussian bump and refined by mathematical gradient descent on an energy function representing all objectives. The school and base amplitudes dynamically scale with the baseline's proximity to the respective zones, ensuring robust avoidance only when necessary to preserve ideal distance scores.",
+  "error_msg": null,
+  "timestamp": "2026-03-19T16:07:19.960966",
+  "llm_cost": 0.026518,
+  "llm_model": null
+}

@@ -1,0 +1,57 @@
+<NAME>
+heuristic_initialization
+</NAME>
+
+<DESCRIPTION>
+Initialize the path with a heuristic curve that bends away from the school and towards the base station. This helps the optimizer avoid local minima and start closer to the optimal solution.
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+    # Initialize with a straight line
+    y_coords = [y_start + (i + 1) * (y_end - y_start) / (num_points + 1) for i in range(num_points)]
+    x_coords = [x_start + (i + 1) * dx for i in range(num_points)]
+=======
+    # Initialize with a straight line
+    y_coords = [y_start + (i + 1) * (y_end - y_start) / (num_points + 1) for i in range(num_points)]
+    x_coords = [x_start + (i + 1) * dx for i in range(num_points)]
+
+    # Heuristic initialization to avoid local minima
+    dx_total = x_end - x_start
+    if abs(dx_total) > 1e-5:
+        y_line_at_school = y_start + (x_school - x_start) / dx_total * (y_end - y_start)
+    else:
+        y_line_at_school = y_start
+    school_dir = 1.0 if y_line_at_school > y_school else -1.0
+
+    for i in range(num_points):
+        x_curr = x_coords[i]
+        # Push away from school
+        dist_x_school = x_curr - x_school
+        push = school_dir * 25.0 * math.exp(-(dist_x_school**2) / 400.0)
+
+        # Pull towards base
+        dist_x_base = x_curr - x_base
+        pull = (y_base - y_coords[i]) * 0.4 * math.exp(-(dist_x_base**2) / 600.0)
+
+        y_coords[i] += push + pull
+>>>>>>> REPLACE
+</DIFF>
+
+<NAME>
+adam_optimizer_with_exact_gradients
+</NAME>
+
+<DESCRIPTION>
+Replace the Gauss-Seidel gradient descent with the Adam optimizer using exact length gradients and learning rate decay. This provides faster and more stable convergence to the optimal path.
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+    # Hyperparameters for the physics simulation
+    learning_rate = 0.05
+    iterations = 800
+
+    alpha = 0.2          # Length penalty (minimizes distance)
+    alpha_curv = 0.8     # Curvature penalty (minimizes bending)
+    beta = 6

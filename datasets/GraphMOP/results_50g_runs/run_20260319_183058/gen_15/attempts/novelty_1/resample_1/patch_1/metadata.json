@@ -1,0 +1,14 @@
+{
+  "generation": 15,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "marginal_cost_regret_routing",
+  "patch_description": "This algorithm implements a robust multi-objective task routing strategy by combining marginal cost assignment with a regret-based priority policy. \n\nKey features:\n1.  **Diverse Candidate Generation**: For each task source, it generates multiple candidate paths to all available servers using Dijkstra's algorithm with varying latency-energy trade-off weights (\u03bb).\n2.  **Marginal Cost Analysis**: Instead of simple greedy assignment, it calculates the true marginal increase in the global objective function (Latency + 1.5 * Energy). This includes the increased queueing delay experienced by all tasks already assigned to a server when a new task is added.\n3.  **Regret-Based Prioritization**: Tasks are ordered by a combination of their total load and \"regret\" (the difference between the best and second-best candidate scores). This ensures that tasks with limited high-quality options are assigned before resources become saturated.\n4.  **Iterative Best-Response Refinement**: A local search phase iteratively re-evaluates each task's assignment, moving tasks to alternative candidate paths if they reduce the total system cost, effectively reaching a better equilibrium.\n5.  **Robust Queueing Model**: Uses an M/M/1-style queueing delay with a linear expansion beyond 95% utilization to maintain stability and provide a meaningful gradient for the optimization.",
+  "error_msg": "Could not extract code from patch string",
+  "timestamp": "2026-03-20T02:37:50.656072",
+  "llm_cost": 0.0045544999999999995,
+  "llm_model": null
+}

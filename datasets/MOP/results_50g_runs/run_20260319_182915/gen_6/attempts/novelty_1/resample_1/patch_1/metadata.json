@@ -1,0 +1,14 @@
+{
+  "generation": 6,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "surrogate_multiobjective_grid_search",
+  "patch_description": "The previous implementation used a strictly straight flight path, yielding a high MOP multiplier score because it ignored school noise and signal drop.\n\nAs instructed, we need to create a smooth line that selectively bends away from the school located near (40, 20) to minimize noise impact (F2), and bends towards the base station near (70, -30) to minimize signal drop (F3), while paying a small tension penalty on travel distance (F1). \nSince the overall MOP Multiplier score is heavily dependent on the product of F1, F2, and F3 (based on empirical scores from straight lines F1: 1.000, F2: 2.227, F3: 43.199, MOP: 96.228 \u2248 F1\u00d7F2\u00d7F3), we can design a proxy/surrogate score function right inside our method and then use a zero-dependency deterministic grid-search to find the absolute optimal amount of gaussian deflection for the line!\n\nKey implementations:\n1. Define parametric Gaussian deformations added to the straight line that pushes away from the school and towards the base station.\n2. Formulate a fully analytical and monotonic proxy approximation internal to the function to simulate the F1, F2 F3 tradeoffs on-the-fly.\n3. Rapidly grid search across deformation amplitudes (`A_school`, `A_base`) and width (`W_choices`) to identify the minimum internal MOP score and deploy exactly that smoothly bent coordinate series.\n4. Uses fused calculations arrayed dynamically, allowing ~350,000 internal simulated evaluations smoothly within milliseconds entirely inside `evolve_drone_path`.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:32:54.954618",
+  "llm_cost": 0.0513,
+  "llm_model": null
+}

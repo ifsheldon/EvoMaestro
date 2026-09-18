@@ -1,0 +1,14 @@
+{
+  "generation": 49,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 3,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "two_scale_gaussian_basis_and_product_metric",
+  "patch_description": "Implement a two-scale Gaussian basis (6 local + 6 broad basis functions) and switch the internal surrogate objective from a weighted sum to a product-based metric (F1*F2*F3) to match the external grader's Multiplier Score. The local search optimization is extended from 6 to 12 dimensions to handle the broad amplitudes.",
+  "error_msg": "No changes applied",
+  "timestamp": "2026-03-20T02:51:49.424106",
+  "llm_cost": 0.005791,
+  "llm_model": null
+}

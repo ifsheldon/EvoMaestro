@@ -1,0 +1,14 @@
+{
+  "generation": 18,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 2,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "marginal_objective_routing",
+  "patch_description": "Aligns the greedy assignment and local search scoring with the true marginal contributions to the global sum of latencies and total system energy. \n1. **Marginal Queueing Delay**: Uses the exact marginal increase in the total number of tasks in the server (`new_load / (service_rate - new_load) - old_load / (service_rate - old_load)`) to perfectly represent the marginal increase in the total system latency.\n2. **Marginal Compute Energy**: Calculates the marginal dynamic energy difference when adding a task.\n3. **Enhanced Candidate Diversity**: Increases the number of precomputed routing modes from 3 to 6 per server, exploring more diverse blends of latency, energy, and capacity penalties.\n4. **Multi-pass Local Improvement**: Increases the local improvement passes from 1 to 2 and adds a tiny \"stickiness\" bonus to the exact same path to prevent unnecessary flapping while allowing the system to settle into a deeper local optimum.",
+  "error_msg": "Could not extract code from patch string",
+  "timestamp": "2026-03-20T02:43:57.198138",
+  "llm_cost": 0.05024,
+  "llm_model": null
+}

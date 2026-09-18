@@ -1,0 +1,60 @@
+<NAME>
+marginal_cost_routing_optimization
+</NAME>
+
+<DESCRIPTION>
+This update introduces a more theoretically grounded approach to task routing and server selection:
+1.  **Dynamic Dijkstra Weighting**: The pathfinding now uses a combined weight of `base_latency + payload_size * energy_cost`, directly minimizing the transmission latency and routing energy for each specific task.
+2.  **Marginal Cost Server Selection**: Instead of a heuristic score, we calculate the marginal increase in total system latency and energy. This includes:
+    *   **Transmission Latency & Routing Energy**: From the optimal path found by Dijkstra.
+    *   **Marginal Queueing Delay**: Using an M/M/1 queueing model to estimate how adding load to a server affects the delay of all tasks at that server.
+    *   **Marginal Compute Energy**: The additional dynamic power consumed by the server to process the task.
+3.  **Improved Robustness**: The server selection includes a softer capacity limit (98%) and a fallback mechanism to ensure tasks are always assigned to a reachable server if possible.
+4.  **Task Prioritization**: Tasks are processed in order of their load impact, improving the efficiency of the greedy assignment.
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+    def shortest_path(source, target):
+        dist = [float("inf")] * num_nodes
+        parent = [-1] * num_nodes
+        dist[source] = 0.0
+        heap = [(0.0, source)]
+
+        while heap:
+            cur_dist, node = heapq.heappop(heap)
+            if cur_dist != dist[node]:
+                continue
+            if node == target:
+                break
+            for nxt, base_latency, energy_cost, _capacity in graph[node]:
+                weight = base_latency + 0.35 * energy_cost
+                cand = cur_dist + weight
+                if cand < dist[nxt]:
+                    dist[nxt] = cand
+                    parent[nxt] = node
+                    heapq.heappush(heap, (cand, nxt))
+
+        if source != target and parent[target] == -1:
+            return []
+
+        path = [target]
+        cur = target
+        while cur != source:
+            cur = parent[cur]
+            if cur == -1:
+                return []
+            path.append(cur)
+        path.reverse()
+        return path
+=======
+    def shortest_path(source, target, payload_size):
+        dist = [float("inf")] * num_nodes
+        parent = [-1] * num_nodes
+        dist[source] = 0.0
+        heap = [(0.0, source)]
+        while heap:
+            cur_dist, node = heapq.heappop(heap)
+            if cur_dist != dist[node]: continue
+            if node == target: break
+            for nxt, bl, ec, _cap in graph

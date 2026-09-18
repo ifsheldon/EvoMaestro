@@ -1,0 +1,75 @@
+An excellent insight from our previous cycles is that a continuous "belly" shape like a full sine wave is fantastic at moving far away from the school (dramatically improving F2 Noise Evasion), but introduces excessive path length overall that severely penalizes both Distances (F1) and Signal Loss (F3)—since Signal Loss is accumulated over distance traveled.
+
+To minimize the product score simultaneously:
+1. We switch carefully from a naive sine-wave baseline offset to localized Gaussian offsets centered on the specific objects (`sx` and `bx`), resolving path-dragging issues and making the route efficiently straight in non-critical segments.
+2. The width constants (`sigma_school=12.0`, `sigma_base=18.0`) ensure we dip exactly where needed without ruining path straightness.
+3. Crucially (as suggested), we actively condition the base-attraction Gaussian to weaken where the school-repulsion Gaussian is strongest using an overlap penalty `w_b * (1.0 - 0.8 * w_s)`. This avoids counter-productive target conflict when crossing the X-area near the school while restoring optimal Base-Station attraction globally.
+4. Keeping the `edge_taper = sin(pi * pct)` effectively connects these dips smoothly back onto the straight-line origin/destination points.
+
+<NAME>
+conditional_gaussian_multi_objective_bend
+</NAME>
+
+<DESCRIPTION>
+Implement dynamically computed localized Gaussian offsets based on precise `school` and `base` coordinates points. Introduce an intersection penalty that modulates base-attraction strength downwards directly proportionally to actual school displacement applied, ensuring minimum path length and accumulated signal dropping while preserving F2's tremendous evasion baseline.
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+        # Calculate the linear interpolation baseline
+        y_lin = y_start + pct * (y_end - y_start)
+
+        # Add a sinusoidal bend to minimize distance to base (70, -30) and
+        # maximize distance from school (40, 20).
+        # With pct=0.7 at x=70, sin(0.7*pi) * 37.1 is approx 30.0.
+        y_arch = -37.1 * math.sin(math.pi * pct)
+
+        y_coords.append(float(y_lin + y_arch))
+=======
+        # Calculate the linear interpolation baseline
+        y_lin = y_start + pct * (y_end - y_start)
+        
+        # Calculate true X coordinate
+        x = x_start + pct * (x_end - x_start)
+        sx, sy = school
+        bx, by = base
+        
+        # Protect against exact vertical drop
+        span = x_end - x_start
+        if abs(span) < 1e-6:
+            y_coords.append(float(y_lin))
+            continue
+            
+        y_lin_s = y_start + ((sx - x_start) / span) * (y_end - y_start)
+        y_lin_b = y_start + ((bx - x_start) / span) * (y_end - y_start)
+        
+        # Decide vertical bump direction dynamically based on layout
+        away_dir = -1.0 if sy >= y_lin_s else 1.0
+        toward_dir = 1.0 if by >= y_lin_b else -1.0
+        
+        school_gap = abs(sy - y_lin_s)
+        base_gap = abs(by - y_lin_b)
+        
+        # High amplitude for escaping school noise (F2) deeply
+        amp_school = min(45.0, 0.80 * school_gap + 22.0)
+        # Moderate amplitude to draw closer to base (improves F3 without skyrocketing F1 duration)
+        amp_base = min(30.0, 0.50 * base_gap + 10.0)
+        
+        sigma_school = 12.0
+        sigma_base = 18.0
+        
+        w_s = math.exp(-0.5 * ((x - sx) / sigma_school)**2)
+        w_b = math.exp(-0.5 * ((x - bx) / sigma_base)**2)
+        
+        # Condition base-attraction strength on school repulsion (Prompt Recommendation applied)
+        w_b_eff = w_b * (1.0 - 0.8 * w_s)
+        
+        # Smoothly pinch endpoints to zero to ensure continuous boundary returns
+        edge_taper = math.sin(math.pi * pct)
+        
+        # Combine conditioned offsets to create the precise multi-objective path
+        y_arch = (away_dir * amp_school * w_s + toward_dir * amp_base * w_b_eff) * edge_taper
+        
+        y_coords.append(float(y_lin + y_arch))
+>>>>>>> REPLACE
+</DIFF>

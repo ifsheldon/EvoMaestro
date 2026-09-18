@@ -1,0 +1,43 @@
+<NAME>
+hierarchical_adam_blur
+</NAME>
+
+<DESCRIPTION>
+The proposed program implements a hierarchical coarse-to-fine optimization strategy using an Adam optimizer with gradient blurring. 
+
+1.  **Objective Function**: It minimizes the product of three objectives: path length (F1), school noise proximity (F2), and base station signal drop (F3). This is achieved by minimizing the sum of their logarithms, using the relative gradient: $\nabla \ln(F1 \cdot F2 \cdot F3) = \frac{\nabla F1}{F1} + \frac{\nabla F2}{F2} + \frac{\nabla F3}{F3}$.
+2.  **Coarse-to-Fine Strategy**: In the early stages of optimization, a box blur is applied to the gradients across the path points. This couples the points together, forcing the optimizer to find a smooth global shape first (coarse search). As optimization progresses, the blur radius is gradually reduced to zero, allowing the optimizer to fine-tune individual points (fine search).
+3.  **Adam Optimizer**: A standard Adam optimizer is used with a decaying learning rate to ensure stable convergence to a local minimum.
+4.  **Efficiency**: The program runs efficiently within the time limit by using a simple $O(N^2)$ blur which is sufficient for the given number of points.
+</DESCRIPTION>
+
+<CODE>
+```python
+# EVOLVE-BLOCK-START
+import math
+
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    【无人机连续空间多目标折线优化】
+    Optimizes the drone path using a hierarchical Adam optimizer with gradient blurring.
+    Minimizes F1 * F2 * F3 by optimizing ln(F1) + ln(F2) + ln(F3).
+    """
+    x_start, y_start = start
+    x_end, y_end = end
+    sx, sy = school
+    bx, by = base
+    
+    # Initialize uniform straight line
+    dx = (x_end - x_start) / (num_points + 1)
+    xs = [x_start + (i + 1) * dx for i in range(num_points)]
+    ys = [y_start + (y_end - y_start) * (i + 1) / (num_points + 1) for i in range(num_points)]
+    
+    # Adam optimizer parameters
+    m = [0.0] * num_points
+    v = [0.0] * num_points
+    beta1, beta2, eps = 0.9, 0.999, 1e-8
+    
+    total_steps = 1200
+    for step in range(1, total_steps + 1):
+        progress = step / total_steps
+        lr = 0.8 * (1.0 - progress * 0.

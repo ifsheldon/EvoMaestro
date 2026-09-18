@@ -1,0 +1,14 @@
+{
+  "generation": 30,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 2,
+  "patch_name": "add_post_recovery_pull_and_tune_surrogate",
+  "patch_description": "Add a small, localized post-recovery pull near the base station. By applying an additional, narrow Gaussian attraction directly towards `by` after the main delta calculation, we can specifically trim signal loss (F3) near the base without affecting the overall trajectory too much. \n\nSimultaneously, the last iteration drastically increased the baseline amplitude search limits, which caused the code to over-optimize F3 at extreme cost to F1 (distance penalty increased from 1.17 to 1.24). We correct this by strongly increasing the penalty weight for `f1` in the `surrogate_score` function to gently force the parameter search back to shorter, more optimal geometries.",
+  "error_msg": null,
+  "timestamp": "2026-03-19T16:09:07.523442",
+  "llm_cost": 0.020048,
+  "llm_model": null
+}

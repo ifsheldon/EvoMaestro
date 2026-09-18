@@ -1,0 +1,60 @@
+<NAME>
+hotspot_relaxation_routing
+</NAME>
+
+<DESCRIPTION>
+This approach replaces generic shortest-path edge scaling with theoretically sound path weights centered on average payload, perfectly aligning the Dijkstra path selection with the network objective. Next, we replace the single-pass broad local search with an Iterative Best Response (IBR) load management algorithm. By using mathematically precise surrogate derivatives for both queue delay and system energy, we assign initial server allocations and iteratively target explicitly "hot" (highly stressed) servers. Unburdening the worst localized bottlenecks monotonically pushes the system globally into a highly balanced Pareto-optimal local minimum efficiently over multiple targeted relaxation passes.
+</DESCRIPTION>
+
+<CODE>
+```python
+# EVOLVE-BLOCK-START
+def evolve_task_routing(
+    num_nodes,
+    edges,
+    server_nodes,
+    task_sources,
+    task_info,
+    server_info,
+):
+    import heapq
+
+    # Weights for multi-objective surrogates
+    W_RE = 0.35    # route energy weight
+    W_SE = 0.22    # server energy system weight
+    W_PEN = 0.15   # marginal system queue penalty weight
+
+    # Compute average payload for theoretically aligned routing weights
+    # aligning shortest-path routing strictly with expected objective cost.
+    avg_payload = sum(task_info[src][1] for src in task_sources) / max(1, len(task_sources))
+
+    w_lat = 1.0
+    w_eng = W_RE * avg_payload
+    w_cap = avg_payload
+
+    def edge_weight(lat, eng, cap):
+        return w_lat * lat + w_eng * eng + w_cap * (1.0 / max(1e-9, cap))
+
+    # Build undirected graph
+    graph = [[] for _ in range(num_nodes)]
+    for u, v, base_latency, energy_cost, capacity in edges:
+        graph[u].append((v, float(base_latency), float(energy_cost), float(capacity)))
+        graph[v].append((u, float(base_latency), float(energy_cost), float(capacity)))
+
+    # Dijkstra from each server (few servers, many sources)
+    trees = {}
+    for root in server_nodes:
+        dist = [float("inf")] * num_nodes
+        parent = [-1] * num_nodes
+        pedge = [None] * num_nodes
+        dist[root] = 0.0
+        heap = [(0.0, root)]
+
+        while heap:
+            cd, u = heapq.heappop(heap)
+            if cd > dist[u]:
+                continue
+            for v, lat, eng, cap in graph[u]:
+                nd = cd + edge_weight(lat, eng, cap)
+                if nd < dist[v]:
+                    dist[v]

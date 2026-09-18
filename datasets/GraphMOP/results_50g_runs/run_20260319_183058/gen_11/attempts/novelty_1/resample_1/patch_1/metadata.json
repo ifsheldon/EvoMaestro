@@ -1,0 +1,14 @@
+{
+  "generation": 11,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "pareto_lagrangian_local_search",
+  "patch_description": "This rewrite uses a **two-stage Pareto + local-search optimizer** instead of the original one-pass greedy assignment.\n\n1. **Candidate generation (multi-objective path discovery):**  \n   For each task source, it runs multiple Dijkstra passes with different latency/energy tradeoff weights (Lagrangian scalarizations). This produces diverse source\u2192server path candidates, then keeps the best non-dominated ones.\n\n2. **Global assignment optimization (load-coupled):**  \n   It initializes a feasible assignment, then performs iterative **best-response local search** with incremental load updates. Each move evaluates full system impact:\n   - routing latency + routing energy from chosen path,\n   - server queueing latency using an M/M/1-like delay model,\n   - server compute energy (dynamic + shared idle activation cost).\n\nThis approach is fundamentally different from the old ranked greedy method because it explicitly explores multi-objective path tradeoffs first and then optimizes assignments under server-load coupling globally. It tends to perform better when latency/energy tradeoffs and queue congestion interact.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:35:18.072988",
+  "llm_cost": 0.0532,
+  "llm_model": null
+}

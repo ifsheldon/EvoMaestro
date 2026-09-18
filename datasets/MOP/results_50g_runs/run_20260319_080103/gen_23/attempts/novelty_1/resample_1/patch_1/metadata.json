@@ -1,0 +1,14 @@
+{
+  "generation": 23,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "kernel_field_path",
+  "patch_description": "I restructured the solution from a single hard-coded sinusoid into a modular \u201cfield-based\u201d path generator:\n\n1. **Deterministic geometry pipeline**: build interior X samples and linear baseline first.\n2. **Objective-shaped deformation fields**:\n   - **School repulsion field** centered at `school.x`, pushing Y away from `school.y`.\n   - **Base attraction field** centered at `base.x`, pulling Y toward `base.y`.\n3. **Targeted two-stage base recovery**:\n   - A broad attraction pass for global trend.\n   - A **narrow, low-amplitude post-pass** near base X (as requested), improving F3 locally without destroying school-avoidance structure.\n4. **Light smoothing pass** with endpoint-aware neighbors to keep the curve continuous and flight-friendly.\n\nThis redesign improves maintainability (clear helper functions and staged data flow), makes behavior tunable by interpretable parameters, and should better balance F1/F2/F3 than a fixed sinusoidal arc.",
+  "error_msg": null,
+  "timestamp": "2026-03-19T16:07:13.175320",
+  "llm_cost": 0.028371,
+  "llm_model": null
+}

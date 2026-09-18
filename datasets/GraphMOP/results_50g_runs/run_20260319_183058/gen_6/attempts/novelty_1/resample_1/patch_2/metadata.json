@@ -1,0 +1,14 @@
+{
+  "generation": 6,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 2,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "precompute_local_search",
+  "patch_description": "Precomputes multiple Pareto candidate paths from servers using several weight structures, evaluates the true network physics bounds continuously (queueing delays and energy draw), and executes highly targeted simulated hill climbing to slide variables uniformly away from bottlenecks.",
+  "error_msg": "Could not extract code from patch string",
+  "timestamp": "2026-03-20T02:36:03.546160",
+  "llm_cost": 0.012426,
+  "llm_model": null
+}

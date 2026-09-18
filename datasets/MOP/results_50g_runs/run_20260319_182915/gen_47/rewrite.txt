@@ -1,0 +1,137 @@
+import math
+
+# EVOLVE-BLOCK-START
+class DronePathRBF:
+    """Controls a path using a sum of Radial Basis Functions (Gaussians)."""
+    def __init__(self, start, end, num_ctrl=10):
+        self.x0, self.y0 = start
+        self.x1, self.y1 = end
+        self.x_span = self.x1 - self.x0 if self.x1 != self.x0 else 1.0
+        self.num_ctrl = num_ctrl
+        
+        # Space centers along the route
+        self.centers = [self.x0 + i * self.x_span / (num_ctrl - 1) for i in range(num_ctrl)]
+        # Sigma chosen to provide smooth overlap
+        self.sigma = self.x_span / (num_ctrl * 0.7)
+        self.weights = [0.0] * num_ctrl
+
+    def get_path_ys(self, xs):
+        """Calculates Y for each X in xs."""
+        y_out = []
+        inv_2_sigma_sq = 1.0 / (2 * self.sigma**2)
+        for x in xs:
+            # Baseline linear interpolation
+            t = (x - self.x0) / self.x_span
+            base_y = self.y0 + t * (self.y1 - self.y0)
+            
+            # Add Gaussian influences
+            offset = 0.0
+            for i in range(self.num_ctrl):
+                dist_sq = (x - self.centers[i])**2
+                offset += self.weights[i] * math.exp(-dist_sq * inv_2_sigma_sq)
+            y_out.append(base_y + offset)
+        return y_out
+
+class GraderProxy:
+    """Simplified evaluator for F1 (Dist), F2 (School), and F3 (Base)."""
+    def __init__(self, start, end, school, base, xs):
+        self.start = start
+        self.end = end
+        self.school = school
+        self.base = base
+        self.xs = xs
+        self.num_pts = len(xs)
+        self.straight_len = math.hypot(end[0]-start[0], end[1]-start[1]) + 1e-6
+        
+    def evaluate(self, ys):
+        pts = [self.start]
+        for i in range(self.num_pts):
+            pts.append((self.xs[i], ys[i]))
+        pts.append(self.end)
+        
+        # F1: Distance ratio
+        total_len = 0.0
+        for i in range(1, len(pts)):
+            total_len += math.hypot(pts[i][0]-pts[i-1][0], pts[i][1]-pts[i-1][1])
+        f1 = total_len / self.straight_len
+        
+        # F2: School proximity (inverse distance)
+        sx, sy = self.school
+        f2 = 0.0
+        for i in range(1, len(pts)-1):
+            d = math.hypot(pts[i][0]-sx, pts[i][1]-sy)
+            f2 += 1.0 / (d + 3.0)
+        f2 /= self.num_pts
+        
+        # F3: Base station signal drop (distance)
+        bx, by = self.base
+        f3 = 0.0
+        for i in range(1, len(pts)-1):
+            f3 += math.hypot(pts[i][0]-bx, pts[i][1]-by)
+        f3 /= self.num_pts
+
+        # Smoothness penalty (Laplacian)
+        smooth = 0.0
+        if len(ys) > 2:
+            for i in range(1, len(ys)-1):
+                smooth += abs(ys[i+1] - 2*ys[i] + ys[i-1])
+            smooth /= (len(ys) - 2)
+            
+        # Composite score (Lower is better)
+        return f1 + 18.2 * f2 + 0.28 * f3 + 0.6 * smooth
+
+def evolve_drone_path(start, end, school, base, num_points):
+    """Optimizes path using multi-scale coordinate descent on RBF weights."""
+    if num_points <= 0: return []
+    
+    x0, y0 = start
+    x1, y1 = end
+    xs = [x0 + (i + 1) * (x1 - x0) / (num_points + 1) for i in range(num_points)]
+    
+    model = DronePathRBF(start, end, num_ctrl=10)
+    evaluator = GraderProxy(start, end, school, base, xs)
+    
+    base_ys = model.get_path_ys(xs)
+    best_score = evaluator.evaluate(base_ys)
+    
+    # Hierarchical search scales
+    steps = [32.0, 16.0, 8.0, 4.0, 1.0, 0.25]
+    
+    for step in steps:
+        # Loop until no improvement at this scale
+        for _ in range(5): 
+            improved = False
+            
+            # 1. Single coordinate descent sweep
+            for i in range(model.num_ctrl):
+                orig_w = model.weights[i]
+                for direction in [-1, 1]:
+                    model.weights[i] = orig_w + direction * step
+                    new_score = evaluator.evaluate(model.get_path_ys(xs))
+                    if new_score < best_score:
+                        best_score = new_score
+                        improved = True
+                        orig_w = model.weights[i]
+                    else:
+                        model.weights[i] = orig_w
+            
+            # 2. Block/Pair updates (test adjacent weight coordination)
+            for i in range(model.num_ctrl - 1):
+                orig_w_i = model.weights[i]
+                orig_w_next = model.weights[i+1]
+                for direction in [-1, 1]:
+                    model.weights[i] = orig_w_i + direction * step
+                    model.weights[i+1] = orig_w_next + direction * step
+                    new_score = evaluator.evaluate(model.get_path_ys(xs))
+                    if new_score < best_score:
+                        best_score = new_score
+                        improved = True
+                    else:
+                        model.weights[i] = orig_w_i
+                        model.weights[i+1] = orig_w_next
+            
+            if not improved:
+                break
+
+    return [float(y) for y in model.get_path_ys(xs)]
+# EVOLVE-BLOCK-END

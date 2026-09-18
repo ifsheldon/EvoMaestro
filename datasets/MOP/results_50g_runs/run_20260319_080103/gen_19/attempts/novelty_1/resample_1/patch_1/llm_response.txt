@@ -1,0 +1,130 @@
+<NAME>
+piecewise_rbf_schedule
+</NAME>
+
+<DESCRIPTION>
+The previous sinusoidal arc hardcoded a bend that completely ignored randomized school and base coordinates across different geometry scenarios, unintentionally penalizing the base station signal drop metric (F3) by moving to regions with higher line-of-sight loss when the base wasn't precisely at the anticipated coordinates. 
+
+This implementation replaces the fixed arc with a **Sequential Adaptive Radial Basis Function (RBF)** strategy. It establishes a multi-stage deflection algorithm:
+1. **Base Approaching:** A wider, attractive Gaussian kernel pulls the drone functionally towards the base station `(y_base)`. The amplitude and standard deviation (`sigma_base`) of this pull adapt based on the relative X-axis separation of the base and school.
+2. **School Avoidance:** Overlapping the base approaching stage, we construct a sequential dynamic `school_clearance` logic. Since pulling towards a base could inadvertently drag the drone too close to the school, we compute the required Y-clearance *after* testing the base-pull trajectory. A narrower repulsion kernel corrects the path out of the interference zone.
+3. **Endpoint Ramping:** To prevent huge gradient explosions (Distance penalty F1 jumps) near the stationary `start` and `end` points, a seamless linear edge ramp limits all lateral RBF deflections from starting with massive Y jumps, allowing mathematically continuous trajectories.
+</DESCRIPTION>
+
+<CODE>
+```python
+# EVOLVE-BLOCK-START
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    【无人机连续空间多目标折线优化】
+    LLMs 将被要求在这里编写代码（可以使用启发式寻找策略，或者单纯使用规则拟合）。
+    你需要返回一个长度为 num_points 的列表，包含从起点到终点按 X 匀速布置对应的 Y 轴偏移量。
+    """
+    import math
+    x_start, y_start = start
+    x_end, y_end = end
+    x_school, y_school = school
+    x_base, y_base = base
+    
+    # Analyze geometry to tune piecewise widths and amplitudes
+    x_dist = abs(x_base - x_school)
+    
+    # Adaptive base attraction configuration based on separation
+    if x_dist > 30.0:
+        sigma_base = 35.0
+        pull_ratio = 0.85
+        max_pull = 45.0
+    elif x_dist > 15.0:
+        sigma_base = 25.0
+        pull_ratio = 0.65
+        max_pull = 30.0
+    else:
+        # If geometries overlap heavily, keep base pull localized and weak 
+        # to avoid severe Y-zigzag collisions
+        sigma_base = 15.0
+        pull_ratio = 0.45
+        max_pull = 20.0
+        
+    sigma_school = 16.0
+    school_clearance = 38.0
+    
+    # Identify total span to apply safe boundary limits
+    x_span = abs(x_end - x_start)
+    if x_span < 1e-3:
+        x_span = 1.0
+    # Create 15% blending margin near start/end loops
+    ramp_dist = x_span * 0.15
+    if ramp_dist < 1.0:
+        ramp_dist = 1.0
+
+    y_coords = []
+    
+    for i in range(num_points):
+        pct = (i + 1) / (num_points + 1)
+        x_i = x_start + pct * (x_end - x_start)
+        y_lin = y_start + pct * (y_end - y_start)
+        
+        # Determine smooth blending edge ramp (range [0, 1])
+        dist_to_edge = min(x_i - min(x_start, x_end), max(x_start, x_end) - x_i)
+        edge_ramp = dist_to_edge / ramp_dist
+        if edge_ramp > 1.0:
+            edge_ramp = 1.0
+        elif edge_ramp < 0.0:
+            edge_ramp = 0.0
+            
+        # --- Stage 1: Base Approaching ---
+        dy_base = y_base - y_lin
+        pull_amount = min(abs(dy_base) * pull_ratio, max_pull)
+        pull_dir = 1.0 if dy_base >= 0 else -1.0
+        
+        norm_dist_base = (x_i - x_base) / sigma_base
+        bend_base = pull_dir * pull_amount * math.exp(-0.5 * (norm_dist_base * norm_dist_base))
+        bend_base *= edge_ramp  # Taper off near bounding stations
+        
+        y_int = y_lin + bend_base
+        
+        # --- Stage 2: School Avoidance (Resolves Conflicts) ---
+        dy_school = y_int - y_school
+        if abs(dy_school) < 1e-5:
+            dy_school = 1e-5
+            
+        dist_school = abs(dy_school)
+        
+        # Only deploy school deflection dynamically if our intermediate line violates boundary limit
+        if dist_school < school_clearance:
+            A_school = school_clearance - dist_school
+        else:
+            A_school = 0.0
+            
+        push_dir = 1.0 if dy_school > 0 else -1.0
+        norm_dist_school = (x_i - x_school) / sigma_school
+        bend_school = push_dir * A_school * math.exp(-0.5 * (norm_dist_school * norm_dist_school))
+        bend_school *= edge_ramp
+        
+        y_coords.append(float(y_int + bend_school))
+
+    return y_coords
+# EVOLVE-BLOCK-END
+
+import sys
+import os
+
+# 将当前目录加入系统路径以便导入同级文件
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from drone_evaluation import DroneGrader
+
+def run_experiment(**kwargs):
+    """供 Shinka 触发的单次实验方法"""
+    grader = DroneGrader()
+    
+    # 捕获异常防止大模型写出死循环炸毁测评机
+    try:
+        avg_f1, avg_f2, avg_f3, final_score = grader.grade_silent(evolve_drone_path, timeout=12)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        avg_f1, avg_f2, avg_f3, final_score = float('inf'), float('inf'), float('inf'), float('inf')
+        
+    return avg_f1, avg_f2, avg_f3, final_score
+```
+</CODE>

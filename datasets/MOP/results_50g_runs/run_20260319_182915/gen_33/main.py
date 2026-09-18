@@ -1,0 +1,252 @@
+# EVOLVE-BLOCK-START
+import math
+
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    Return a list of Y coordinates for uniformly spaced X locations between start and end.
+
+    Multi-objective heuristic with multi-scale basis optimization:
+      F1 proxy: arc length
+      F2 proxy: school proximity risk
+      F3 proxy: base-station signal-drop proxy (distance to base, x-gated)
+    """
+    x0, y0 = start
+    x1, y1 = end
+    xs, ys = school
+    xb, yb = base
+
+    if num_points <= 0:
+        return []
+
+    # ---------------- helpers ----------------
+    def clamp(v, lo, hi):
+        return lo if v < lo else hi if v > hi else v
+
+    def smooth_inplace(y, weight=0.12, passes=1):
+        n = len(y)
+        if n <= 1:
+            return
+        for _ in range(passes):
+            prev = y[:]
+            for i in range(n):
+                left = y0 if i == 0 else prev[i - 1]
+                right = y1 if i == n - 1 else prev[i + 1]
+                y[i] = (1.0 - weight) * prev[i] + 0.5 * weight * (left + right)
+
+    # ---------------- geometry ----------------
+    span_x = abs(x1 - x0) + 1e-9
+    span_y = abs(y1 - y0) + 1e-9
+    span = math.hypot(span_x, span_y) + 1e-9
+    dx = (x1 - x0) / (num_points + 1)
+
+    x_positions = [x0 + (i + 1) * dx for i in range(num_points)]
+    y_line = [y0 + (y1 - y0) * ((x - x0) / (x1 - x0 + 1e-12)) for x in x_positions]
+
+    # ---------------- multi-scale basis ----------------
+    # 12 narrow + 5 wide Gaussians
+    k_narrow = 12
+    k_wide = 5
+    centers_n = [x0 + (j + 1) * (x1 - x0) / (k_narrow + 1) for j in range(k_narrow)]
+    centers_w = [x0 + (j + 1) * (x1 - x0) / (k_wide + 1) for j in range(k_wide)]
+    sig_n = max(4.5, 0.09 * span_x)
+    sig_w = max(10.0, 0.28 * span_x)
+
+    basis = []
+    for c in centers_n:
+        phi = []
+        for i, x in enumerate(x_positions):
+            t = (i + 1) / (num_points + 1)
+            env = (math.sin(math.pi * t) ** 0.95)
+            phi.append(env * math.exp(-((x - c) / sig_n) ** 2))
+        basis.append(phi)
+    for c in centers_w:
+        phi = []
+        for i, x in enumerate(x_positions):
+            t = (i + 1) / (num_points + 1)
+            env = 0.35 + 0.65 * (math.sin(math.pi * t) ** 0.9)
+            phi.append(env * math.exp(-((x - c) / sig_w) ** 2))
+        basis.append(phi)
+
+    K = len(basis)
+    amps = [0.0] * K
+
+    # ---------------- analytic initialization ----------------
+    school_sig = max(7.0, 0.13 * span_x)
+    base_sig = max(9.0, 0.16 * span_x)
+    trans_sig = max(4.0, 0.06 * span_x)
+
+    init_field = [0.0] * num_points
+    for i, x in enumerate(x_positions):
+        yref = y_line[i]
+        t = (i + 1) / (num_points + 1)
+        env = math.sin(math.pi * t) ** 0.92
+
+        away_s = -1.0 if ys >= yref else 1.0
+        to_b = 1.0 if yb >= yref else -1.0
+
+        g_s = math.exp(-((x - xs) / school_sig) ** 2)
+        g_b = math.exp(-((x - xb) / base_sig) ** 2)
+        late = 1.0 / (1.0 + math.exp(-(x - (0.58 * xs + 0.42 * xb)) / trans_sig))
+
+        init_field[i] = env * (
+            (0.95 * span * 0.16) * away_s * g_s +
+            (1.05 * span * 0.18) * to_b * g_b +
+            (0.70 * span * 0.10) * to_b * (0.30 + 0.70 * late)
+        )
+
+    # project init field to basis amplitudes (simple normalized correlation)
+    for k in range(K):
+        num = 0.0
+        den = 1e-9
+        phi = basis[k]
+        for i in range(num_points):
+            num += init_field[i] * phi[i]
+            den += phi[i] * phi[i]
+        amps[k] = num / den
+
+    # ---------------- optimization ----------------
+    def compose_y(a):
+        y = y_line[:]
+        for k in range(K):
+            ak = a[k]
+            if abs(ak) < 1e-14:
+                continue
+            phi = basis[k]
+            for i in range(num_points):
+                y[i] += ak * phi[i]
+        return y
+
+    # Adam states
+    m = [0.0] * K
+    v = [0.0] * K
+    b1, b2 = 0.90, 0.999
+    eps = 1e-8
+
+    iters = 200 if num_points < 90 else 240
+    grad_clip = 2.6 * span
+    amp_l2 = 2.2e-4
+
+    for it in range(1, iters + 1):
+        prog = (it - 1) / max(1, iters - 1)
+
+        # schedules
+        lr = 0.085 * (1.0 - prog) + 0.028
+        w1 = 1.00 + 0.18 * prog     # distance
+        w2 = 1.55 - 0.35 * prog     # school risk
+        w3 = 1.45 + 0.50 * prog     # base distance (F3 proxy)
+        ws = 0.34 + 0.28 * prog     # smoothness
+
+        y = compose_y(amps)
+
+        # gradient wrt y
+        gy = [0.0] * num_points
+
+        # J1: arc length
+        for i in range(num_points):
+            yl = y0 if i == 0 else y[i - 1]
+            yr = y1 if i == num_points - 1 else y[i + 1]
+            ll = math.sqrt(dx * dx + (y[i] - yl) * (y[i] - yl) + 1e-9)
+            lr_seg = math.sqrt(dx * dx + (yr - y[i]) * (yr - y[i]) + 1e-9)
+            gy[i] += w1 * ((y[i] - yl) / ll + (y[i] - yr) / lr_seg)
+
+        # J2: school inverse-distance risk
+        s_sigma_x = max(7.0, 0.14 * span_x)
+        for i, x in enumerate(x_positions):
+            dy_s = y[i] - ys
+            dxs = x - xs
+            r2 = dxs * dxs + dy_s * dy_s + 20.0
+            gate = 0.45 + 1.75 * math.exp(-((x - xs) / s_sigma_x) ** 2)
+            # d (r2^-p)/dy
+            p = 0.92
+            gy[i] += w2 * gate * (-2.0 * p * dy_s / (r2 ** (p + 1.0)))
+
+        # J3: base-distance proxy (stronger in middle/late and near base-x)
+        b_sigma_x = max(9.0, 0.20 * span_x)
+        for i, x in enumerate(x_positions):
+            t = (i + 1) / (num_points + 1)
+            dy_b = y[i] - yb
+            dxb = x - xb
+            d = math.sqrt(dxb * dxb + dy_b * dy_b + 25.0)
+            near_base_x = math.exp(-((x - xb) / b_sigma_x) ** 2)
+            late = 1.0 / (1.0 + math.exp(-(t - 0.58) / 0.12))
+            gate = 0.30 + 0.60 * late + 1.10 * near_base_x
+            gy[i] += w3 * gate * (dy_b / d)
+
+        # Js: second-difference smoothness
+        for i in range(num_points):
+            yl = y0 if i == 0 else y[i - 1]
+            yr = y1 if i == num_points - 1 else y[i + 1]
+            gy[i] += ws * (2.0 * y[i] - yl - yr)
+
+        # chain rule: grad wrt amplitudes
+        ga = [0.0] * K
+        for k in range(K):
+            s = 0.0
+            phi = basis[k]
+            for i in range(num_points):
+                s += gy[i] * phi[i]
+            ga[k] = s + amp_l2 * amps[k]
+
+        # clip grad norm in parameter space
+        gnorm = math.sqrt(sum(g * g for g in ga)) + 1e-12
+        if gnorm > grad_clip:
+            scale = grad_clip / gnorm
+            ga = [g * scale for g in ga]
+
+        # Adam update
+        for k in range(K):
+            g = ga[k]
+            m[k] = b1 * m[k] + (1.0 - b1) * g
+            v[k] = b2 * v[k] + (1.0 - b2) * (g * g)
+            mh = m[k] / (1.0 - (b1 ** it))
+            vh = v[k] / (1.0 - (b2 ** it))
+            amps[k] -= lr * mh / (math.sqrt(vh) + eps)
+
+        # mild regular smoothing in function space (low frequency polish)
+        if it % 18 == 0:
+            y_tmp = compose_y(amps)
+            smooth_inplace(y_tmp, weight=0.09 + 0.04 * prog, passes=1)
+            # fit smoothed curve back to amplitudes with one projection step
+            resid = [y_tmp[i] - y_line[i] for i in range(num_points)]
+            for k in range(K):
+                phi = basis[k]
+                num = 0.0
+                den = 1e-9
+                for i in range(num_points):
+                    num += resid[i] * phi[i]
+                    den += phi[i] * phi[i]
+                amps[k] = 0.84 * amps[k] + 0.16 * (num / den)
+
+    y_coords = compose_y(amps)
+
+    # final polish
+    smooth_inplace(y_coords, weight=0.14, passes=2)
+
+    lo_ref = min(y0, y1, ys, yb)
+    hi_ref = max(y0, y1, ys, yb)
+    margin = max(24.0, 0.30 * span)
+    lo, hi = lo_ref - margin, hi_ref + margin
+    y_coords = [float(clamp(v, lo, hi)) for v in y_coords]
+    return y_coords
+# EVOLVE-BLOCK-END
+
+import sys
+import os
+
+# 将当前目录加入系统路径以便导入同级文件
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from drone_evaluation import DroneGrader
+
+def run_experiment(**kwargs):
+    """供 Shinka 触发的单次实验方法"""
+    grader = DroneGrader()
+    
+    # 捕获异常防止大模型写出死循环炸毁测评机
+    try:
+        avg_f1, avg_f2, avg_f3, final_score = grader.grade_silent(evolve_drone_path, timeout=12)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        avg_f1, avg_f2, avg_f3, final_score = float('inf'), float('inf'), float('inf'), float('inf')
+        
+    return avg_f1, avg_f2, avg_f3, final_score

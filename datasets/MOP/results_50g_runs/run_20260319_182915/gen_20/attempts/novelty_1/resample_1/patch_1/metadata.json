@@ -1,0 +1,14 @@
+{
+  "generation": 20,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "grid_search_multi_objective_path",
+  "patch_description": "This edit replaces the fixed-parameter Gaussian approach with a dynamic grid search to find the optimal balance between path distance (F1), school noise (F2), and base station signal (F3). It uses a set of Gaussian basis functions combined with a sine window to ensure smooth trajectories that always start and end at the fixed locations. The search covers both \"push\" and \"pull\" amplitudes and multiple width scales, evaluating the exact multi-objective score used by the grader to minimize the final combined metric.",
+  "error_msg": "No changes applied",
+  "timestamp": "2026-03-20T02:35:41.161348",
+  "llm_cost": 0.003869,
+  "llm_model": null
+}

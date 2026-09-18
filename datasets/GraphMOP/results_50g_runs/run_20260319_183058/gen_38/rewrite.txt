@@ -1,0 +1,2 @@
+task_en = payload * route_en + (work / rate) * dyn_pwr + 0.005 * idle_pwr
+        proxy = route_lat + W_E * task_en

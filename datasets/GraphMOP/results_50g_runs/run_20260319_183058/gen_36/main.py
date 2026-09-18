@@ -1,0 +1,264 @@
+# EVOLVE-BLOCK-START
+def evolve_task_routing(
+    num_nodes,
+    edges,
+    server_nodes,
+    task_sources,
+    task_info,
+    server_info,
+):
+    """
+    Graph multi-objective routing problem.
+
+    You must return a dict:
+    {
+        source_node: {
+            "server": server_node,
+            "path": [source_node, ..., server_node],
+        },
+        ...
+    }
+
+    Goals:
+    1. Minimize end-to-end latency = transmission latency + server queueing delay.
+    2. Minimize total energy = routing energy + server compute energy.
+    """
+    import heapq
+
+    # 1. Build adjacency list
+    graph = [[] for _ in range(num_nodes)]
+    for u, v, base_latency, energy_cost, capacity in edges:
+        graph[u].append((v, base_latency, energy_cost))
+        graph[v].append((u, base_latency, energy_cost))
+
+    # 2. Precompute multiple shortest path trees from each server to all nodes
+    # using different energy weights to find Pareto-optimal paths.
+    energy_weights = [0.0, 0.1, 0.2, 0.4, 0.7, 1.0, 1.5, 2.0, 3.0, 5.0, 10.0, 20.0, 50.0]
+    server_trees = {srv: [] for srv in server_nodes}
+    
+    for srv in server_nodes:
+        for w_e in energy_weights:
+            dist = [float("inf")] * num_nodes
+            lat = [0.0] * num_nodes
+            eng = [0.0] * num_nodes
+            parent = [-1] * num_nodes
+
+            dist[srv] = 0.0
+            heap = [(0.0, srv)]
+
+            while heap:
+                d, u = heapq.heappop(heap)
+                if d > dist[u]:
+                    continue
+                for v, b_lat, e_cost in graph[u]:
+                    w = b_lat + w_e * e_cost
+                    nd = d + w
+                    if nd < dist[v]:
+                        dist[v] = nd
+                        lat[v] = lat[u] + b_lat
+                        eng[v] = eng[u] + e_cost
+                        parent[v] = u
+                        heapq.heappush(heap, (nd, v))
+
+            # Check if this tree is identical to the last one to save memory/compute
+            if server_trees[srv] and server_trees[srv][-1]['parent'] == parent:
+                continue
+            server_trees[srv].append({
+                'dist': dist,
+                'lat': lat,
+                'eng': eng,
+                'parent': parent
+            })
+
+    # 3. Multi-pass greedy assignment with hyperparameter search
+    best_overall_plan = None
+    best_overall_score = float('inf')
+    eval_weight = 1.5
+    
+    # Grid search over (energy_tradeoff, util_penalty_weight, util_cap, sort_strategy)
+    search_params = [
+        (1.5, 0.12, 0.95, 0),
+        (1.5, 0.0, 0.95, 0),
+        (1.5, 0.25, 0.95, 0),
+        (1.2, 0.12, 0.95, 0),
+        (1.8, 0.12, 0.95, 0),
+        (1.5, 0.12, 0.90, 0),
+        (1.5, 0.12, 0.98, 0),
+        (1.0, 0.10, 0.95, 0),
+        (2.0, 0.15, 0.95, 0),
+        (1.4, 0.05, 0.94, 0),
+        (1.6, 0.20, 0.96, 0),
+        (1.5, 0.5, 0.95, 0),
+        (1.5, 1.0, 0.95, 0),
+        (1.0, 0.0, 0.95, 0),
+        (2.0, 0.0, 0.95, 0),
+        (1.5, 0.12, 0.85, 0),
+        (1.5, 0.12, 0.95, 1),
+        (1.5, 0.12, 0.95, 2),
+        (1.5, 0.12, 0.95, 3),
+    ]
+
+    for energy_tradeoff, util_penalty_weight, util_cap, sort_strategy in search_params:
+        if sort_strategy == 0:
+            ranked_sources = sorted(task_sources, key=lambda src: task_info[src][0] * task_info[src][2], reverse=True)
+        elif sort_strategy == 1:
+            ranked_sources = sorted(task_sources, key=lambda src: task_info[src][2], reverse=True)
+        elif sort_strategy == 2:
+            ranked_sources = sorted(task_sources, key=lambda src: task_info[src][0], reverse=True)
+        else:
+            ranked_sources = sorted(task_sources, key=lambda src: task_info[src][0] * task_info[src][2], reverse=False)
+
+        projected_load = {srv: 0.0 for srv in server_nodes}
+        projected_arr = {srv: 0.0 for srv in server_nodes}
+        plan = {}
+        
+        for src in ranked_sources:
+            arr_rate, _payload_size, comp_demand = task_info[src]
+            load_increase = arr_rate * comp_demand
+
+            best_srv = None
+            best_tree_idx = -1
+            best_score_step = float("inf")
+            best_t_lat = 0.0
+            best_r_eng = 0.0
+
+            for srv in server_nodes:
+                srv_rate, idle_pwr, dyn_pwr = server_info[srv]
+                old_load = projected_load[srv]
+                new_load = old_load + load_increase
+
+                if new_load >= util_cap * srv_rate:
+                    continue
+
+                q_delay_new = 1.0 / (srv_rate - new_load)
+                q_delay_old = 1.0 / (srv_rate - old_load) if old_load > 0 else 1.0 / srv_rate
+                
+                # Base marginal costs (independent of path)
+                base_delta_lat = arr_rate * q_delay_new + projected_arr[srv] * (q_delay_new - q_delay_old)
+                base_delta_eng = dyn_pwr * (load_increase / srv_rate)
+                if old_load == 0:
+                    base_delta_eng += idle_pwr
+
+                util_new = new_load / srv_rate
+                util_penalty = util_penalty_weight * (util_new ** 2)
+
+                # Search through all Pareto-optimal paths for this server
+                for tree_idx, tree in enumerate(server_trees[srv]):
+                    if tree['dist'][src] == float('inf'):
+                        continue
+                    
+                    t_lat = tree['lat'][src]
+                    r_eng = tree['eng'][src]
+                    
+                    delta_lat = base_delta_lat + arr_rate * t_lat
+                    delta_eng = base_delta_eng + arr_rate * r_eng
+                    
+                    score = delta_lat + energy_tradeoff * delta_eng + util_penalty
+                    
+                    if score < best_score_step:
+                        best_score_step = score
+                        best_srv = srv
+                        best_tree_idx = tree_idx
+                        best_t_lat = t_lat
+                        best_r_eng = r_eng
+
+            if best_srv is None:
+                # Fallback to any reachable server
+                best_dist = float('inf')
+                for srv in server_nodes:
+                    for tree_idx, tree in enumerate(server_trees[srv]):
+                        if tree['dist'][src] < best_dist:
+                            best_dist = tree['dist'][src]
+                            best_srv = srv
+                            best_tree_idx = tree_idx
+                            best_t_lat = tree['lat'][src]
+                            best_r_eng = tree['eng'][src]
+                if best_srv is None:
+                    best_srv = server_nodes[0]
+                    best_tree_idx = 0
+                    best_t_lat = 0.0
+                    best_r_eng = 0.0
+
+            tree = server_trees[best_srv][best_tree_idx]
+            if tree['dist'][src] == float('inf'):
+                path = []
+            else:
+                path = []
+                curr = src
+                while curr != -1:
+                    path.append(curr)
+                    if curr == best_srv:
+                        break
+                    curr = tree['parent'][curr]
+            
+            plan[src] = {
+                "server": best_srv,
+                "path": path,
+                "t_lat": best_t_lat,
+                "r_eng": best_r_eng
+            }
+            
+            projected_load[best_srv] += load_increase
+            projected_arr[best_srv] += arr_rate
+            
+        # Evaluate the exact true objective score of the generated plan
+        total_lat = 0.0
+        total_eng = 0.0
+        valid = True
+        
+        for srv in server_nodes:
+            load = projected_load[srv]
+            arr = projected_arr[srv]
+            if arr > 0:
+                srv_rate, idle_pwr, dyn_pwr = server_info[srv]
+                if load >= srv_rate:
+                    valid = False
+                    q_delay = 1000.0 # Heavy penalty for exceeding capacity
+                else:
+                    q_delay = 1.0 / (srv_rate - load)
+                total_lat += arr * q_delay
+                total_eng += idle_pwr + dyn_pwr * (load / srv_rate)
+                
+        for src, assignment in plan.items():
+            arr_rate = task_info[src][0]
+            total_lat += arr_rate * assignment['t_lat']
+            total_eng += arr_rate * assignment['r_eng']
+            
+        obj_score = total_lat + eval_weight * total_eng
+        if not valid:
+            obj_score += 1000000.0 # Ensure invalid plans are heavily penalized
+            
+        if obj_score < best_overall_score or best_overall_plan is None:
+            best_overall_score = obj_score
+            best_overall_plan = plan
+
+    # Strip auxiliary data from the best plan
+    final_plan = {}
+    for src, assignment in best_overall_plan.items():
+        final_plan[src] = {
+            "server": assignment["server"],
+            "path": assignment["path"]
+        }
+
+    return final_plan
+# EVOLVE-BLOCK-END
+
+import os
+import sys
+
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from graph_evaluation import GraphRoutingGrader
+
+
+def run_experiment(**kwargs):
+    del kwargs
+    grader = GraphRoutingGrader()
+    try:
+        avg_latency, avg_energy, final_score = grader.grade_silent(evolve_task_routing, timeout=12)
+    except Exception:
+        import traceback
+
+        traceback.print_exc()
+        avg_latency, avg_energy, final_score = float("inf"), float("inf"), float("inf")
+
+    return avg_latency, avg_energy, final_score

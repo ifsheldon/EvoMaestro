@@ -1,0 +1,14 @@
+{
+  "generation": 32,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "capacity_regret_routing",
+  "patch_description": "This rewrite keeps the same interface and output format, but changes the internal assignment strategy to be more capacity-aware and more consistent with the two-objective goal.\n\nMain changes:\n- Precompute multiple shortest-path trees per server using several latency/energy scalarizations, then keep the best path variants.\n- Build per-source server candidates with explicit routing latency, routing energy, and compute-energy estimates.\n- Use feasibility-weighted regret ordering: sources with few safe server options and high regret are assigned earlier, which helps preserve scarce low-cost server capacity for hard-to-place tasks.\n- Use a stronger incremental scoring model that jointly considers transmission latency, queueing delay, routing energy, compute energy, and utilization penalties.\n- Apply local improvement passes with relocation and limited pairwise swap search to reduce the global proxy objective after the initial greedy construction.\n- Preserve valid simple paths and include defensive repair logic.\n\nThe implementation is still lightweight enough for the grading timeout, but should improve assignment calibration versus the previous purely best-cost greedy behavior.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:45:06.789179",
+  "llm_cost": 0.074555,
+  "llm_model": null
+}

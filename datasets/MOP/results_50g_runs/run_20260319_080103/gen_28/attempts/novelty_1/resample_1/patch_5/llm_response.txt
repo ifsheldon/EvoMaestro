@@ -1,0 +1,51 @@
+<NAME>
+pinned_gaussian_spline_solver
+</NAME>
+
+<DESCRIPTION>
+The new algorithm uses a **Pinned Gaussian Basis Function** approach combined with a **Linear System Solver**. 
+
+1.  **Pinned Basis Functions**: It defines smooth Gaussian kernels that are mathematically "pinned" to zero at the start and end points. This ensures the path always starts and ends exactly at the required coordinates while maintaining $C^\infty$ smoothness (minimizing F1).
+2.  **Target Displacement**: It calculates the required Y-axis displacement at the school's X-coordinate (to stay 32 units away) and the base station's X-coordinate (to hit it exactly).
+3.  **Analytical Solution**: Instead of iterative forces, it solves a 2x2 system of linear equations to find the exact amplitudes for the school-repulsion and base-attraction kernels. This ensures the path simultaneously satisfies the school avoidance (F2) and base station proximity (F3) targets.
+4.  **Global Smoothness**: By using a wide kernel ($\sigma = 0.25 \times \text{span}$), the algorithm produces a single, elegant curve that bends away from the school and towards the base station without any sharp turns or oscillations.
+</DESCRIPTION>
+
+<CODE>
+```python
+# EVOLVE-BLOCK-START
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    无人机连续空间多目标折线优化：
+    使用“销钉高斯基函数解析求解器”(Pinned Gaussian Basis Solver)。
+    1. 建立起终点线性基准。
+    2. 构造在起终点自动归零的高斯基函数。
+    3. 通过解析解（2x2 线性方程组）精确控制轨迹经过基站并避开学校。
+    4. 保证曲线全局平滑，兼顾 F1, F2, F3。
+    """
+    import math
+
+    x0, y0 = start
+    x1, y1 = end
+    xs, ys = school
+    xb, yb = base
+
+    if num_points <= 0:
+        return []
+
+    dx = x1 - x0
+    if abs(dx) < 1e-12:
+        # 极端情况：垂直路径，直接线性插值
+        step = (y1 - y0) / (num_points + 1)
+        return [float(y0 + (i + 1) * step) for i in range(num_points)]
+
+    span = abs(dx)
+    sig_s = 0.22 * span
+    sig_b = 0.28 * span
+
+    def y_lin(x):
+        t = (x - x0) / dx
+        return y0 + t * (y1 - y0)
+
+    def G_p(x, mu, sig):
+        # 销钉高斯基函数：

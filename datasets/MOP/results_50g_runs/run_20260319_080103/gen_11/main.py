@@ -1,0 +1,192 @@
+# EVOLVE-BLOCK-START
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    连续空间多目标折线优化：
+    返回长度为 num_points 的 y 坐标列表，对应于 x 轴在 start.x 和 end.x 之间均匀分布的内部点。
+    新策略：
+    1) 以直线为基线；
+    2) 叠加“远离学校”的平滑高斯排斥项；
+    3) 叠加“靠近基站”的平滑高斯吸引项；
+    4) 通过小规模确定性参数搜索选择更优平衡；
+    5) 对结果进行轻量平滑，保证轨迹连续自然。
+    """
+    import math
+
+    x_start, y_start = start
+    x_end, y_end = end
+    sx, sy = school
+    bx, by = base
+
+    if num_points <= 0:
+        return []
+
+    # 生成内部均匀 x 位置
+    dx_total = x_end - x_start
+    xs = [x_start + (i + 1) * dx_total / (num_points + 1) for i in range(num_points)]
+
+    # 线性基线
+    def baseline_y(x):
+        if abs(x_end - x_start) < 1e-12:
+            return (y_start + y_end) * 0.5
+        t = (x - x_start) / (x_end - x_start)
+        return y_start + t * (y_end - y_start)
+
+    base_line = [baseline_y(x) for x in xs]
+
+    # 根据“障碍/目标”相对基线的位置，自适应决定上下弯曲方向
+    school_line_y = baseline_y(sx)
+    base_line_y = baseline_y(bx)
+
+    # 远离学校：如果学校在基线上方，则向下偏；反之向上偏
+    school_dir = -1.0 if sy >= school_line_y else 1.0
+    # 靠近基站：如果基站在基线上方，则向上偏；反之向下偏
+    base_dir = 1.0 if by >= base_line_y else -1.0
+
+    # 用于数值稳定的小工具
+    def clamp(v, lo, hi):
+        return lo if v < lo else hi if v > hi else v
+
+    def gaussian(x, mu, sigma):
+        sigma = max(1e-6, sigma)
+        z = (x - mu) / sigma
+        return math.exp(-0.5 * z * z)
+
+    def build_candidate(w_school, sigma_school, w_base, sigma_base, ramp_power, smooth_steps, smooth_alpha):
+        ys = []
+        span = abs(x_end - x_start) + 1e-9
+        left = min(x_start, x_end)
+        right = max(x_start, x_end)
+
+        for x, y0 in zip(xs, base_line):
+            # 远离学校的局部平滑形变
+            repulse = school_dir * w_school * gaussian(x, sx, sigma_school)
+
+            # 靠近基站的形变：加入右侧 ramp，使靠近基站的一段偏移更明显
+            pos = (x - left) / (right - left + 1e-9)
+            ramp = pos ** ramp_power
+            attract = base_dir * w_base * gaussian(x, bx, sigma_base) * (0.35 + 0.65 * ramp)
+
+            ys.append(y0 + repulse + attract)
+
+        # 轻量拉普拉斯平滑，避免局部尖峰
+        for _ in range(smooth_steps):
+            if len(ys) <= 2:
+                break
+            new_ys = ys[:]
+            for i in range(1, len(ys) - 1):
+                avg_nb = 0.5 * (ys[i - 1] + ys[i + 1])
+                new_ys[i] = (1.0 - smooth_alpha) * ys[i] + smooth_alpha * avg_nb
+            ys = new_ys
+
+        return ys
+
+    def surrogate_score(ys):
+        # 近似多目标代理：
+        # - 长度越短越好
+        # - 离学校越远越好
+        # - 离基站越近越好
+        # - 曲率越小越好
+        pts = [start] + list(zip(xs, ys)) + [end]
+
+        # F1近似：路径长度 / 直线长度
+        total_len = 0.0
+        for i in range(len(pts) - 1):
+            dx = pts[i + 1][0] - pts[i][0]
+            dy = pts[i + 1][1] - pts[i][1]
+            total_len += math.hypot(dx, dy)
+        direct_len = math.hypot(x_end - x_start, y_end - y_start) + 1e-9
+        f1 = total_len / direct_len
+
+        # F2近似：学校附近惩罚，距离越小惩罚越大
+        school_pen = 0.0
+        for x, y in zip(xs, ys):
+            d = math.hypot(x - sx, y - sy)
+            school_pen += 1.0 / (d + 1.0)
+        school_pen /= max(1, len(xs))
+
+        # F3近似：到基站的平均距离，后半段略加权
+        base_pen = 0.0
+        for i, (x, y) in enumerate(zip(xs, ys)):
+            pos = (i + 1) / (len(xs) + 1.0)
+            weight = 0.7 + 0.6 * pos
+            d = math.hypot(x - bx, y - by)
+            base_pen += weight * d
+        base_pen /= max(1, len(xs))
+
+        # 平滑惩罚
+        curvature = 0.0
+        for i in range(1, len(ys) - 1):
+            curvature += abs(ys[i - 1] - 2.0 * ys[i] + ys[i + 1])
+        curvature /= max(1, len(ys) - 2)
+
+        # 权重配置：更重视学校避让和基站接近，同时维持较好长度
+        return 1.2 * f1 + 24.0 * school_pen + 0.075 * base_pen + 0.18 * curvature
+
+    # 尺度自适应：让参数随场景大小变化
+    span_x = abs(x_end - x_start) + 1e-9
+    span_y = abs(y_end - y_start)
+    scene_scale = max(20.0, 0.35 * span_x + 0.25 * span_y + 10.0)
+
+    # 小规模确定性搜索，避免随机性
+    school_weights = [0.18 * scene_scale, 0.28 * scene_scale, 0.40 * scene_scale]
+    base_weights = [0.16 * scene_scale, 0.26 * scene_scale, 0.36 * scene_scale]
+    school_sigmas = [0.10 * span_x + 6.0, 0.16 * span_x + 8.0, 0.22 * span_x + 10.0]
+    base_sigmas = [0.12 * span_x + 6.0, 0.18 * span_x + 8.0, 0.26 * span_x + 10.0]
+    ramp_powers = [1.0, 1.5, 2.0]
+
+    best_ys = base_line[:]
+    best_score = surrogate_score(best_ys)
+
+    for w_school in school_weights:
+        for sigma_school in school_sigmas:
+            for w_base in base_weights:
+                for sigma_base in base_sigmas:
+                    for ramp_power in ramp_powers:
+                        ys = build_candidate(
+                            w_school=w_school,
+                            sigma_school=sigma_school,
+                            w_base=w_base,
+                            sigma_base=sigma_base,
+                            ramp_power=ramp_power,
+                            smooth_steps=3,
+                            smooth_alpha=0.35,
+                        )
+                        score = surrogate_score(ys)
+                        if score < best_score:
+                            best_score = score
+                            best_ys = ys
+
+    # 安全限制：避免极端偏移造成不合理路径
+    # 以起终点和关键点的纵向尺度作为软边界
+    y_ref = [y_start, y_end, sy, by] + best_ys
+    y_min = min(y_ref)
+    y_max = max(y_ref)
+    pad = 0.45 * (y_max - y_min + 20.0)
+
+    lo = min(y_start, y_end, sy, by) - pad
+    hi = max(y_start, y_end, sy, by) + pad
+    best_ys = [float(clamp(y, lo, hi)) for y in best_ys]
+
+    return best_ys
+# EVOLVE-BLOCK-END
+
+import sys
+import os
+
+# 将当前目录加入系统路径以便导入同级文件
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from drone_evaluation import DroneGrader
+
+def run_experiment(**kwargs):
+    """供 Shinka 触发的单次实验方法"""
+    grader = DroneGrader()
+    
+    # 捕获异常防止大模型写出死循环炸毁测评机
+    try:
+        avg_f1, avg_f2, avg_f3, final_score = grader.grade_silent(evolve_drone_path, timeout=12)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        avg_f1, avg_f2, avg_f3, final_score = float('inf'), float('inf'), float('inf'), float('inf')
+        
+    return avg_f1, avg_f2, avg_f3, final_score

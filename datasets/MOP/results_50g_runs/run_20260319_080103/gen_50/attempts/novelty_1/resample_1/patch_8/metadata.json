@@ -1,0 +1,14 @@
+{
+  "generation": 50,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 8,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "adaptive_clearance_dual_projection",
+  "patch_description": "The `adaptive_clearance_dual_projection` algorithm implements a two-stage analytical deformation of a linear baseline. \n1. **Prioritized Base Alignment (F3)**: It first calculates a broad Gaussian \"pull\" toward the base station. By determining the amplitude required to reach the base station's Y-coordinate at its specific X-location, it directly targets signal loss reduction.\n2. **Post-Alignment School Clearance (F2)**: Following the recommendation from Gen 34, it calculates the path's estimated Y-coordinate at the school's X-coordinate *after* accounting for the base pull. This provides an accurate measure of noise clearance. It then applies an adaptive push amplitude, constrained between 32.0 and 52.0, ensuring optimal noise minimization while preventing excessive distance penalties.\n3. **Harmonic Smoothness (F1)**: All deformations are modulated by a sinusoidal taper function and constructed using Gaussian kernels. This ensures the path is C-infinity smooth, minimizes the total flying distance, and strictly adheres to the fixed start and end point constraints.",
+  "error_msg": "Could not extract code from patch string",
+  "timestamp": "2026-03-19T16:25:47.009260",
+  "llm_cost": 0.009188,
+  "llm_model": null
+}

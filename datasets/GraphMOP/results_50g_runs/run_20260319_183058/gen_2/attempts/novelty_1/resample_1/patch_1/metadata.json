@@ -1,0 +1,14 @@
+{
+  "generation": 2,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "server_centric_routing_trees",
+  "patch_description": "The program has been structurally redesigned to use \"Server-Centric Routing Trees\". Instead of running Dijkstra's algorithm on-demand for every source-server pair (which scales poorly with many sources), we precompute the shortest path tree from each server to all nodes in the graph. This architectural shift reduces the number of Dijkstra executions from O(num_sources * num_servers) to O(num_servers), drastically improving execution speed. Furthermore, this allows us to evaluate all servers for each task source in O(1) time using a more accurate multi-objective scoring function that directly models transmission latency, routing energy, and M/M/1 queueing delay, rather than relying on simple hop-count heuristics.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:32:22.853613",
+  "llm_cost": 0.022664,
+  "llm_model": null
+}

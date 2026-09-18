@@ -1,0 +1,14 @@
+{
+  "generation": 1,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 2,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "gaussian_potential_field_optimization",
+  "patch_description": "The proposed algorithm replaces the linear interpolation with a **Gaussian Potential Field** approach. This strategy treats the school as a repulsive source and the base station as an attractive sink, influencing the path's Y-coordinates through localized Gaussian kernels.\n\n1.  **Objective F3 (Signal Loss):** The base station at (70, -30) is the primary source of signal. We apply an \"attractive\" Gaussian kernel centered at $x=70$ that pulls the drone's trajectory towards $y=-30$. This significantly reduces signal drop.\n2.  **Objective F2 (School Noise):** The school at (40, 20) requires noise mitigation. We apply a \"repulsive\" Gaussian kernel centered at $x=40$ that pushes the drone's trajectory vertically away from the school's location.\n3.  **Objective F1 (Distance):** By using Gaussian functions (which are smooth and infinitely differentiable), the resulting path is a continuous curve rather than a jagged line. This minimizes the extra distance added while satisfying the other two constraints.\n4.  **Efficiency:** The algorithm calculates the displacement for each point in $O(N)$ time, making it highly performant compared to iterative solvers or evolutionary search, while providing a much more sophisticated path than simple linear rules.",
+  "error_msg": null,
+  "timestamp": "2026-03-19T16:03:07.171545",
+  "llm_cost": 0.0040285,
+  "llm_model": null
+}

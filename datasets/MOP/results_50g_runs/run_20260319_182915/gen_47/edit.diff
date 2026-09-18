@@ -1,0 +1,363 @@
+--- a/original.py
++++ b/original.py
+@@ -1,240 +1,156 @@
+ # EVOLVE-BLOCK-START
+-import math
++class DronePathRBF:
++    """Controls a path using a sum of Radial Basis Functions (Gaussians)."""
++    def __init__(self, start, end, num_ctrl=10):
++        self.x0, self.y0 = start
++        self.x1, self.y1 = end
++        self.x_span = self.x1 - self.x0 if self.x1 != self.x0 else 1.0
++        self.num_ctrl = num_ctrl
++        
++        # Space centers along the route
++        self.centers = [self.x0 + i * self.x_span / (num_ctrl - 1) for i in range(num_ctrl)]
++        # Sigma chosen to provide smooth overlap
++        self.sigma = self.x_span / (num_ctrl * 0.7)
++        self.weights = [0.0] * num_ctrl
+ 
++    def get_path_ys(self, xs):
++        """Calculates Y for each X in xs."""
++        y_out = []
++        inv_2_sigma_sq = 1.0 / (2 * self.sigma**2)
++        for x in xs:
++            # Baseline linear interpolation
++            t = (x - self.x0) / self.x_span
++            base_y = self.y0 + t * (self.y1 - self.y0)
++            
++            # Add Gaussian influences
++            offset = 0.0
++            for i in range(self.num_ctrl):
++                dist_sq = (x - self.centers[i])**2
++                offset += self.weights[i] * math.exp(-dist_sq * inv_2_sigma_sq)
++            y_out.append(base_y + offset)
++        return y_out
+ 
+-class PathContext:
+-    """Immutable input bundle + precomputed evenly spaced X samples."""
+-    __slots__ = ("start", "end", "school", "base", "num_points", "xs", "x_span")
+-
+-    def __init__(self, start, end, school, base, num_points):
++class GraderProxy:
++    """Simplified evaluator for F1 (Dist), F2 (School), and F3 (Base)."""
++    def __init__(self, start, end, school, base, xs):
+         self.start = start
+         self.end = end
+         self.school = school
+         self.base = base
+-        self.num_points = int(num_points)
+-        x0, _ = start
+-        x1, _ = end
+-        self.x_span = (x1 - x0) if x1 != x0 else 1.0
+-
+-        # 按 X 匀速布点（与题目要求一致）
+-        self.xs = [
+-            x0 + (i + 1) * (x1 - x0) / (self.num_points + 1)
+-            for i in range(self.num_points)
+-        ]
+-
+-
+-class CurveGenerator:
+-    """
+-    Smooth curve builder:
+-    y(x) = linear + school_repulsion + base_attraction + mild_global_bend
+-    """
+-    @staticmethod
+-    def linear_y(x, start, end):
+-        x0, y0 = start
+-        x1, y1 = end
+-        if x1 == x0:
+-            return (y0 + y1) * 0.5
+-        t = (x - x0) / (x1 - x0)
+-        return y0 + t * (y1 - y0)
+-
+-    @staticmethod
+-    def gaussian(x, mu, sigma):
+-        sigma = max(1e-3, sigma)
+-        z = (x - mu) / sigma
+-        return math.exp(-0.5 * z * z)
+-
+-    def build(self, ctx, params):
+-        # params = (a_school, s_school, a_base, s_base, global_tilt, cubic_bend)
+-        a_s, s_s, a_b, s_b, g_tilt, c_bend = params
+-
+-        sx, sy = ctx.school
+-        bx, by = ctx.base
+-        x0, _ = ctx.start
+-        x1, _ = ctx.end
+-
+-        ys = []
+-        for x in ctx.xs:
+-            base_line = self.linear_y(x, ctx.start, ctx.end)
+-
+-            # School repulsion direction: move away in y from school
+-            # sign determined from baseline relative position
+-            dir_school = 1.0 if (base_line - sy) >= 0 else -1.0
+-            repulse = dir_school * a_s * self.gaussian(x, sx, s_s)
+-
+-            # Base attraction direction: move toward base y
+-            dir_base = 1.0 if (by - base_line) >= 0 else -1.0
+-            attract = dir_base * a_b * self.gaussian(x, bx, s_b)
+-
+-            # Mild smooth global terms
+-            if x1 != x0:
+-                t = (x - x0) / (x1 - x0)
+-            else:
+-                t = 0.5
+-            tilt = g_tilt * (t - 0.5)
+-            cubic = c_bend * (2 * t - 1) ** 3
+-
+-            ys.append(float(base_line + repulse + attract + tilt + cubic))
+-        return ys
+-
+-
+-class SurrogateEvaluator:
+-    """
+-    Fast proxy objective (lower is better):
+-      F1 proxy: polyline length ratio
+-      F2 proxy: school proximity penalty
+-      F3 proxy: distance to base penalty
+-    """
+-    def __init__(self):
+-        # Weights tuned for balancing all three objectives
+-        self.w_dist = 1.0
+-        self.w_school = 16.0
+-        self.w_base = 0.23
+-        self.w_smooth = 0.75
+-
+-    @staticmethod
+-    def _polyline_points(ctx, ys):
+-        pts = [ctx.start]
+-        pts.extend((ctx.xs[i], ys[i]) for i in range(ctx.num_points))
+-        pts.append(ctx.end)
+-        return pts
+-
+-    def score(self, ctx, ys):
+-        pts = self._polyline_points(ctx, ys)
+-
+-        # F1 proxy: total length / straight-line length
++        self.xs = xs
++        self.num_pts = len(xs)
++        self.straight_len = math.hypot(end[0]-start[0], end[1]-start[1]) + 1e-6
++        
++    def evaluate(self, ys):
++        pts = [self.start]
++        for i in range(self.num_pts):
++            pts.append((self.xs[i], ys[i]))
++        pts.append(self.end)
++        
++        # F1: Distance ratio
+         total_len = 0.0
+         for i in range(1, len(pts)):
+-            dx = pts[i][0] - pts[i - 1][0]
+-            dy = pts[i][1] - pts[i - 1][1]
+-            total_len += math.hypot(dx, dy)
++            total_len += math.hypot(pts[i][0]-pts[i-1][0], pts[i][1]-pts[i-1][1])
++        f1 = total_len / self.straight_len
++        
++        # F2: School proximity (inverse distance)
++        sx, sy = self.school
++        f2 = 0.0
++        for i in range(1, len(pts)-1):
++            d = math.hypot(pts[i][0]-sx, pts[i][1]-sy)
++            f2 += 1.0 / (d + 3.0)
++        f2 /= self.num_pts
++        
++        # F3: Base station signal drop (distance)
++        bx, by = self.base
++        f3 = 0.0
++        for i in range(1, len(pts)-1):
++            f3 += math.hypot(pts[i][0]-bx, pts[i][1]-by)
++        f3 /= self.num_pts
+ 
+-        straight = math.hypot(ctx.end[0] - ctx.start[0], ctx.end[1] - ctx.start[1]) + 1e-9
+-        f1 = total_len / straight
+-
+-        # F2 proxy: school noise (high if too close)
+-        sx, sy = ctx.school
+-        f2 = 0.0
+-        for (x, y) in pts[1:-1]:
+-            d = math.hypot(x - sx, y - sy)
+-            f2 += 1.0 / (d + 3.0)  # soft inverse distance
+-        f2 /= max(1, ctx.num_points)
+-
+-        # F3 proxy: signal drop approximated by distance to base
+-        bx, by = ctx.base
+-        f3 = 0.0
+-        for (x, y) in pts[1:-1]:
+-            f3 += math.hypot(x - bx, y - by)
+-        f3 /= max(1, ctx.num_points)
+-
+-        # Smoothness penalty
++        # Smoothness penalty (Laplacian)
+         smooth = 0.0
+-        for i in range(1, len(ys) - 1):
+-            smooth += abs(ys[i + 1] - 2 * ys[i] + ys[i - 1])
+-        smooth /= max(1, ctx.num_points - 2)
+-
+-        return (
+-            self.w_dist * f1
+-            + self.w_school * f2
+-            + self.w_base * f3
+-            + self.w_smooth * smooth
+-        )
+-
+-
+-class LocalSearchOptimizer:
+-    """Deterministic multi-start local search in a compact parameter space."""
+-    def __init__(self, generator, evaluator):
+-        self.generator = generator
+-        self.evaluator = evaluator
+-
+-    @staticmethod
+-    def _clamp_params(p):
+-        a_s, s_s, a_b, s_b, g_t, c_b = p
+-        return (
+-            max(0.0, min(80.0, a_s)),
+-            max(4.0, min(80.0, s_s)),
+-            max(0.0, min(80.0, a_b)),
+-            max(4.0, min(90.0, s_b)),
+-            max(-30.0, min(30.0, g_t)),
+-            max(-40.0, min(40.0, c_b)),
+-        )
+-
+-    def _refine(self, ctx, p0):
+-        best_p = self._clamp_params(p0)
+-        best_y = self.generator.build(ctx, best_p)
+-        best_s = self.evaluator.score(ctx, best_y)
+-
+-        # Coordinate-wise step descent
+-        steps = [8.0, 6.0, 8.0, 6.0, 4.0, 4.0]
+-        for _ in range(24):
+-            improved = False
+-            for k in range(6):
+-                for direction in (-1.0, 1.0):
+-                    cand = list(best_p)
+-                    cand[k] += direction * steps[k]
+-                    cand = self._clamp_params(tuple(cand))
+-
+-                    ys = self.generator.build(ctx, cand)
+-                    sc = self.evaluator.score(ctx, ys)
+-                    if sc < best_s:
+-                        best_s, best_p, best_y = sc, cand, ys
+-                        improved = True
+-            if not improved:
+-                steps = [s * 0.6 for s in steps]
+-                if max(steps) < 0.25:
+-                    break
+-        return best_p, best_y, best_s
+-
+-    def optimize(self, ctx):
+-        # Seeds intentionally bias "away from school" and "toward base"
+-        seeds = [
+-            (18.0, 16.0, 24.0, 18.0, -4.0, -6.0),
+-            (24.0, 12.0, 30.0, 16.0, -6.0, -8.0),
+-            (12.0, 22.0, 20.0, 22.0, -2.0, -4.0),
+-            (30.0, 14.0, 26.0, 20.0, -8.0, -10.0),
+-        ]
+-
+-        best = None
+-        for p0 in seeds:
+-            cand = self._refine(ctx, p0)
+-            if best is None or cand[2] < best[2]:
+-                best = cand
+-
+-        return best[1]
+-
++        if len(ys) > 2:
++            for i in range(1, len(ys)-1):
++                smooth += abs(ys[i+1] - 2*ys[i] + ys[i-1])
++            smooth /= (len(ys) - 2)
++            
++        # Composite score (Lower is better)
++        return f1 + 18.2 * f2 + 0.28 * f3 + 0.6 * smooth
+ 
+ def evolve_drone_path(start, end, school, base, num_points):
+-    """
+-    返回长度为 num_points 的 y 坐标列表（对应按 X 匀速的中间点）。
+-    """
+-    if num_points <= 0:
+-        return []
++    """Optimizes path using multi-scale coordinate descent on RBF weights."""
++    if num_points <= 0: return []
++    
++    x0, y0 = start
++    x1, y1 = end
++    xs = [x0 + (i + 1) * (x1 - x0) / (num_points + 1) for i in range(num_points)]
++    
++    model = DronePathRBF(start, end, num_ctrl=10)
++    evaluator = GraderProxy(start, end, school, base, xs)
++    
++    base_ys = model.get_path_ys(xs)
++    best_score = evaluator.evaluate(base_ys)
++    
++    # Hierarchical search scales
++    steps = [32.0, 16.0, 8.0, 4.0, 1.0, 0.25]
++    
++    for step in steps:
++        # Loop until no improvement at this scale
++        for _ in range(5): 
++            improved = False
++            
++            # 1. Single coordinate descent sweep
++            for i in range(model.num_ctrl):
++                orig_w = model.weights[i]
++                for direction in [-1, 1]:
++                    model.weights[i] = orig_w + direction * step
++                    new_score = evaluator.evaluate(model.get_path_ys(xs))
++                    if new_score < best_score:
++                        best_score = new_score
++                        improved = True
++                        orig_w = model.weights[i]
++                    else:
++                        model.weights[i] = orig_w
++            
++            # 2. Block/Pair updates (test adjacent weight coordination)
++            for i in range(model.num_ctrl - 1):
++                orig_w_i = model.weights[i]
++                orig_w_next = model.weights[i+1]
++                for direction in [-1, 1]:
++                    model.weights[i] = orig_w_i + direction * step
++                    model.weights[i+1] = orig_w_next + direction * step
++                    new_score = evaluator.evaluate(model.get_path_ys(xs))
++                    if new_score < best_score:
++                        best_score = new_score
++                        improved = True
++                    else:
++                        model.weights[i] = orig_w_i
++                        model.weights[i+1] = orig_w_next
++            
++            if not improved:
++                break
+ 
+-    ctx = PathContext(start, end, school, base, num_points)
+-    generator = CurveGenerator()
+-    evaluator = SurrogateEvaluator()
+-    optimizer = LocalSearchOptimizer(generator, evaluator)
+-
+-    ys = optimizer.optimize(ctx)
+-    return [float(y) for y in ys]
++    return [float(y) for y in model.get_path_ys(xs)]
+ # EVOLVE-BLOCK-END
+ 
+ import sys
+ import os
+ 
+ # 将当前目录加入系统路径以便导入同级文件
+ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+ from drone_evaluation import DroneGrader
+ 
+ def run_experiment(**kwargs):
+     """供 Shinka 触发的单次实验方法"""
+     grader = DroneGrader()
+     
+     # 捕获异常防止大模型写出死循环炸毁测评机
+     try:
+         avg_f1, avg_f2, avg_f3, final_score = grader.grade_silent(evolve_drone_path, timeout=12)
+     except Exception as e:
+         import traceback
+         traceback.print_exc()
+         avg_f1, avg_f2, avg_f3, final_score = float('inf'), float('inf'), float('inf'), float('inf')
+         
+     return avg_f1, avg_f2, avg_f3, final_score

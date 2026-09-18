@@ -1,0 +1,50 @@
+An elegant and highly effective approach to this multi-objective routing problem is to use a **Candidate Path Precomputation combined with Local Search (Hill Climbing)**. 
+
+### Method Explanation
+
+1. **Candidate Path Precomputation**: 
+   Instead of running a shortest-path algorithm for every `(source, server)` pair (which is computationally heavy and scales poorly), we run Dijkstra's algorithm from each *server* to all other nodes. By using a diverse set of 8 different edge-weight functions (combinations of latency, energy, and capacity penalties), we can generate a rich set of Pareto-optimal candidate paths for each source to each server in a fraction of the time.
+
+2. **Surrogate Cost Function**:
+   We define a comprehensive cost function that accurately models the problem's objectives:
+   - **Server Queueing Delay**: Modeled using the M/M/1 queue formula $1 / (\mu - \lambda)$ to naturally penalize servers approaching their maximum capacity.
+   - **Server Energy**: Modeled as proportional to the server's utilization.
+   - **Edge Capacity Penalty**: Edges are penalized if their load exceeds 80% of their capacity, ensuring traffic is load-balanced across the network.
+   - **Path Latency & Energy**: Exact sums along the routed paths.
+
+3. **Greedy Initialization & Local Search**:
+   We first assign each task source to the `(server, path)` pair that minimizes the marginal increase in our surrogate cost function. After this initial assignment, we continuously pick random task sources and evaluate if moving them to a different server or path reduces the total system cost. Because we only compute the *marginal difference* (which operates in $O(|path|)$ time), we can perform tens of thousands of optimization iterations within the time limit, easily escaping poor initial assignments and converging to a highly optimized global state.
+
+### Python 3 Source Code
+
+```python
+<NAME>
+precompute_local_search
+</NAME>
+
+<DESCRIPTION>
+Precomputes a rich set of candidate paths from all servers using multiple edge-weight functions. It then uses a fast marginal-cost evaluator to greedily assign sources, followed by a high-throughput Local Search (Hill Climbing) to continuously optimize the assignments for latency, energy, and load-balancing until the time limit is reached.
+</DESCRIPTION>
+
+<CODE>
+# EVOLVE-BLOCK-START
+def evolve_task_routing(
+    num_nodes,
+    edges,
+    server_nodes,
+    task_sources,
+    task_info,
+    server_info,
+):
+    import heapq
+    import time
+    import random
+
+    start_time = time.time()
+    
+    graph = [[] for _ in range(num_nodes)]
+    edges_dict = {}
+    edge_capacity = {}
+    for u, v, base_latency, energy_cost, capacity in edges:
+        graph[u].append((v, base_latency, energy_cost, capacity))
+        graph[v].append((u, base_latency,

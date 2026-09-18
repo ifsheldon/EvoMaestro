@@ -1,0 +1,60 @@
+
+```
+Wait, I cut off the REPLACE block again. I need to be careful.
+
+Wait, I should check the length of the `seeds` list. I'll use 3 seeds to save time and prevent timeout.
+
+One more thing: the `SEARCH` block for `LocalSearchOptimizer` was too long and I made a mistake in the previous thought. Let's break it down or be very careful.
+
+Actually, the `SEARCH` block must be exactly as in the file.
+
+```python
+<<<<<<< SEARCH
+class LocalSearchOptimizer:
+    """Deterministic multi-start local search in a compact parameter space."""
+    def __init__(self, generator, evaluator):
+        self.generator = generator
+        self.evaluator = evaluator
+
+    @staticmethod
+    def _clamp_params(p):
+        a_s, s_s, a_b, s_b, g_t, c_b = p
+        return (
+            max(0.0, min(80.0, a_s)),
+            max(4.0, min(80.0, s_s)),
+            max(0.0, min(80.0, a_b)),
+            max(4.0, min(90.0, s_b)),
+            max(-30.0, min(30.0, g_t)),
+            max(-40.0, min(40.0, c_b)),
+        )
+
+    def _refine(self, ctx, p0):
+        best_p = self._clamp_params(p0)
+        best_y = self.generator.build(ctx, best_p)
+        best_s = self.evaluator.score(ctx, best_y)
+
+        # Coordinate-wise step descent
+        steps = [8.0, 6.0, 8.0, 6.0, 4.0, 4.0]
+        for _ in range(24):
+            improved = False
+            for k in range(6):
+                for direction in (-1.0, 1.0):
+                    cand = list(best_p)
+                    cand[k] += direction * steps[k]
+                    cand = self._clamp_params(tuple(cand))
+
+                    ys = self.generator.build(ctx, cand)
+                    sc = self.evaluator.score(ctx, ys)
+                    if sc < best_s:
+                        best_s, best_p, best_y = sc, cand, ys
+                        improved = True
+            if not improved:
+                steps = [s * 0.6 for s in steps]
+                if max(steps) < 0.25:
+                    break
+        return best_p, best_y, best_s
+
+    def optimize(self, ctx):
+        # Seeds intentionally bias "away from school" and "toward base"
+        seeds = [
+            (

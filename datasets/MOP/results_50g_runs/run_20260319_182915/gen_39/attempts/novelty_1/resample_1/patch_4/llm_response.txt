@@ -1,0 +1,53 @@
+<NAME>
+seed_expansion_and_gradient_polish
+</NAME>
+
+<DESCRIPTION>
+The previous highest-performing solutions married exact path energy gradients with an Adam-style optimizer, but were limited by starting their trajectory from a naive straight line. The current generation features a robust, broad search over shape parameters, but stops at a grid minimum and misses the pinpoint optimization.
+
+This change elegantly merges the two approaches:
+1. It expands the initialization seed geometries by modifying the internal `build_path` builder directly. We inject asymmetric configurations (such as bumps starting slightly before or after the school position, as well as a "bridge" between the school and base station). This creates "targeted basin coverage" for paths curving smartly around the obstacles.
+2. After utilizing the surrogate model to select the best coarsely estimated seed string configuration, a 250-step exact active contour optimization (with standard Adam descent properties pushing on length, smoothness, repulsion, and attraction) is deployed directly on top of the deterministic seed constraint.
+
+This avoids blind convergence while securing the tightest possible score margins on effectively matching all objectives together (Distance F1, Proximity Noise F2, and Target Signal F3).
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+    # Candidate construction.
+    def build_path(a_school, a_base):
+        y = [0.0] * n
+        for i in range(n):
+            offset = a_school * school_basis[i] + a_base * base_basis[i]
+
+            # Soft safety cap to avoid very long detours.
+            max_off = 34.0 + 0.10 * span_y + 0.12 * dy_base_ref
+            if offset > max_off:
+                offset = max_off
+            elif offset < -max_off:
+                offset = -max_off
+
+            y[i] = y_line[i] + offset
+
+        # Light Laplacian smoothing with fixed virtual endpoints.
+        # Keeps the S-shape while reducing unnecessary arc length.
+        passes = 2
+        for _ in range(passes):
+            y_new = y[:]
+            for i in range(n):
+                y_prev = y_start if i == 0 else y[i - 1]
+                y_next = y_end if i == n - 1 else y[i + 1]
+                target = 0.5 * (y_prev + y_next)
+
+                # Preserve more structure near the influence regions.
+                preserve = 0.78 - 0.18 * envelopes[i]
+                if preserve < 0.52:
+                    preserve = 0.52
+                y_new[i] = preserve * y[i] + (1.0 - preserve) * target
+            y = y_new
+
+        return y
+
+    # Surrogate score for internal search.
+    def surrogate_score(y):
+        # F1 proxy: normalized path length

@@ -1,0 +1,44 @@
+<NAME>
+sinusoidal_arch_path
+</NAME>
+
+<DESCRIPTION>
+To minimize the combined score (F1 * F2 * F3), we replace the straight-line path with a sinusoidal arch. This arch is designed to bend away from the school located at (40, 20) and pass extremely close to the base station at (70, -30). Since the school is at a positive Y-coordinate and the base station is at a negative Y-coordinate, a downward arch simultaneously decreases the school noise proximity (F2) and the base station signal drop (F3). An amplitude of 37.1 is used to ensure the path passes almost exactly through y = -30 when x = 70 (progress = 0.7), which significantly reduces F3 while maintaining a reasonable path length (F1).
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+    x_start, y_start = start
+    x_end, y_end = end
+    
+    # 【初始方案：最无脑的纯直线】
+    y_coords = []
+    dy = (y_end - y_start) / (num_points + 1)
+    
+    for i in range(num_points):
+        y_coords.append(float(y_start + (i + 1) * dy))
+        
+    return y_coords
+=======
+    import math
+    x_start, y_start = start
+    x_end, y_end = end
+    
+    y_coords = []
+    for i in range(num_points):
+        # pct represents the progress along the X-axis from start to end (0 to 1)
+        pct = (i + 1) / (num_points + 1)
+        
+        # Calculate the linear interpolation baseline
+        y_lin = y_start + pct * (y_end - y_start)
+        
+        # Add a sinusoidal bend to minimize distance to base (70, -30) and 
+        # maximize distance from school (40, 20). 
+        # With pct=0.7 at x=70, sin(0.7*pi) * 37.1 is approx 30.0.
+        y_arch = -37.1 * math.sin(math.pi * pct)
+        
+        y_coords.append(float(y_lin + y_arch))
+        
+    return y_coords
+>>>>>>> REPLACE
+</DIFF>

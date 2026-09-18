@@ -1,0 +1,52 @@
+<NAME>
+marginal_cost_routing
+</NAME>
+
+<DESCRIPTION>
+The previous routing logic used a heuristic scoring function that didn't fully capture the marginal impact of adding a task to the system's total latency and energy. This update:
+1.  Re-orders the precomputation to calculate `avg_payload` first, allowing it to be used for more accurate edge selection and Dijkstra weights.
+2.  Updates the edge selection and Dijkstra weights to use the objective's weight (Latency + 1.5 * Energy).
+3.  Replaces the heuristic assignment score with a proper marginal cost calculation. The marginal latency includes both the task's transmission latency and the increase in queueing delay for all tasks at the chosen server. The marginal energy includes routing energy, dynamic compute energy, and idle power (if the server was previously empty).
+4.  Applies this consistent marginal cost logic to both the initial greedy assignment and the local search refinement.
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+    # ----------------------------
+    # Graph build (undirected)
+    # ----------------------------
+    graph = [[] for _ in range(num_nodes)]
+    edge_attr = {}
+    for u, v, base_latency, energy_cost, capacity in edges:
+        bl = float(base_latency)
+        ec = float(energy_cost)
+        cp = float(capacity)
+        graph[u].append((v, bl, ec, cp))
+        graph[v].append((u, bl, ec, cp))
+
+        k1 = (u, v)
+        k2 = (v, u)
+        prev = edge_attr.get(k1)
+        if prev is None or (bl + 0.2 * ec) < (prev[0] + 0.2 * prev[1]):
+            edge_attr[k1] = (bl, ec, cp)
+            edge_attr[k2] = (bl, ec, cp)
+=======
+    # ----------------------------
+    # Graph build (undirected)
+    # ----------------------------
+    payloads = [float(task_info[s][1]) for s in task_sources] if task_sources else [1.0]
+    avg_payload = sum(payloads) / max(len(payloads), 1)
+
+    graph = [[] for _ in range(num_nodes)]
+    edge_attr = {}
+    for u, v, base_latency, energy_cost, capacity in edges:
+        bl = float(base_latency)
+        ec = float(energy_cost)
+        cp = float(capacity)
+        graph[u].append((v, bl, ec, cp))
+        graph[v].append((u, bl, ec, cp))
+
+        k1 = (u, v)
+        k2 = (v, u)
+        prev = edge_attr.get(k1)
+        # Use the objective weight (

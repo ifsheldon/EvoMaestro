@@ -1,0 +1,12 @@
+Evaluation error: expected an indented block after 'if' statement on line 98 (main.py, line 99)
+Correctness and error status saved to /home/evolve/evolvis/GraphMOP/results_50g_runs/run_20260319_183058/gen_41/results/correct.json
+Metrics saved to /home/evolve/evolvis/GraphMOP/results_50g_runs/run_20260319_183058/gen_41/results/metrics.json
+Evaluation failed: expected an indented block after 'if' statement on line 98 (main.py, line 99)
+Metrics:
+  combined_score: 0.0
+  execution_time_mean: 0.0
+  execution_time_std: 0.0
+  num_successful_runs: 0
+  num_valid_runs: 0
+  num_invalid_runs: 0
+  all_validation_errors: []

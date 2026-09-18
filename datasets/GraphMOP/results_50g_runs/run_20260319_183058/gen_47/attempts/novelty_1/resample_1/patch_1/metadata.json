@@ -1,0 +1,14 @@
+{
+  "generation": 47,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "hotspot_relaxation_routing",
+  "patch_description": "This approach replaces generic shortest-path edge scaling with theoretically sound path weights centered on average payload, perfectly aligning the Dijkstra path selection with the network objective. Next, we replace the single-pass broad local search with an Iterative Best Response (IBR) load management algorithm. By using mathematically precise surrogate derivatives for both queue delay and system energy, we assign initial server allocations and iteratively target explicitly \"hot\" (highly stressed) servers. Unburdening the worst localized bottlenecks monotonically pushes the system globally into a highly balanced Pareto-optimal local minimum efficiently over multiple targeted relaxation passes.",
+  "error_msg": "Could not extract code from patch string",
+  "timestamp": "2026-03-20T02:52:05.453360",
+  "llm_cost": 0.015652,
+  "llm_model": null
+}

@@ -1,0 +1,14 @@
+{
+  "generation": 31,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "energy_relax_path",
+  "patch_description": "I moved away from the previous \u201ccompose a few Gaussian offsets + brute-force parameter pick\u201d pattern and implemented a **discrete energy minimization** solver.\n\nInspired by prior programs\u2019 useful intuitions (local school repulsion, base attraction, smoothness), this version treats the internal Y points as optimization variables and iteratively relaxes them via gradient descent on a multi-objective energy:\n\n- short path length (F1 proxy),\n- school proximity penalty (F2 proxy),\n- base distance penalty (F3 proxy),\n- curvature regularization and baseline anchoring for smooth, efficient trajectories.\n\nA key design insight is preserved from the feedback: **base attraction is conditioned by school influence** (`base_scale = 0.35 + 0.65*(1-w_school)`), so the path keeps the local school-avoidance bend near the school while recovering toward the base elsewhere.  \nThis gives a smoother \u201cbend away from (40,20), then bend toward (70,-30)\u201d behavior without over-deforming the whole path.",
+  "error_msg": null,
+  "timestamp": "2026-03-19T16:09:37.785152",
+  "llm_cost": 0.06578075,
+  "llm_model": null
+}

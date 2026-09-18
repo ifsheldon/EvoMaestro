@@ -1,0 +1,14 @@
+{
+  "generation": 49,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 5,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "two_scale_gaussian_basis_and_product_metric",
+  "patch_description": "This update enhances the drone path parametrization and the optimization goal:\n1.  **Two-Scale Gaussian Basis**: Adds 4 additional broad Gaussian basis functions to the `CurveGenerator` to allow for smoother global path shaping. This helps minimize F3 (signal loss) more effectively than local controls alone.\n2.  **Product-Based Proxy**: Replaces the weighted sum in `SurrogateEvaluator` with a product-based objective (`f1 * f2 * f3`). This aligns the internal optimization with the external 'Multiplier Score' metric. It also improves the F2 proxy by using an inverse-square distance sum to better model noise potential.\n3.  **Extended Search**: Updates the `LocalSearchOptimizer` to handle the new 10-dimensional parameter space and provides focused initial seeds for global shaping.",
+  "error_msg": "No changes applied",
+  "timestamp": "2026-03-20T02:54:34.830885",
+  "llm_cost": 0.0064665,
+  "llm_model": null
+}

@@ -1,0 +1,144 @@
+import heapq
+
+def evolve_task_routing(
+    num_nodes,
+    edges,
+    server_nodes,
+    task_sources,
+    task_info,
+    server_info,
+):
+    # 1. Build Graph
+    graph = [[] for _ in range(num_nodes)]
+    for u, v, lat, en, cap in edges:
+        graph[u].append((v, float(lat), float(en), float(cap)))
+        graph[v].append((u, float(lat), float(en), float(cap)))
+
+    # Candidates: Path, latency, and energy for each (source, server)
+    candidates = {}
+    
+    # Precompute paths for each source
+    for src in task_sources:
+        arr, payload, comp = task_info[src]
+        # Dijkstra for specific source and its payload
+        dists = [float('inf')] * num_nodes
+        parent = [-1] * num_nodes
+        d_lat = [0.0] * num_nodes
+        d_en = [0.0] * num_nodes
+        dists[src] = 0.0
+        pq = [(0.0, src)]
+        
+        while pq:
+            d, u = heapq.heappop(pq)
+            if d > dists[u]:
+                continue
+            for v, base_lat, en_cost, cap in graph[u]:
+                edge_lat = base_lat + payload / max(cap, 1e-9)
+                edge_en = en_cost * payload
+                # Use a combined weight for Dijkstra
+                weight = edge_lat + 0.4 * edge_en
+                if dists[u] + weight < dists[v]:
+                    dists[v] = dists[u] + weight
+                    d_lat[v] = d_lat[u] + edge_lat
+                    d_en[v] = d_en[u] + edge_en
+                    parent[v] = u
+                    heapq.heappush(pq, (dists[v], v))
+        
+        for srv in server_nodes:
+            if dists[srv] == float('inf'):
+                candidates[(src, srv)] = (None, 1e12, 1e12)
+            else:
+                path = []
+                curr = srv
+                while curr != -1:
+                    path.append(curr)
+                    curr = parent[curr]
+                candidates[(src, srv)] = (path[::-1], d_lat[srv], d_en[srv])
+
+    # 2. Greedy with Regret
+    server_load = {srv: 0.0 for srv in server_nodes}
+    server_arr = {srv: 0.0 for srv in server_nodes}
+    assignment = {}
+
+    def get_cost(src, srv, s_load, s_arr):
+        path, r_lat, r_en = candidates[(src, srv)]
+        if path is None: return 1e15
+        
+        arr, payload, comp = task_info[src]
+        mu, idle, dyn = server_info[srv]
+        
+        l_i = arr * comp
+        if s_load + l_i >= 0.999 * mu: return 1e14
+        
+        # Marginal Total Latency (Change in sum(a_i * (R_i + 1/(mu-L))))
+        # d_lat = a_i * R_i + ( (A+a_i)/(mu - (L+l_i)) - A/(mu-L) )
+        old_q = s_arr / max(mu - s_load, 1e-6)
+        new_q = (s_arr + arr) / max(mu - (s_load + l_i), 1e-6)
+        m_lat = arr * r_lat + (new_q - old_q)
+        
+        # Marginal Total Energy
+        # d_en = a_i * RE_i + (l_i/mu) * dyn + (idle if first arrival)
+        m_en = arr * r_en + (l_i / mu) * dyn
+        if s_arr == 0: m_en += idle
+        
+        return m_lat + 0.5 * m_en
+
+    # Order sources by "regret" (diff between best and worst server options at empty state)
+    regret_list = []
+    for src in task_sources:
+        costs = sorted([get_cost(src, srv, 0.0, 0.0) for srv in server_nodes])
+        regret = costs[1] - costs[0] if len(costs) > 1 else 0
+        regret_list.append((regret, src))
+    regret_list.sort(key=lambda x: x[0], reverse=True)
+
+    for _, src in regret_list:
+        best_srv = None
+        best_c = float('inf')
+        for srv in server_nodes:
+            c = get_cost(src, srv, server_load[srv], server_arr[srv])
+            if c < best_c:
+                best_c = c
+                best_srv = srv
+        
+        if best_srv is None: best_srv = server_nodes[0]
+        assignment[src] = best_srv
+        arr, _, comp = task_info[src]
+        server_load[best_srv] += arr * comp
+        server_arr[best_srv] += arr
+
+    # 3. Iterative Local Search refinement
+    for _ in range(5):
+        changed = False
+        for src in task_sources:
+            old_srv = assignment[src]
+            arr, _, comp = task_info[src]
+            
+            # Remove current contribution
+            server_load[old_srv] -= arr * comp
+            server_arr[old_srv] -= arr
+            
+            best_srv = None
+            best_c = float('inf')
+            for srv in server_nodes:
+                c = get_cost(src, srv, server_load[srv], server_arr[srv])
+                if c < best_c:
+                    best_c = c
+                    best_srv = srv
+            
+            assignment[src] = best_srv
+            server_load[best_srv] += arr * comp
+            server_arr[best_srv] += arr
+            if best_srv != old_srv:
+                changed = True
+        if not changed:
+            break
+
+    # 4. Format Output
+    final_plan = {}
+    for src in task_sources:
+        srv = assignment[src]
+        path, _, _ = candidates[(src, srv)]
+        if path is None: path = [src, srv]
+        final_plan[src] = {"server": srv, "path": path}
+
+    return final_plan

@@ -1,0 +1,14 @@
+{
+  "generation": 31,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "hybrid_marginal_local_search",
+  "patch_description": "This implementation merges the most effective strategies from the prior programs:\n1. **Path Diversity**: Retains the `alternative_path_with_penalty` function to find non-tree alternatives, and introduces a 4th \"hop-focused\" Dijkstra mode to generate shorter paths, reducing both transmission latency and routing energy.\n2. **True Marginal Costs**: Introduces a `marginal_qd` penalty. Adding a task to a server increases the queueing delay for *all* other tasks on that server. By scaling the task's queueing delay by `(1.0 + 0.4 * rho / (1 - rho))`, the algorithm correctly anticipates this systemic latency increase, leading to far superior load balancing. It also retains the exact marginal energy cost (`ce_after - ce_before`).\n3. **Global Multi-Pass Refinement**: Replaces the restricted server-focused repair pass with a comprehensive multi-pass local improvement phase over *all* ranked sources. This allows tasks to continuously migrate to better server-path combinations until the system reaches a stable local optimum.",
+  "error_msg": "Could not extract code from patch string",
+  "timestamp": "2026-03-20T02:46:31.188837",
+  "llm_cost": 0.054583999999999994,
+  "llm_model": null
+}

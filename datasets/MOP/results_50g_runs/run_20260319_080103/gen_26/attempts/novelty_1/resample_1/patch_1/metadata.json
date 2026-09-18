@@ -1,0 +1,14 @@
+{
+  "generation": 26,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "dual_sigma_sequential_bend",
+  "patch_description": "Use a stronger, localized school-repulsion term (narrow Gaussian) followed by a broader base-attraction term (wider Gaussian), while preserving the successful sequential update order: start from line \u2192 repel from school \u2192 attract to base.  \nThis directly targets the weak point in current metrics (high F2), keeps F1 controlled with smooth sinusoidal envelope, and maintains/improves F3 by giving base influence a larger spatial window.",
+  "error_msg": null,
+  "timestamp": "2026-03-19T16:07:30.111202",
+  "llm_cost": 0.022179499999999998,
+  "llm_model": null
+}

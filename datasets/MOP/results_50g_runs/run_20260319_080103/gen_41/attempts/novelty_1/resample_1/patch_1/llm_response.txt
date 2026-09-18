@@ -1,0 +1,53 @@
+<NAME>
+quadrature_surrogate_search
+</NAME>
+
+<DESCRIPTION>
+The improved program implements a multi-sample quadrature surrogate scoring system to evaluate candidate drone paths more accurately. Instead of evaluating noise and signal at vertices only, it samples three interior points per segment (at 1/4, 1/2, and 3/4 of the segment length) to integrate the school noise and base station signal penalties more effectively. 
+
+The path generation uses a potential field approach with Gaussian repulsion from the school and Gaussian attraction to the base station. A deterministic grid search is performed over a set of parameters (amplitudes, pull strengths, and Gaussian widths) to find the path that minimizes a weighted combination of distance (F1), noise proximity (F2), and signal loss (F3). This search includes the straight-line baseline as a candidate. Finally, a Laplacian smoothing pass is applied to ensure the path is continuous and natural.
+</DESCRIPTION>
+
+<CODE>
+```python
+# EVOLVE-BLOCK-START
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    Optimizes a drone path to minimize distance (F1), school noise (F2), and signal loss (F3).
+    Uses a quadrature-based surrogate score and a deterministic parameter search.
+    """
+    import math
+
+    x_start, y_start = start
+    x_end, y_end = end
+    sx, sy = school
+    bx, by = base
+
+    if num_points <= 0:
+        return []
+
+    dx_total = x_end - x_start
+    dy_total = y_end - y_start
+    span = abs(dx_total)
+    direct_dist = math.hypot(dx_total, dy_total)
+    norm_dist = max(1.0, direct_dist)
+
+    # Handle vertical path case
+    if abs(dx_total) < 1e-12:
+        step = dy_total / (num_points + 1)
+        return [float(y_start + (i + 1) * step) for i in range(num_points)]
+
+    xs = [x_start + (i + 1) * dx_total / (num_points + 1) for i in range(num_points)]
+    
+    def surrogate_score(ys):
+        """
+        Evaluates a candidate path using 3-point quadrature per segment.
+        """
+        pts = [(x_start, y_start)] + list(zip(xs, ys)) + [(x_end, y_end)]
+        f1_dist = 0.0
+        f2_noise = 0.0
+        f3_signal = 0.0
+        
+        for i in range(len(pts) - 1):
+            p1, p2 = pts[i], pts[i+1]
+            seg_dx

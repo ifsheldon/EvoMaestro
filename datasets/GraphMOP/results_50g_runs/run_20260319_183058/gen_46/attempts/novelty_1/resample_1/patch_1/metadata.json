@@ -1,0 +1,14 @@
+{
+  "generation": 46,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "marginal_cost_regret_routing",
+  "patch_description": "The new algorithm improves upon the existing approach by implementing a high-fidelity marginal cost function based on the total system-wide impact of task assignments. Key improvements include:\n1.  **High-Fidelity Marginal Scoring**: Assignments are evaluated using the marginal increase in the sum of all task delays (M/M/1-based total server delay) and total system energy (including payload-sensitive routing energy, server compute energy, and server activation costs).\n2.  **Adaptive Routing Tree**: In addition to standard latency and energy-focused shortest-path trees, a fourth 'payload-adaptive' mode is introduced. This mode uses the average task payload to weight the edge capacities during Dijkstra, discovering paths that anticipate transmission bottlenecks for the specific task set.\n3.  **Refined Regret-Based Assignment**: The greedy assignment phase uses a regret-based priority that balances potential costs (regret) with task size (demand), ensuring that critical tasks are placed first.\n4.  **Local Relocation Improvement**: A post-assignment pass systematically checks for relocations that reduce the global objective sum (Total Latency + Total Energy), accounting for the relief of queueing and energy pressure on current servers.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:50:50.701830",
+  "llm_cost": 0.016187,
+  "llm_model": null
+}

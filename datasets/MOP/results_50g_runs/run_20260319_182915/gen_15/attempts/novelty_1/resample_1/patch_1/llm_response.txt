@@ -1,0 +1,102 @@
+```xml
+<NAME>
+add_curvature_penalty
+</NAME>
+
+<DESCRIPTION>
+Introduces a second-order curvature penalty (bi-Laplacian) to the active contour model. This allows the path to bend smoothly around the school and towards the base station without incurring the high distance (F1) penalties associated with jagged, localized deformations. The learning rate is slightly reduced and iterations increased to ensure stable convergence with the new higher-order gradients.
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+    # Hyperparameters for the physics simulation
+    learning_rate = 0.1
+    iterations = 500
+    
+    alpha = 1.0          # Smoothness penalty (minimizes distance)
+    beta = 5000.0        # School repulsion strength (minimizes noise)
+    sigma_school = 20.0  # School influence radius
+    gamma = 5.0          # Base attraction strength (minimizes signal drop)
+    sigma_base = 25.0    # Base influence radius
+    
+    for _ in range(iterations):
+        for i in range(num_points):
+            y_prev = y_start if i == 0 else y_coords[i-1]
+            y_next = y_end if i == num_points - 1 else y_coords[i+1]
+            y_curr = y_coords[i]
+            x_curr = x_coords[i]
+            
+            # 1. Smoothness gradient (pulls towards average of neighbors)
+            grad_smooth = 2.0 * (2.0 * y_curr - y_prev - y_next)
+            
+            # 2. School repulsion gradient (pushes away from school)
+            dist_sq_school = (x_curr - x_school)**2 + (y_curr - y_school)**2
+            dy_school = y_curr - y_school
+            if abs(dy_school) < 1e-5:
+                dy_school = 1e-5  # Break symmetry if path is exactly on the school
+                
+            grad_school = -beta * math.exp(-dist_sq_school / (2.0 * sigma_school**2)) * dy_school / (sigma_school**2)
+            
+            # 3. Base attraction gradient (pulls towards base Y, weighted by X distance)
+            weight_base = math.exp(-((x_curr - x_base)**2) / (2.0 * sigma_base**2))
+            grad_base = 2.0 * gamma * weight_base * (y_curr - y_base)
+            
+            # Combine gradients
+            total_grad = alpha * grad_smooth + grad_school + grad_base
+=======
+    # Hyperparameters for the physics simulation
+    learning_rate = 0.05
+    iterations = 800
+    
+    alpha = 0.2          # Length penalty (minimizes distance)
+    alpha_curv = 0.8     # Curvature penalty (minimizes bending)
+    beta = 6000.0        # School repulsion strength (minimizes noise)
+    sigma_school = 22.0  # School influence radius
+    gamma = 8.0          # Base attraction strength (minimizes signal drop)
+    sigma_base = 28.0    # Base influence radius
+    
+    for _ in range(iterations):
+        for i in range(num_points):
+            y_curr = y_coords[i]
+            x_curr = x_coords[i]
+            
+            y_prev = y_start if i == 0 else y_coords[i-1]
+            y_next = y_end if i == num_points - 1 else y_coords[i+1]
+            
+            if i == 0:
+                y_prev2 = 2.0 * y_start - y_curr
+            elif i == 1:
+                y_prev2 = y_start
+            else:
+                y_prev2 = y_coords[i-2]
+                
+            if i == num_points - 1:
+                y_next2 = 2.0 * y_end - y_curr
+            elif i == num_points - 2:
+                y_next2 = y_end
+            else:
+                y_next2 = y_coords[i+2]
+            
+            # 1. Length gradient (pulls towards average of neighbors)
+            grad_length = 2.0 * (2.0 * y_curr - y_prev - y_next)
+            
+            # 1b. Curvature gradient (bi-Laplacian, penalizes sharp bends)
+            grad_curv = 2.0 * (y_prev2 - 4.0 * y_prev + 6.0 * y_curr - 4.0 * y_next + y_next2)
+            
+            # 2. School repulsion gradient (pushes away from school)
+            dist_sq_school = (x_curr - x_school)**2 + (y_curr - y_school)**2
+            dy_school = y_curr - y_school
+            if abs(dy_school) < 1e-5:
+                dy_school = 1e-5  # Break symmetry if path is exactly on the school
+                
+            grad_school = -beta * math.exp(-dist_sq_school / (2.0 * sigma_school**2)) * dy_school / (sigma_school**2)
+            
+            # 3. Base attraction gradient (pulls towards base Y, weighted by X distance)
+            weight_base = math.exp(-((x_curr - x_base)**2) / (2.0 * sigma_base**2))
+            grad_base = 2.0 * gamma * weight_base * (y_curr - y_base)
+            
+            # Combine gradients
+            total_grad = alpha * grad_length + alpha_curv * grad_curv + grad_school + grad_base
+>>>>>>> REPLACE
+</DIFF>
+```

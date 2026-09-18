@@ -1,0 +1,515 @@
+<NAME>
+compact_pareto_beam
+</NAME>
+
+<DESCRIPTION>
+This redesign keeps the efficient “few servers, many sources” perspective from the prior programs, but changes the optimization pattern in two important ways.
+
+First, instead of keeping either a single route per server or a very large set of weighted shortest-path trees, it builds a compact candidate library per `(source, server)`. For each server, several server-rooted Dijkstra trees are computed under different latency-energy mixtures, then for each source only a tiny non-dominated subset is retained: usually the best route plus at most one meaningfully different tradeoff route. This follows the observed recommendation that compact path diversity is more useful than broad blind expansion.
+
+Second, assignment is no longer a single one-pass greedy decision. The algorithm generates several greedy plans using different source orderings and scoring biases, evaluates them with a consistent exact surrogate objective, and then improves the best plans with a fast local-search repair stage that tries single-source reassignment/path swaps when they reduce total latency-energy score. This is different from the earlier direct tree scan or broad parameter grid: it is a compact route-set + multi-start greedy + hill-climbing architecture.
+
+Key ideas:
+- Few servers => precompute from servers, not from sources.
+- Many sources => compress route options aggressively.
+- Server queueing is the dominant coupling term, so use exact server load bookkeeping and a local improvement pass.
+- Energy and latency are balanced both in route generation and in assignment, but candidate explosion is avoided.
+</DESCRIPTION>
+
+<CODE>
+```python
+# EVOLVE-BLOCK-START
+def evolve_task_routing(
+    num_nodes,
+    edges,
+    server_nodes,
+    task_sources,
+    task_info,
+    server_info,
+):
+    """
+    Graph multi-objective routing problem.
+
+    Return:
+    {
+        source_node: {
+            "server": server_node,
+            "path": [source_node, ..., server_node],
+        },
+        ...
+    }
+
+    Goals:
+    1) Minimize end-to-end latency = transmission latency + server queueing delay.
+    2) Minimize total energy = routing energy + server compute energy.
+    """
+    import heapq
+
+    inf = float("inf")
+    eval_energy_weight = 1.5  # aligned with prior successful surrogate
+
+    # ------------------------------------------------------------------
+    # Graph build
+    # ------------------------------------------------------------------
+    graph = [[] for _ in range(num_nodes)]
+    for u, v, base_latency, energy_cost, _capacity in edges:
+        graph[u].append((v, base_latency, energy_cost))
+        graph[v].append((u, base_latency, energy_cost))
+
+    server_nodes = list(server_nodes)
+    task_sources = list(task_sources)
+
+    # ------------------------------------------------------------------
+    # Helper: Dijkstra from one server with weighted edge metric
+    # ------------------------------------------------------------------
+    def build_tree(server, ew):
+        dist = [inf] * num_nodes
+        lat = [0.0] * num_nodes
+        eng = [0.0] * num_nodes
+        parent = [-1] * num_nodes
+
+        dist[server] = 0.0
+        pq = [(0.0, server)]
+
+        while pq:
+            d, u = heapq.heappop(pq)
+            if d != dist[u]:
+                continue
+            for v, bl, ec in graph[u]:
+                nd = d + bl + ew * ec
+                if nd < dist[v]:
+                    dist[v] = nd
+                    lat[v] = lat[u] + bl
+                    eng[v] = eng[u] + ec
+                    parent[v] = u
+                    heapq.heappush(pq, (nd, v))
+        return dist, lat, eng, parent
+
+    def reconstruct_path(src, srv, parent):
+        if src == srv:
+            return [src]
+        path = []
+        seen = set()
+        cur = src
+        while cur != -1 and cur not in seen:
+            seen.add(cur)
+            path.append(cur)
+            if cur == srv:
+                return path
+            cur = parent[cur]
+        return []
+
+    # ------------------------------------------------------------------
+    # Build compact route candidates per (source, server)
+    # Inspiration: server-rooted weighted trees, but compressed aggressively.
+    # ------------------------------------------------------------------
+    energy_weights = [0.0, 0.18, 0.55, 1.2, 3.0]
+
+    # per server: list of tree dicts, deduped by parent structure
+    server_trees = {srv: [] for srv in server_nodes}
+    for srv in server_nodes:
+        seen_parents = set()
+        for ew in energy_weights:
+            dist, lat, eng, parent = build_tree(srv, ew)
+            # Hash only the parent map to deduplicate structurally identical trees
+            key = hash(tuple(parent))
+            if key in seen_parents:
+                continue
+            seen_parents.add(key)
+            server_trees[srv].append(
+                {
+                    "dist": dist,
+                    "lat": lat,
+                    "eng": eng,
+                    "parent": parent,
+                }
+            )
+
+    # route_options[src] = list of candidates:
+    # {"server": srv, "path": [...], "lat": x, "eng": y}
+    route_options = {src: [] for src in task_sources}
+
+    for src in task_sources:
+        for srv in server_nodes:
+            raw = []
+            for tree in server_trees[srv]:
+                if tree["dist"][src] == inf:
+                    continue
+                path = reconstruct_path(src, srv, tree["parent"])
+                if not path or path[-1] != srv:
+                    continue
+                raw.append(
+                    {
+                        "server": srv,
+                        "path": path,
+                        "lat": tree["lat"][src],
+                        "eng": tree["eng"][src],
+                    }
+                )
+
+            if not raw:
+                continue
+
+            # Dedup same path keeping best exact (lat, eng)
+            best_by_path = {}
+            for c in raw:
+                pkey = tuple(c["path"])
+                old = best_by_path.get(pkey)
+                if old is None or (c["lat"] <= old["lat"] and c["eng"] <= old["eng"]) or (
+                    c["lat"] + 1e-12 < old["lat"] or c["eng"] + 1e-12 < old["eng"]
+                ):
+                    best_by_path[pkey] = c
+            raw = list(best_by_path.values())
+
+            # Non-dominated filter within this (src, srv)
+            nd = []
+            for i, a in enumerate(raw):
+                dominated = False
+                for j, b in enumerate(raw):
+                    if i == j:
+                        continue
+                    if (
+                        b["lat"] <= a["lat"] + 1e-12
+                        and b["eng"] <= a["eng"] + 1e-12
+                        and (b["lat"] < a["lat"] - 1e-12 or b["eng"] < a["eng"] - 1e-12)
+                    ):
+                        dominated = True
+                        break
+                if not dominated:
+                    nd.append(a)
+
+            # Keep at most two compact tradeoff routes for this server:
+            # one best on combined score, plus one path-distinct extreme if meaningful.
+            nd.sort(key=lambda c: (c["lat"] + 0.8 * c["eng"], c["lat"], c["eng"]))
+            keep = [nd[0]]
+
+            alt = None
+            for c in nd[1:]:
+                # Require meaningful tradeoff and path difference
+                if tuple(c["path"]) == tuple(keep[0]["path"]):
+                    continue
+                improves_lat = c["lat"] < keep[0]["lat"] * 0.97
+                improves_eng = c["eng"] < keep[0]["eng"] * 0.97
+                worse_lat = c["lat"] > keep[0]["lat"] * 1.01
+                worse_eng = c["eng"] > keep[0]["eng"] * 1.01
+                if (improves_lat and worse_eng) or (improves_eng and worse_lat):
+                    alt = c
+                    break
+            if alt is not None:
+                keep.append(alt)
+
+            route_options[src].extend(keep)
+
+        # Across all servers, remove dominated server-route choices
+        opts = route_options[src]
+        if not opts:
+            # emergency fallback: assign to first server with empty path if isolated
+            route_options[src] = [{"server": server_nodes[0], "path": [], "lat": 1e6, "eng": 1e6}]
+            continue
+
+        filtered = []
+        for i, a in enumerate(opts):
+            dominated = False
+            for j, b in enumerate(opts):
+                if i == j:
+                    continue
+                if (
+                    b["lat"] <= a["lat"] + 1e-12
+                    and b["eng"] <= a["eng"] + 1e-12
+                    and (b["lat"] < a["lat"] - 1e-12 or b["eng"] < a["eng"] - 1e-12)
+                ):
+                    # only dominate if same server or clearly globally better enough
+                    if b["server"] == a["server"] or (
+                        b["lat"] < a["lat"] * 0.995 and b["eng"] < a["eng"] * 0.995
+                    ):
+                        dominated = True
+                        break
+            if not dominated:
+                filtered.append(a)
+
+        # Limit overall options per source to keep search fast
+        filtered.sort(key=lambda c: (c["lat"] + 0.9 * c["eng"], c["lat"], c["eng"]))
+        compact = []
+        seen_servers = set()
+        for c in filtered:
+            compact.append(c)
+            seen_servers.add(c["server"])
+            if len(compact) >= min(6, max(3, len(server_nodes) + 1)):
+                break
+
+        # Ensure every reachable server can still appear at least once if options are tiny
+        if len(compact) < min(len(server_nodes), 4):
+            for c in filtered:
+                if c["server"] not in seen_servers:
+                    compact.append(c)
+                    seen_servers.add(c["server"])
+                if len(compact) >= min(len(server_nodes), 4):
+                    break
+
+        route_options[src] = compact
+
+    # ------------------------------------------------------------------
+    # Exact surrogate evaluation helpers
+    # ------------------------------------------------------------------
+    src_load = {src: task_info[src][0] * task_info[src][2] for src in task_sources}
+    src_arr = {src: task_info[src][0] for src in task_sources}
+
+    def server_cost(srv, load, arr):
+        srv_rate, idle_pwr, dyn_pwr = server_info[srv]
+        if arr <= 0.0:
+            return 0.0, 0.0, 0.0
+        if load >= srv_rate:
+            q = 1e6 + 1e6 * (load - srv_rate + 1.0)
+        else:
+            q = 1.0 / (srv_rate - load)
+        lat = arr * q
+        eng = idle_pwr + dyn_pwr * (load / srv_rate)
+        score = lat + eval_energy_weight * eng
+        return lat, eng, score
+
+    # ------------------------------------------------------------------
+    # Greedy builder under a specific ordering / bias
+    # ------------------------------------------------------------------
+    def greedy_build(ordering_mode, idle_bias, util_soft_cap):
+        if ordering_mode == 0:
+            ranked = sorted(task_sources, key=lambda s: (src_load[s], src_arr[s]), reverse=True)
+        elif ordering_mode == 1:
+            ranked = sorted(task_sources, key=lambda s: (src_arr[s], src_load[s]), reverse=True)
+        elif ordering_mode == 2:
+            ranked = sorted(
+                task_sources,
+                key=lambda s: (src_load[s] * max(1.0, src_arr[s]), len(route_options[s])),
+                reverse=True,
+            )
+        else:
+            ranked = sorted(task_sources, key=lambda s: len(route_options[s]))
+
+        loads = {srv: 0.0 for srv in server_nodes}
+        arrs = {srv: 0.0 for srv in server_nodes}
+        plan = {}
+
+        for src in ranked:
+            best = None
+            best_score = inf
+            load_inc = src_load[src]
+            arr_inc = src_arr[src]
+
+            for cand in route_options[src]:
+                srv = cand["server"]
+                srv_rate, idle_pwr, dyn_pwr = server_info[srv]
+                old_load = loads[srv]
+                old_arr = arrs[srv]
+                new_load = old_load + load_inc
+                new_arr = old_arr + arr_inc
+
+                # soft feasibility: strongly discourage saturation, but still allow fallback
+                util = new_load / srv_rate if srv_rate > 0 else inf
+                hard_pen = 0.0
+                if util >= 1.0:
+                    hard_pen = 1e9 + 1e7 * util
+                elif util > util_soft_cap:
+                    excess = util - util_soft_cap
+                    hard_pen = 50.0 * excess * excess / max(1e-9, 1.0 - util)
+
+                _, _, old_srv_score = server_cost(srv, old_load, old_arr)
+                _, _, new_srv_score = server_cost(srv, new_load, new_arr)
+
+                delta_score = new_srv_score - old_srv_score
+                delta_score += arr_inc * cand["lat"] + eval_energy_weight * (arr_inc * cand["eng"])
+
+                if old_arr <= 0.0:
+                    delta_score += idle_bias * idle_pwr
+
+                # light preference for lower-util server to avoid queue spikes
+                delta_score += 0.02 * util * util
+                delta_score += hard_pen
+
+                if delta_score < best_score:
+                    best_score = delta_score
+                    best = cand
+
+            if best is None:
+                # robust fallback
+                best = route_options[src][0]
+
+            srv = best["server"]
+            plan[src] = best
+            loads[srv] += load_inc
+            arrs[srv] += arr_inc
+
+        return plan, loads, arrs
+
+    def total_score(plan):
+        loads = {srv: 0.0 for srv in server_nodes}
+        arrs = {srv: 0.0 for srv in server_nodes}
+        total_lat = 0.0
+        total_eng = 0.0
+
+        for src, cand in plan.items():
+            arr = src_arr[src]
+            loads[cand["server"]] += src_load[src]
+            arrs[cand["server"]] += arr
+            total_lat += arr * cand["lat"]
+            total_eng += arr * cand["eng"]
+
+        for srv in server_nodes:
+            lat, eng, _ = server_cost(srv, loads[srv], arrs[srv])
+            total_lat += lat
+            total_eng += eng
+
+        return total_lat + eval_energy_weight * total_eng, loads, arrs
+
+    # ------------------------------------------------------------------
+    # Multi-start greedy
+    # ------------------------------------------------------------------
+    starts = [
+        (0, 0.00, 0.94),
+        (0, 0.15, 0.95),
+        (1, 0.00, 0.94),
+        (1, 0.10, 0.96),
+        (2, 0.00, 0.95),
+        (2, 0.20, 0.93),
+        (3, 0.00, 0.95),
+    ]
+
+    candidate_plans = []
+    for ordering_mode, idle_bias, util_soft_cap in starts:
+        plan, _, _ = greedy_build(ordering_mode, idle_bias, util_soft_cap)
+        score, loads, arrs = total_score(plan)
+        candidate_plans.append((score, plan, loads, arrs))
+
+    candidate_plans.sort(key=lambda x: x[0])
+    candidate_plans = candidate_plans[:3]
+
+    # ------------------------------------------------------------------
+    # Fast local improvement:
+    # try reassigning one source at a time to another compact candidate.
+    # ------------------------------------------------------------------
+    def improve(plan, loads, arrs, max_rounds=3):
+        current_score, loads, arrs = total_score(plan)
+
+        for _ in range(max_rounds):
+            improved = False
+
+            # Priority: sources causing more impact first
+            ranked = sorted(
+                task_sources,
+                key=lambda s: (src_load[s] * max(1.0, src_arr[s]), src_arr[s]),
+                reverse=True,
+            )
+
+            for src in ranked:
+                cur = plan[src]
+                cur_srv = cur["server"]
+                li = src_load[src]
+                ai = src_arr[src]
+
+                # old server contribution
+                _, _, old_cur_srv_score = server_cost(cur_srv, loads[cur_srv], arrs[cur_srv])
+                rem_load = loads[cur_srv] - li
+                rem_arr = arrs[cur_srv] - ai
+                _, _, new_cur_srv_score = server_cost(cur_srv, rem_load, rem_arr)
+
+                base_without_src = current_score
+                base_without_src -= ai * cur["lat"] + eval_energy_weight * (ai * cur["eng"])
+                base_without_src -= old_cur_srv_score
+                base_without_src += new_cur_srv_score
+
+                best_move_score = current_score
+                best_cand = None
+
+                for cand in route_options[src]:
+                    if (
+                        cand["server"] == cur["server"]
+                        and tuple(cand["path"]) == tuple(cur["path"])
+                    ):
+                        continue
+
+                    srv = cand["server"]
+                    add_load = loads[srv] + (li if srv != cur_srv else 0.0)
+                    add_arr = arrs[srv] + (ai if srv != cur_srv else 0.0)
+
+                    if srv == cur_srv:
+                        # same server path swap: only path cost changes
+                        candidate_score = (
+                            base_without_src
+                            + ai * cand["lat"]
+                            + eval_energy_weight * (ai * cand["eng"])
+                            + new_cur_srv_score
+                        )
+                    else:
+                        _, _, old_new_srv_score = server_cost(srv, loads[srv], arrs[srv])
+                        _, _, new_new_srv_score = server_cost(srv, add_load, add_arr)
+                        candidate_score = base_without_src
+                        candidate_score += ai * cand["lat"] + eval_energy_weight * (ai * cand["eng"])
+                        candidate_score -= old_new_srv_score
+                        candidate_score += new_new_srv_score
+
+                    if candidate_score + 1e-12 < best_move_score:
+                        best_move_score = candidate_score
+                        best_cand = cand
+
+                if best_cand is not None:
+                    # apply move
+                    if cur_srv != best_cand["server"]:
+                        loads[cur_srv] -= li
+                        arrs[cur_srv] -= ai
+                        loads[best_cand["server"]] += li
+                        arrs[best_cand["server"]] += ai
+                    plan[src] = best_cand
+                    current_score = best_move_score
+                    improved = True
+
+            if not improved:
+                break
+
+        return plan, current_score
+
+    best_plan = None
+    best_score = inf
+
+    for _, plan, loads, arrs in candidate_plans:
+        # copy shallow enough since cand dicts are immutable in use
+        plan = dict(plan)
+        loads = dict(loads)
+        arrs = dict(arrs)
+        plan, score = improve(plan, loads, arrs, max_rounds=3)
+        if score < best_score:
+            best_score = score
+            best_plan = plan
+
+    # ------------------------------------------------------------------
+    # Final output
+    # ------------------------------------------------------------------
+    final_plan = {}
+    for src in task_sources:
+        cand = best_plan[src]
+        final_plan[src] = {
+            "server": cand["server"],
+            "path": cand["path"],
+        }
+
+    return final_plan
+# EVOLVE-BLOCK-END
+
+import os
+import sys
+
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from graph_evaluation import GraphRoutingGrader
+
+
+def run_experiment(**kwargs):
+    del kwargs
+    grader = GraphRoutingGrader()
+    try:
+        avg_latency, avg_energy, final_score = grader.grade_silent(evolve_task_routing, timeout=12)
+    except Exception:
+        import traceback
+
+        traceback.print_exc()
+        avg_latency, avg_energy, final_score = float("inf"), float("inf"), float("inf")
+
+    return avg_latency, avg_energy, final_score
+```
+</CODE>

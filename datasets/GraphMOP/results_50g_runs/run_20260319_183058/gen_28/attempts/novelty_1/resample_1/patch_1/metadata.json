@@ -1,0 +1,14 @@
+{
+  "generation": 28,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "capacity_regret_router",
+  "patch_description": "This rewrite changes the solver from a simple source-by-source greedy assignment into a modular two-stage architecture:\n\n1. **Candidate generation layer**:\n   - Builds a compact set of path candidates per `(source, server)` using several server-rooted shortest-path trees with different latency/energy trade-offs.\n   - Separates path extraction and metric computation cleanly.\n\n2. **Capacity-aware assignment layer**:\n   - Uses **feasibility-weighted regret ordering** instead of only heavy-task ordering.\n   - For each unassigned source, it compares the best and second-best marginal placements, but also boosts priority for sources that have few safe server options under soft/hard utilization limits.\n   - This better preserves scarce low-cost server capacity for hard-to-place tasks.\n\n3. **Improvement layer**:\n   - Runs multiple local improvement passes with remove-and-reinsert evaluation.\n   - Reconsiders both server choice and route choice under updated loads.\n\nThe redesign improves maintainability by explicitly separating graph preprocessing, candidate generation, marginal scoring, regret scheduling, and local search. It also improves optimization quality by making assignment decisions more load-sensitive and capacity-aware, which should reduce queueing latency without overusing expensive routing or server energy.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:44:06.734078",
+  "llm_cost": 0.070345,
+  "llm_model": null
+}

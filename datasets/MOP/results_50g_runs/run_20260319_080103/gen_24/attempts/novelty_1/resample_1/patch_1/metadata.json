@@ -1,0 +1,14 @@
+{
+  "generation": 24,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "windowed_sequential_base_recovery",
+  "patch_description": "Switch from direct additive fields to a smoother sequential deformation: first apply a school-avoidance bend with a sinusoidal endpoint window so the path stays smooth and short, then pull that deflected path toward the base station, and finally add a very small, tightly localized second-stage recovery near the base X position. This is designed to preserve the strong F2 gains from bending away around (40, 20) while improving F3 by nudging the trajectory back toward the base near (70, -30) without globally increasing path length.",
+  "error_msg": null,
+  "timestamp": "2026-03-19T16:07:05.385164",
+  "llm_cost": 0.025847500000000002,
+  "llm_model": null
+}

@@ -1,0 +1,45 @@
+An elegant and highly effective way to solve this multi-objective optimization problem is to use a physics-inspired gradient descent approach. 
+
+### Method Explanation
+
+The problem requires us to minimize the product of three objectives:
+1. **F1 (Flying Distance)**: Acts as a tension force, pulling the path into a straight line.
+2. **F2 (School Noise Proximity)**: Acts as a repulsive force, pushing the path away from the school.
+3. **F3 (Base Station Signal Drop)**: Acts as an attractive force, pulling the path towards the base station.
+
+Since the final score is the product of these three metrics ($F_1 \times F_2 \times F_3$), minimizing the product is mathematically equivalent to minimizing the sum of their logarithms ($\log F_1 + \log F_2 + \log F_3$). 
+The gradient of this logarithmic objective with respect to any Y-coordinate is simply the sum of the relative gradients:
+$$ \nabla_{y_i} \text{Objective} = \frac{\nabla_{y_i} F_1}{F_1} + \frac{\nabla_{y_i} F_2}{F_2} + \frac{\nabla_{y_i} F_3}{F_3} $$
+
+This is a beautiful property because it automatically balances the scales of the three completely different metrics without needing to know their exact weighting constants! 
+
+We can implement a lightweight **Adam Optimizer** from scratch in pure Python. We initialize the path as a straight line and iteratively update the Y-coordinates. Adam is perfect here because it normalizes the gradients, preventing numerical instability if the drone gets too close to the school (which would otherwise cause a massive gradient spike), and ensures smooth convergence within the 12-second timeout.
+
+<NAME>
+adam_physics_path_optimizer
+</NAME>
+
+<DESCRIPTION>
+Uses a custom Adam optimizer to iteratively adjust the Y-coordinates of the drone path. It models the objectives as physical forces (tension, repulsion, attraction) and minimizes the sum of their logarithmic relative gradients. This guarantees a smooth, optimal curve bending away from the school and towards the base station.
+</DESCRIPTION>
+
+<CODE>
+```python
+# EVOLVE-BLOCK-START
+import math
+
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    【无人机连续空间多目标折线优化】
+    Uses a custom Adam optimizer to minimize the combined objective of:
+    - F1: Path length (Tension)
+    - F2: School noise proximity (Repulsion)
+    - F3: Base station signal drop (Attraction)
+    """
+    x_start, y_start = start
+    x_end, y_end = end
+    
+    dx = (x_end - x_start) / (num_points + 1)
+    x_coords = [x_start + (i + 1) * dx for i in range(num_points)]
+    
+    # Initialize with

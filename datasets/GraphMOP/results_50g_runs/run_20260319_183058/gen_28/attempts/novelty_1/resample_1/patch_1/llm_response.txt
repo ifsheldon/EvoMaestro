@@ -1,0 +1,431 @@
+<NAME>
+capacity_regret_router
+</NAME>
+
+<DESCRIPTION>
+This rewrite changes the solver from a simple source-by-source greedy assignment into a modular two-stage architecture:
+
+1. **Candidate generation layer**:
+   - Builds a compact set of path candidates per `(source, server)` using several server-rooted shortest-path trees with different latency/energy trade-offs.
+   - Separates path extraction and metric computation cleanly.
+
+2. **Capacity-aware assignment layer**:
+   - Uses **feasibility-weighted regret ordering** instead of only heavy-task ordering.
+   - For each unassigned source, it compares the best and second-best marginal placements, but also boosts priority for sources that have few safe server options under soft/hard utilization limits.
+   - This better preserves scarce low-cost server capacity for hard-to-place tasks.
+
+3. **Improvement layer**:
+   - Runs multiple local improvement passes with remove-and-reinsert evaluation.
+   - Reconsiders both server choice and route choice under updated loads.
+
+The redesign improves maintainability by explicitly separating graph preprocessing, candidate generation, marginal scoring, regret scheduling, and local search. It also improves optimization quality by making assignment decisions more load-sensitive and capacity-aware, which should reduce queueing latency without overusing expensive routing or server energy.
+</DESCRIPTION>
+
+<CODE>
+```python
+# EVOLVE-BLOCK-START
+def evolve_task_routing(
+    num_nodes,
+    edges,
+    server_nodes,
+    task_sources,
+    task_info,
+    server_info,
+):
+    """
+    Graph multi-objective routing problem.
+
+    Return:
+    {
+        source_node: {
+            "server": server_node,
+            "path": [source_node, ..., server_node],
+        },
+        ...
+    }
+    """
+    import heapq
+    import math
+
+    INF = float("inf")
+
+    # ------------------------------------------------------------------
+    # Graph layer
+    # ------------------------------------------------------------------
+    graph = [[] for _ in range(num_nodes)]
+    edge_attr = {}
+    for u, v, base_latency, energy_cost, capacity in edges:
+        graph[u].append((v, base_latency, energy_cost, capacity))
+        graph[v].append((u, base_latency, energy_cost, capacity))
+        key = (u, v) if u < v else (v, u)
+        edge_attr[key] = (base_latency, energy_cost, capacity)
+
+    def edge_key(u, v):
+        return (u, v) if u < v else (v, u)
+
+    # ------------------------------------------------------------------
+    # Path generation layer
+    # ------------------------------------------------------------------
+    def edge_weight(mode, lat, ene, cap):
+        inv_cap = 1.0 / (cap + 1e-9)
+        if mode == 0:   # latency focused
+            return lat + 0.05 * ene + 0.03 * inv_cap
+        if mode == 1:   # energy focused
+            return ene + 0.04 * lat + 0.04 * inv_cap
+        if mode == 2:   # balanced
+            return lat + 0.24 * ene + 0.04 * inv_cap
+        # capacity safer
+        return lat + 0.18 * ene + 0.18 * inv_cap
+
+    def dijkstra_from_root(root, mode):
+        dist = [INF] * num_nodes
+        parent = [-1] * num_nodes
+        dist[root] = 0.0
+        parent[root] = root
+        heap = [(0.0, root)]
+        while heap:
+            d, u = heapq.heappop(heap)
+            if d != dist[u]:
+                continue
+            for v, lat, ene, cap in graph[u]:
+                nd = d + edge_weight(mode, lat, ene, cap)
+                if nd < dist[v]:
+                    dist[v] = nd
+                    parent[v] = u
+                    heapq.heappush(heap, (nd, v))
+        return dist, parent
+
+    def reconstruct_path(source, server, parent):
+        if source == server:
+            return [source]
+        if source < 0 or source >= num_nodes or parent[source] == -1:
+            return []
+        out = [source]
+        cur = source
+        seen = {source}
+        while cur != server:
+            cur = parent[cur]
+            if cur == -1 or cur in seen:
+                return []
+            out.append(cur)
+            seen.add(cur)
+        return out
+
+    def path_metrics(path, payload):
+        if not path or len(path) == 1:
+            return 0.0, 0.0, 0
+        lat_sum = 0.0
+        ene_sum = 0.0
+        hops = len(path) - 1
+        for i in range(hops):
+            u, v = path[i], path[i + 1]
+            lat, ene, cap = edge_attr[edge_key(u, v)]
+            ratio = payload / (cap + 1e-9)
+            lat_sum += lat + 0.045 * ratio
+            ene_sum += ene * (1.0 + 0.015 * ratio)
+        return lat_sum, ene_sum, hops
+
+    # Few servers expected -> precompute several SPTs per server
+    server_trees = {}
+    for s in server_nodes:
+        modes = []
+        for mode in (0, 1, 2, 3):
+            modes.append(dijkstra_from_root(s, mode))
+        server_trees[s] = modes
+
+    # Build candidate path catalog
+    candidates = {}
+    for src in task_sources:
+        arr, payload, comp = task_info[src]
+        per_server = {}
+        for s in server_nodes:
+            raw = []
+            for dist, parent in server_trees[s]:
+                p = reconstruct_path(src, s, parent)
+                if not p:
+                    continue
+                plat, pene, hops = path_metrics(p, payload)
+                raw.append((plat, pene, hops, p))
+
+            if raw:
+                uniq = {}
+                for plat, pene, hops, p in raw:
+                    key = tuple(p)
+                    score = plat + 0.45 * pene + 0.02 * hops
+                    old = uniq.get(key)
+                    if old is None or score < old[0]:
+                        uniq[key] = (score, plat, pene, hops, p)
+
+                kept = [v[1:] for v in uniq.values()]
+                kept.sort(key=lambda x: x[0] + 0.40 * x[1] + 0.015 * x[2])
+                per_server[s] = kept[:3]
+        candidates[src] = per_server
+
+    # ------------------------------------------------------------------
+    # Server performance model
+    # ------------------------------------------------------------------
+    def server_compute_delay(load, service_rate, compute_demand):
+        if service_rate <= 1e-12:
+            return 1e9
+        rho = load / service_rate
+        if rho >= 0.995:
+            return 1e9
+        proc = compute_demand / service_rate
+        return proc * (1.0 + rho / max(1e-9, 1.0 - rho))
+
+    def server_energy(load, service_rate, idle_power, dynamic_power):
+        if service_rate <= 1e-12:
+            return 1e9
+        util = min(1.0, max(0.0, load / service_rate))
+        return 0.015 * idle_power + dynamic_power * (util ** 1.10)
+
+    def marginal_server_cost(server, old_load, new_load, compute_demand):
+        service_rate, idle_power, dynamic_power = server_info[server]
+        qd = server_compute_delay(new_load, service_rate, compute_demand)
+        e_before = server_energy(old_load, service_rate, idle_power, dynamic_power)
+        e_after = server_energy(new_load, service_rate, idle_power, dynamic_power)
+        return qd, max(0.0, e_after - e_before)
+
+    # Utilization controls
+    SOFT_UTIL = 0.82
+    HARD_UTIL = 0.96
+
+    # Overall blend
+    W_LAT = 1.0
+    W_ENE = 0.82
+
+    # ------------------------------------------------------------------
+    # Marginal evaluation layer
+    # ------------------------------------------------------------------
+    projected_load = {s: 0.0 for s in server_nodes}
+    plan = {}
+
+    def enumerate_options(src, current_server=None):
+        arr, payload, comp = task_info[src]
+        demand = arr * comp
+        options = []
+        per_server = candidates.get(src, {})
+
+        for s in server_nodes:
+            server_cands = per_server.get(s, [])
+            if not server_cands:
+                continue
+
+            service_rate, idle_power, dynamic_power = server_info[s]
+            old_load = projected_load[s]
+            new_load = old_load + demand
+            util = new_load / (service_rate + 1e-9)
+
+            if util >= HARD_UTIL:
+                continue
+
+            qd, ce = marginal_server_cost(s, old_load, new_load, comp)
+
+            # mild utilization shaping; discourages packing a server too tightly
+            util_pen = 0.0
+            if util > SOFT_UTIL:
+                excess = (util - SOFT_UTIL) / max(1e-9, HARD_UTIL - SOFT_UTIL)
+                util_pen = 0.10 + 0.55 * (excess ** 2)
+
+            for plat, pene, hops, path in server_cands:
+                hop_pen = 0.018 * hops
+                score = W_LAT * (plat + qd + hop_pen) + W_ENE * (pene + ce) + util_pen
+
+                if current_server is not None and s == current_server:
+                    score *= 0.9985
+
+                options.append(
+                    {
+                        "score": score,
+                        "server": s,
+                        "path": path,
+                        "util": util,
+                        "safe": util <= SOFT_UTIL,
+                    }
+                )
+
+        options.sort(key=lambda x: x["score"])
+        return options
+
+    def fallback_choice(src):
+        # Robust valid fallback: first reachable candidate, preferring good local path.
+        per_server = candidates.get(src, {})
+        best = None
+        for s in server_nodes:
+            for plat, pene, hops, path in per_server.get(s, []):
+                val = plat + 0.45 * pene + 0.02 * hops
+                if best is None or val < best[0]:
+                    best = (val, s, path)
+        if best is not None:
+            return {"server": best[1], "path": best[2]}
+        # Last-resort degenerate output, should rarely happen unless disconnected.
+        s = server_nodes[0]
+        return {"server": s, "path": [src] if src == s else []}
+
+    def regret_priority(src):
+        arr, payload, comp = task_info[src]
+        demand = arr * comp
+        opts = enumerate_options(src)
+        if not opts:
+            return (-1e18, None)
+
+        best = opts[0]
+        second = opts[1] if len(opts) > 1 else None
+
+        best_score = best["score"]
+        second_score = second["score"] if second is not None else (best_score + 2.0)
+
+        safe_count = 0
+        near_safe_count = 0
+        for op in opts:
+            if op["safe"]:
+                safe_count += 1
+            elif op["util"] <= HARD_UTIL * 0.985:
+                near_safe_count += 1
+
+        # feasibility-weighted regret: few safe placements => assign earlier
+        scarcity = 1.0 / (safe_count + 0.65 * near_safe_count + 0.5)
+        raw_regret = second_score - best_score
+
+        # Larger tasks deserve earlier placement, but not overwhelmingly
+        size_term = 0.25 * math.sqrt(max(0.0, demand)) + 0.06 * math.sqrt(max(0.0, payload))
+
+        priority = raw_regret * (1.0 + 1.8 * scarcity) + size_term - 0.10 * best_score
+        return (priority, best)
+
+    # ------------------------------------------------------------------
+    # Assignment layer: feasibility-weighted regret insertion
+    # ------------------------------------------------------------------
+    unassigned = set(task_sources)
+
+    while unassigned:
+        chosen_src = None
+        chosen_best = None
+        chosen_priority = None
+
+        for src in unassigned:
+            priority, best = regret_priority(src)
+            if chosen_src is None or priority > chosen_priority:
+                chosen_src = src
+                chosen_best = best
+                chosen_priority = priority
+
+        src = chosen_src
+        arr, payload, comp = task_info[src]
+        demand = arr * comp
+
+        if chosen_best is None:
+            choice = fallback_choice(src)
+        else:
+            choice = {"server": chosen_best["server"], "path": chosen_best["path"]}
+
+        plan[src] = choice
+        projected_load[choice["server"]] += demand
+        unassigned.remove(src)
+
+    # ------------------------------------------------------------------
+    # Improvement layer: repeated remove/reinsert local search
+    # ------------------------------------------------------------------
+    def evaluate_current_choice(src):
+        s = plan[src]["server"]
+        path = plan[src]["path"]
+        arr, payload, comp = task_info[src]
+        demand = arr * comp
+        load = projected_load[s]
+        plat, pene, hops = path_metrics(path, payload)
+        qd, ce = marginal_server_cost(s, max(0.0, load - demand), load, comp)
+        util = load / (server_info[s][0] + 1e-9)
+        util_pen = 0.0
+        if util > SOFT_UTIL:
+            excess = (util - SOFT_UTIL) / max(1e-9, HARD_UTIL - SOFT_UTIL)
+            util_pen = 0.10 + 0.55 * (excess ** 2)
+        return W_LAT * (plat + qd + 0.018 * hops) + W_ENE * (pene + ce) + util_pen
+
+    # mix hard and flexible sources during local search
+    local_order = sorted(
+        task_sources,
+        key=lambda src: (
+            task_info[src][0] * task_info[src][2],
+            task_info[src][1],
+            -len(candidates.get(src, {})),
+        ),
+        reverse=True,
+    )
+
+    for _ in range(3):
+        improved = False
+        for src in local_order:
+            cur_server = plan[src]["server"]
+            arr, payload, comp = task_info[src]
+            demand = arr * comp
+
+            projected_load[cur_server] -= demand
+            current_score = evaluate_current_choice(src) if False else None  # structural placeholder
+
+            opts = enumerate_options(src, current_server=cur_server)
+            if not opts:
+                projected_load[cur_server] += demand
+                continue
+
+            best = opts[0]
+            old_path = plan[src]["path"]
+
+            # Estimate incumbent under current reduced-load environment
+            incumbent_est = INF
+            per_server = candidates.get(src, {})
+            for plat, pene, hops, p in per_server.get(cur_server, []):
+                if p == old_path:
+                    service_rate, idle_power, dynamic_power = server_info[cur_server]
+                    new_load = projected_load[cur_server] + demand
+                    if new_load / (service_rate + 1e-9) < HARD_UTIL:
+                        qd, ce = marginal_server_cost(cur_server, projected_load[cur_server], new_load, comp)
+                        util = new_load / (service_rate + 1e-9)
+                        util_pen = 0.0
+                        if util > SOFT_UTIL:
+                            excess = (util - SOFT_UTIL) / max(1e-9, HARD_UTIL - SOFT_UTIL)
+                            util_pen = 0.10 + 0.55 * (excess ** 2)
+                        incumbent_est = (
+                            W_LAT * (plat + qd + 0.018 * hops)
+                            + W_ENE * (pene + ce)
+                            + util_pen
+                        )
+                    break
+
+            accept = False
+            if best["score"] + 1e-9 < incumbent_est - 0.003:
+                accept = True
+
+            if accept:
+                plan[src] = {"server": best["server"], "path": best["path"]}
+                projected_load[best["server"]] += demand
+                improved = True
+            else:
+                projected_load[cur_server] += demand
+
+        if not improved:
+            break
+
+    return plan
+# EVOLVE-BLOCK-END
+
+import os
+import sys
+
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from graph_evaluation import GraphRoutingGrader
+
+
+def run_experiment(**kwargs):
+    del kwargs
+    grader = GraphRoutingGrader()
+    try:
+        avg_latency, avg_energy, final_score = grader.grade_silent(evolve_task_routing, timeout=12)
+    except Exception:
+        import traceback
+
+        traceback.print_exc()
+        avg_latency, avg_energy, final_score = float("inf"), float("inf"), float("inf")
+
+    return avg_latency, avg_energy, final_score
+```
+</CODE>

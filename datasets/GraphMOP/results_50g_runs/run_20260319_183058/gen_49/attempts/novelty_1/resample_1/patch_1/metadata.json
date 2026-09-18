@@ -1,0 +1,14 @@
+{
+  "generation": 49,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "compact_pareto_beam",
+  "patch_description": "This redesign keeps the efficient \u201cfew servers, many sources\u201d perspective from the prior programs, but changes the optimization pattern in two important ways.\n\nFirst, instead of keeping either a single route per server or a very large set of weighted shortest-path trees, it builds a compact candidate library per `(source, server)`. For each server, several server-rooted Dijkstra trees are computed under different latency-energy mixtures, then for each source only a tiny non-dominated subset is retained: usually the best route plus at most one meaningfully different tradeoff route. This follows the observed recommendation that compact path diversity is more useful than broad blind expansion.\n\nSecond, assignment is no longer a single one-pass greedy decision. The algorithm generates several greedy plans using different source orderings and scoring biases, evaluates them with a consistent exact surrogate objective, and then improves the best plans with a fast local-search repair stage that tries single-source reassignment/path swaps when they reduce total latency-energy score. This is different from the earlier direct tree scan or broad parameter grid: it is a compact route-set + multi-start greedy + hill-climbing architecture.\n\nKey ideas:\n- Few servers => precompute from servers, not from sources.\n- Many sources => compress route options aggressively.\n- Server queueing is the dominant coupling term, so use exact server load bookkeeping and a local improvement pass.\n- Energy and latency are balanced both in route generation and in assignment, but candidate explosion is avoided.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:51:35.416421",
+  "llm_cost": 0.081975,
+  "llm_model": null
+}

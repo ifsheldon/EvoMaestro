@@ -1,0 +1,5 @@
+{
+    "correct": false,
+    "error": "Validation failed: Evaluation crashed or timed out.",
+    "error_type": "runtime_error"
+}

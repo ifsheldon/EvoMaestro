@@ -1,0 +1,14 @@
+{
+  "generation": 5,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 2,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "marginal_cost_routing",
+  "patch_description": "The original algorithm uses a fixed-weight Dijkstra and a simple heuristic for server assignment that doesn't fully account for the non-linear impact of server load or the specific arrival rates of tasks. \n\nMy new algorithm, `marginal_cost_routing`, improves performance by:\n1.  **Marginal Cost Analysis**: It models the assignment of each task as a marginal increase in total system cost (latency + energy). This includes the M/M/1 queueing delay impact on all tasks at a server, not just the new task.\n2.  **Efficient Path Precomputation**: It runs Dijkstra from each server node once, using a balanced weight ($base\\_latency + 0.3 \\cdot energy\\_cost$) to find optimal paths for both objectives.\n3.  **Dynamic Load Management**: Instead of a hard utilization cap, it uses a steep penalty function for high utilization, allowing for better load balancing under heavy traffic.\n4.  **Energy Optimization**: It accounts for the marginal routing energy (based on payload size), dynamic compute energy, and the idle power cost of activating a server.",
+  "error_msg": "Could not extract code from patch string",
+  "timestamp": "2026-03-20T02:33:55.825309",
+  "llm_cost": 0.0031205,
+  "llm_model": null
+}

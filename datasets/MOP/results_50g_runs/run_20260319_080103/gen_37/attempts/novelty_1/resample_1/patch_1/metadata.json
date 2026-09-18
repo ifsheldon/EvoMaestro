@@ -1,0 +1,14 @@
+{
+  "generation": 37,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "conflict_aware_base_attraction",
+  "patch_description": "Upgrade base attraction to be conflict-aware. Instead of adding independent offsets for school and base, we first apply the school repulsion to the baseline, and then apply a proportional pull towards the base station from the *current* displaced position. To prevent the base attraction from pulling the drone back into the school's noise zone, we modulate the base pull strength inversely with the school's influence (`w_school`). We also increase the base pull rate and school repulsion amplitude to better match the successful dynamic programming approach's prioritization of F2 and F3.",
+  "error_msg": null,
+  "timestamp": "2026-03-19T16:12:03.676898",
+  "llm_cost": 0.026852,
+  "llm_model": null
+}

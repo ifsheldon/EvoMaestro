@@ -1,0 +1,405 @@
+# EVOLVE-BLOCK-START
+def evolve_task_routing(
+    num_nodes,
+    edges,
+    server_nodes,
+    task_sources,
+    task_info,
+    server_info,
+):
+    """
+    Graph multi-objective routing problem.
+
+    Returns:
+    {
+        source_node: {
+            "server": server_node,
+            "path": [source_node, ..., server_node],
+        },
+        ...
+    }
+
+    Goals:
+    1. Minimize end-to-end latency = transmission latency + server queueing delay.
+    2. Minimize total energy = routing energy + server compute energy.
+    """
+    import heapq
+    import math
+
+    # -----------------------------
+    # Graph construction
+    # -----------------------------
+    graph = [[] for _ in range(num_nodes)]
+    for u, v, base_latency, energy_cost, capacity in edges:
+        graph[u].append((v, float(base_latency), float(energy_cost), float(capacity)))
+        graph[v].append((u, float(base_latency), float(energy_cost), float(capacity)))
+
+    servers = list(server_nodes)
+    sources = list(task_sources)
+
+    if not servers:
+        return {src: {"server": src, "path": [src]} for src in sources}
+
+    # -----------------------------
+    # Helpers
+    # -----------------------------
+    def dijkstra_from_server(server, alpha):
+        """
+        Shortest-path tree from server using scalarized edge weight:
+            base_latency + alpha * energy_cost
+        Also stores true cumulative latency and energy along the chosen tree path.
+        """
+        dist = [float("inf")] * num_nodes
+        parent = [-1] * num_nodes
+        cum_lat = [0.0] * num_nodes
+        cum_en = [0.0] * num_nodes
+
+        dist[server] = 0.0
+        pq = [(0.0, server)]
+
+        while pq:
+            cur_d, u = heapq.heappop(pq)
+            if cur_d != dist[u]:
+                continue
+            for v, bl, ec, _cap in graph[u]:
+                nd = cur_d + bl + alpha * ec
+                if nd < dist[v]:
+                    dist[v] = nd
+                    parent[v] = u
+                    cum_lat[v] = cum_lat[u] + bl
+                    cum_en[v] = cum_en[u] + ec
+                    heapq.heappush(pq, (nd, v))
+
+        return {
+            "parent": parent,
+            "lat": cum_lat,
+            "en": cum_en,
+            "dist": dist,
+        }
+
+    def reconstruct_path(src, server, parent):
+        if src == server:
+            return [src]
+        if parent[src] == -1:
+            return []
+        path = [src]
+        cur = src
+        seen = {src}
+        while cur != server:
+            cur = parent[cur]
+            if cur == -1 or cur in seen:
+                return []
+            path.append(cur)
+            seen.add(cur)
+        return path
+
+    def queue_delay(service_rate, load):
+        # Stable M/M/1-like proxy with guardrails.
+        slack = service_rate - load
+        if slack <= 1e-9:
+            return 1e9
+        return 1.0 / slack
+
+    def task_server_incremental_cost(src, server, route_lat, route_en, current_load):
+        """
+        Proxy for joint latency + energy objective using actual task parameters.
+        """
+        arrival_rate, payload_size, compute_demand = task_info[src]
+        service_rate, idle_power, dynamic_power = server_info[server]
+
+        work = arrival_rate * compute_demand
+        new_load = current_load + work
+
+        # Avoid unstable allocations.
+        if new_load >= 0.97 * service_rate:
+            return float("inf")
+
+        # Latency proxy: transmission latency + queue delay after assignment.
+        lat_cost = route_lat + queue_delay(service_rate, new_load)
+
+        # Energy proxy: payload-scaled routing energy + compute energy.
+        # Dynamic compute energy is task-dependent; idle power is only a mild bias.
+        compute_energy = dynamic_power * (work / max(service_rate, 1e-9))
+        energy_cost = payload_size * route_en + 0.02 * idle_power + compute_energy
+
+        # Weighted sum tuned toward latency while preserving energy sensitivity.
+        return lat_cost + 0.55 * energy_cost
+
+    def global_assignment_score(plan, loads):
+        total = 0.0
+        for src, choice in plan.items():
+            server = choice["server"]
+            path = choice["path"]
+            if not path:
+                total += 1e9
+                continue
+            # recompute path metrics from cached candidates if available
+            total += choice["_cost"]
+        # light load-balance regularization to avoid queue blowups
+        for s in servers:
+            service_rate, _, _ = server_info[s]
+            util = loads[s] / max(service_rate, 1e-9)
+            total += 0.05 * util * util
+        return total
+
+    # -----------------------------
+    # Multi-criteria server trees
+    # -----------------------------
+    # Multiple tradeoff weights create path diversity.
+    alphas = (0.0, 0.08, 0.2, 0.45, 0.9)
+    trees = {s: [dijkstra_from_server(s, a) for a in alphas] for s in servers}
+
+    # -----------------------------
+    # Candidate generation
+    # Server-diverse: keep best variants per server first, then prune globally.
+    # -----------------------------
+    candidate_map = {}
+
+    for src in sources:
+        arr, payload, comp = task_info[src]
+        server_candidates = []
+
+        for s in servers:
+            variants = []
+            seen_paths = set()
+
+            for tree in trees[s]:
+                parent = tree["parent"]
+                if src != s and parent[src] == -1:
+                    continue
+
+                path = reconstruct_path(src, s, parent)
+                if not path:
+                    continue
+
+                path_key = tuple(path)
+                if path_key in seen_paths:
+                    continue
+                seen_paths.add(path_key)
+
+                route_lat = tree["lat"][src]
+                route_en = tree["en"][src]
+
+                # Server-specific candidate proxy before load is known:
+                # use zero-load queue estimate and true task payload.
+                service_rate, idle_power, dynamic_power = server_info[s]
+                work = arr * comp
+                if work >= 0.97 * service_rate:
+                    continue
+
+                base_cost = (
+                    route_lat
+                    + queue_delay(service_rate, work)
+                    + 0.55
+                    * (
+                        payload * route_en
+                        + 0.02 * idle_power
+                        + dynamic_power * (work / max(service_rate, 1e-9))
+                    )
+                )
+
+                variants.append(
+                    {
+                        "server": s,
+                        "path": path,
+                        "route_lat": route_lat,
+                        "route_en": route_en,
+                        "base_cost": base_cost,
+                    }
+                )
+
+            if not variants:
+                continue
+
+            variants.sort(key=lambda x: x["base_cost"])
+            # Preserve diversity within each server.
+            server_candidates.extend(variants[:2])
+
+        if not server_candidates:
+            # Fallback: assign to nearest server by hop count-ish Dijkstra weight.
+            # This should be rare on connected graphs.
+            best = None
+            for s in servers:
+                best_tree = trees[s][1]
+                if src != s and best_tree["parent"][src] == -1:
+                    continue
+                path = reconstruct_path(src, s, best_tree["parent"])
+                if not path:
+                    continue
+                cand = {
+                    "server": s,
+                    "path": path,
+                    "route_lat": best_tree["lat"][src],
+                    "route_en": best_tree["en"][src],
+                    "base_cost": best_tree["lat"][src],
+                }
+                if best is None or cand["base_cost"] < best["base_cost"]:
+                    best = cand
+            if best is None:
+                candidate_map[src] = [{"server": servers[0], "path": [src] if src == servers[0] else [], "route_lat": 1e6, "route_en": 1e6, "base_cost": 1e9}]
+            else:
+                candidate_map[src] = [best]
+        else:
+            server_candidates.sort(key=lambda x: x["base_cost"])
+            candidate_map[src] = server_candidates[:12]
+
+    # -----------------------------
+    # Greedy assignment order
+    # Harder / heavier tasks first
+    # -----------------------------
+    def source_priority(src):
+        arr, payload, comp = task_info[src]
+        cands = candidate_map[src]
+        best = cands[0]["base_cost"] if cands else 1e9
+        second = cands[1]["base_cost"] if len(cands) > 1 else best + 1.0
+        difficulty_gap = second - best
+        return (
+            -(arr * comp),
+            -payload,
+            -difficulty_gap,
+            best,
+        )
+
+    ordered_sources = sorted(sources, key=source_priority)
+
+    # -----------------------------
+    # Greedy construction
+    # -----------------------------
+    loads = {s: 0.0 for s in servers}
+    plan = {}
+
+    for src in ordered_sources:
+        arr, payload, comp = task_info[src]
+        work = arr * comp
+
+        best_choice = None
+        best_cost = float("inf")
+
+        for cand in candidate_map[src]:
+            s = cand["server"]
+            inc = task_server_incremental_cost(
+                src, s, cand["route_lat"], cand["route_en"], loads[s]
+            )
+            if inc < best_cost:
+                best_cost = inc
+                best_choice = cand
+
+        if best_choice is None:
+            # Choose least-loaded server with any valid path.
+            fallback = None
+            fallback_score = float("inf")
+            for cand in candidate_map[src]:
+                s = cand["server"]
+                service_rate, _, _ = server_info[s]
+                util = loads[s] / max(service_rate, 1e-9)
+                if util < fallback_score:
+                    fallback_score = util
+                    fallback = cand
+            if fallback is None:
+                s = servers[0]
+                plan[src] = {"server": s, "path": [src] if src == s else [], "_cost": 1e9}
+                if s in loads:
+                    loads[s] += work
+            else:
+                s = fallback["server"]
+                cost = task_server_incremental_cost(
+                    src, s, fallback["route_lat"], fallback["route_en"], loads[s]
+                )
+                plan[src] = {"server": s, "path": fallback["path"], "_cost": cost}
+                loads[s] += work
+        else:
+            s = best_choice["server"]
+            plan[src] = {"server": s, "path": best_choice["path"], "_cost": best_cost}
+            loads[s] += work
+
+    # -----------------------------
+    # Local improvement pass
+    # Reassign a source if doing so improves total proxy score.
+    # -----------------------------
+    current_score = global_assignment_score(plan, loads)
+
+    improvement_sources = sorted(
+        sources,
+        key=lambda src: plan[src]["_cost"],
+        reverse=True,
+    )
+
+    for src in improvement_sources:
+        current_server = plan[src]["server"]
+        arr, payload, comp = task_info[src]
+        work = arr * comp
+
+        # Remove current assignment temporarily.
+        loads[current_server] -= work
+        old_entry = plan[src]
+
+        best_entry = old_entry
+        best_total = current_score
+
+        for cand in candidate_map[src]:
+            s = cand["server"]
+            new_cost = task_server_incremental_cost(
+                src, s, cand["route_lat"], cand["route_en"], loads[s]
+            )
+            if not math.isfinite(new_cost):
+                continue
+
+            trial_entry = {"server": s, "path": cand["path"], "_cost": new_cost}
+            plan[src] = trial_entry
+            loads[s] += work
+            trial_total = global_assignment_score(plan, loads)
+            loads[s] -= work
+
+            if trial_total + 1e-12 < best_total:
+                best_total = trial_total
+                best_entry = trial_entry
+
+        # Restore best found.
+        plan[src] = best_entry
+        loads[best_entry["server"]] += work
+        current_score = best_total
+
+    # -----------------------------
+    # Output cleanup
+    # -----------------------------
+    final_plan = {}
+    for src in sources:
+        entry = plan.get(src)
+        if entry is None:
+            # very defensive fallback
+            s = servers[0]
+            final_plan[src] = {"server": s, "path": [src] if src == s else []}
+        else:
+            path = entry["path"]
+            if not path or path[0] != src or path[-1] != entry["server"]:
+                # repair using one cached tree if needed
+                repaired = []
+                for tree in trees[entry["server"]]:
+                    repaired = reconstruct_path(src, entry["server"], tree["parent"])
+                    if repaired:
+                        break
+                path = repaired if repaired else ([src] if src == entry["server"] else [])
+            final_plan[src] = {"server": entry["server"], "path": path}
+
+    return final_plan
+# EVOLVE-BLOCK-END
+
+import os
+import sys
+
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from graph_evaluation import GraphRoutingGrader
+
+
+def run_experiment(**kwargs):
+    del kwargs
+    grader = GraphRoutingGrader()
+    try:
+        avg_latency, avg_energy, final_score = grader.grade_silent(evolve_task_routing, timeout=12)
+    except Exception:
+        import traceback
+
+        traceback.print_exc()
+        avg_latency, avg_energy, final_score = float("inf"), float("inf"), float("inf")
+
+    return avg_latency, avg_energy, final_score

@@ -1,0 +1,205 @@
+# EVOLVE-BLOCK-START
+def evolve_task_routing(
+    num_nodes,
+    edges,
+    server_nodes,
+    task_sources,
+    task_info,
+    server_info,
+):
+    """
+    Graph multi-objective routing problem.
+
+    You must return a dict:
+    {
+        source_node: {
+            "server": server_node,
+            "path": [source_node, ..., server_node],
+        },
+        ...
+    }
+
+    Goals:
+    1. Minimize end-to-end latency = transmission latency + server queueing delay.
+    2. Minimize total energy = routing energy + server compute energy.
+    """
+    import heapq
+
+    # 1. Build adjacency list
+    graph = [[] for _ in range(num_nodes)]
+    for u, v, base_latency, energy_cost, _capacity in edges:
+        graph[u].append((v, base_latency, energy_cost))
+        graph[v].append((u, base_latency, energy_cost))
+
+    inf = float("inf")
+
+    def build_tree(root, route_energy_weight):
+        dist = [inf] * num_nodes
+        lat = [0.0] * num_nodes
+        eng = [0.0] * num_nodes
+        parent = [-1] * num_nodes
+
+        dist[root] = 0.0
+        heap = [(0.0, root)]
+
+        while heap:
+            d, u = heapq.heappop(heap)
+            if d != dist[u]:
+                continue
+            for v, b_lat, e_cost in graph[u]:
+                nd = d + b_lat + route_energy_weight * e_cost
+                if nd < dist[v]:
+                    dist[v] = nd
+                    lat[v] = lat[u] + b_lat
+                    eng[v] = eng[u] + e_cost
+                    parent[v] = u
+                    heapq.heappush(heap, (nd, v))
+
+        return {"dist": dist, "lat": lat, "eng": eng, "parent": parent}
+
+    # 2. Precompute up to 2 server-rooted trees per server for bounded route diversity
+    server_trees = {}
+    for srv in server_nodes:
+        t_fast = build_tree(srv, 0.45)   # latency-leaning
+        t_green = build_tree(srv, 1.25)  # energy-leaning
+        trees = [t_fast]
+
+        # Keep second candidate only if structurally different on reachable nodes
+        different = False
+        p1, p2 = t_fast["parent"], t_green["parent"]
+        d1, d2 = t_fast["dist"], t_green["dist"]
+        for n in range(num_nodes):
+            if d1[n] != inf and d2[n] != inf and p1[n] != p2[n]:
+                different = True
+                break
+        if different:
+            trees.append(t_green)
+
+        server_trees[srv] = trees
+
+    # 3. Sort heavier sources first to reduce harmful late-stage queueing choices
+    ranked_sources = sorted(
+        task_sources,
+        key=lambda src: task_info[src][0] * task_info[src][2],
+        reverse=True,
+    )
+
+    projected_load = {srv: 0.0 for srv in server_nodes}
+    projected_arr = {srv: 0.0 for srv in server_nodes}
+    plan = {}
+    path_cache = {}
+
+    util_cap = 0.94
+    energy_tradeoff = 1.38
+    eps = 1e-12
+
+    # 4. Assign each source with incremental latency/energy objective across route candidates
+    for src in ranked_sources:
+        arr_rate, _payload_size, comp_demand = task_info[src]
+        load_increase = arr_rate * comp_demand
+
+        best_srv = None
+        best_tree_idx = 0
+        best_score = inf
+
+        for srv in server_nodes:
+            srv_rate, idle_pwr, dyn_pwr = server_info[srv]
+            old_load = projected_load[srv]
+            new_load = old_load + load_increase
+
+            if new_load >= util_cap * srv_rate:
+                continue
+
+            denom_new = srv_rate - new_load
+            if denom_new <= eps:
+                continue
+
+            q_new = 1.0 / denom_new
+            q_old = 1.0 / (srv_rate - old_load) if old_load > 0 else 1.0 / srv_rate
+
+            for ti, tree in enumerate(server_trees[srv]):
+                if tree["dist"][src] == inf:
+                    continue
+
+                t_lat = tree["lat"][src]
+                r_eng = tree["eng"][src]
+
+                # Marginal latency including queue externality on currently assigned arrivals
+                delta_lat = arr_rate * (t_lat + q_new) + projected_arr[srv] * (q_new - q_old)
+
+                # Marginal energy: routing + dynamic compute + first-use idle activation
+                delta_eng = arr_rate * r_eng + dyn_pwr * (load_increase / srv_rate)
+                if old_load == 0.0:
+                    delta_eng += 0.6 * idle_pwr
+
+                util_new = new_load / srv_rate
+                score = delta_lat + energy_tradeoff * delta_eng + 0.07 * (util_new * util_new)
+
+                if score < best_score:
+                    best_score = score
+                    best_srv = srv
+                    best_tree_idx = ti
+
+        # Fallback: choose best reachable (server,tree) by precomputed route metric
+        if best_srv is None:
+            fallback = None
+            for srv in server_nodes:
+                for ti, tree in enumerate(server_trees[srv]):
+                    d = tree["dist"][src]
+                    if d == inf:
+                        continue
+                    if fallback is None or d < fallback[0]:
+                        fallback = (d, srv, ti)
+            if fallback is not None:
+                _, best_srv, best_tree_idx = fallback
+            else:
+                best_srv, best_tree_idx = server_nodes[0], 0
+
+        # Reconstruct path from selected tree
+        key = (best_srv, best_tree_idx, src)
+        if key in path_cache:
+            path = path_cache[key]
+        else:
+            tree = server_trees[best_srv][best_tree_idx]
+            if tree["dist"][src] == inf:
+                path = []
+            else:
+                path = []
+                curr = src
+                steps = 0
+                while curr != -1 and steps <= num_nodes:
+                    path.append(curr)
+                    if curr == best_srv:
+                        break
+                    curr = tree["parent"][curr]
+                    steps += 1
+                if not path or path[-1] != best_srv:
+                    path = []
+            path_cache[key] = path
+
+        plan[src] = {"server": best_srv, "path": path}
+        projected_load[best_srv] += load_increase
+        projected_arr[best_srv] += arr_rate
+
+    return plan
+# EVOLVE-BLOCK-END
+
+import os
+import sys
+
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from graph_evaluation import GraphRoutingGrader
+
+
+def run_experiment(**kwargs):
+    del kwargs
+    grader = GraphRoutingGrader()
+    try:
+        avg_latency, avg_energy, final_score = grader.grade_silent(evolve_task_routing, timeout=12)
+    except Exception:
+        import traceback
+
+        traceback.print_exc()
+        avg_latency, avg_energy, final_score = float("inf"), float("inf"), float("inf")
+
+    return avg_latency, avg_energy, final_score

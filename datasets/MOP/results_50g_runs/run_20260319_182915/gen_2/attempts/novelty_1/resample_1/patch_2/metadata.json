@@ -1,0 +1,14 @@
+{
+  "generation": 2,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 2,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "cubic_bend_optimizer",
+  "patch_description": "The improved `evolve_drone_path` function replaces the straight-line trajectory with a smooth cubic bend. The optimization strategy focuses on minimizing the two highest cost factors: School Noise (F2) and Signal Loss (F3). \n\n1. **Targeting**: The school is located at (40, 20) and the base station is at (70, -30). A linear path near $y=0$ is roughly equidistant from both. By bending the path towards larger negative Y values ($y \\approx -25$), the drone moves significantly further from the school noise zone and closer to the base station's signal radius.\n2. **Mathematical Formulation**: We apply a cubic offset to the linear path: $y(t) = y_{linear}(t) + C \\cdot t(1-t)(A + Bt)$, where $t$ is the progress along the X-axis ($0$ at start, $1$ at end). This specific polynomial form ensures the offset is zero at both the start and end of the path, maintaining endpoint integrity and smoothness.\n3. **Weighting**: The coefficient $C=110$ is chosen to balance the drastic reduction in Signal Loss (F3) and School Noise (F2) against the slight increase in total distance (F1). The internal term $(0.8 + 0.4t)$ biases the curve's peak towards $t=0.7$, aligning the maximum bend with the base station's location.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:31:52.485272",
+  "llm_cost": 0.003195,
+  "llm_model": null
+}

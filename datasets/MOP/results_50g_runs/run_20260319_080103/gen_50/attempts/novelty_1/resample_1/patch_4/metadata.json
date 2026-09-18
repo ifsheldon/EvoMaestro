@@ -1,0 +1,14 @@
+{
+  "generation": 50,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 4,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "adaptive_two_stage_gaussian_projection",
+  "patch_description": "The `adaptive_two_stage_gaussian_projection` algorithm implements a direct analytical construction of the drone path using a two-stage potential field approach. \n1. **Broad Base Attraction**: It first calculates a broad Gaussian pull toward the base station signal coordinates to minimize signal loss (F3). \n2. **Clearance-Aware School Repulsion**: Following the recommendation, it evaluates the path's clearance from the school *after* the base attraction is applied. It then applies a localized Gaussian push away from the school with an adaptive amplitude: `amp = min(52.0, max(32.0, 30.0 + 110.0 / (clearance + 5.0)))`. This ensures optimal noise reduction (F2) without excessive distance penalties.\n3. **Smooth Geometric Synthesis**: The path is synthesized by adding these Gaussian offsets to a linear baseline, multiplied by a sinusoidal taper. This ensures the path is $C^\\infty$ smooth and adheres strictly to the start and end points, minimizing total distance (F1).",
+  "error_msg": "Could not extract code from patch string",
+  "timestamp": "2026-03-19T16:22:56.653308",
+  "llm_cost": 0.0044825,
+  "llm_model": null
+}

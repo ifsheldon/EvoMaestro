@@ -1,0 +1,14 @@
+{
+  "generation": 46,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "ys_block_finetuner",
+  "patch_description": "We introduce `YSFineTuner`, an entirely new secondary local search phase that operates directly on the discrete `y` coordinates rather than global macroscopic curve parameters. While the initial parametric search finds an excellent global structure (avoiding major local minima), single-point adjustments are strictly limited. By testing joint sequential updates on adjacent pairs and triples `(e.g., y[i:i+3])` with combinations from `{-h, 0, h}`, the new fine-tuner discovers coordinated block moves. These easily create localized shapes that curve efficiently around the school or bend towards the base. \n\nTo ensure safety and performance, the block search acts as a localized steepest-ascent hill climber\u2014evaluating all base deltas, capturing the single most promising score-improving configuration before locking it in and continuing the sweep. Alongside this, `SurrogateEvaluator.score` was fully optimized to operate with direct index mapping rather than building temporary `pts` list arrays matching bounds, yielding much faster node-level evaluations to facilitate thousands of local checks without hitting any timeout barriers.",
+  "error_msg": "Could not extract code from patch string",
+  "timestamp": "2026-03-20T02:48:39.987666",
+  "llm_cost": 0.019974,
+  "llm_model": null
+}

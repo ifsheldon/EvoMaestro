@@ -1,0 +1,224 @@
+--- a/original.py
++++ b/original.py
+@@ -1,129 +1,137 @@
+ # EVOLVE-BLOCK-START
+ def evolve_task_routing(
+     num_nodes,
+     edges,
+     server_nodes,
+     task_sources,
+     task_info,
+     server_info,
+ ):
+-    """
+-    Graph multi-objective routing problem.
+-
+-    You must return a dict:
+-    {
+-        source_node: {
+-            "server": server_node,
+-            "path": [source_node, ..., server_node],
+-        },
+-        ...
+-    }
+-
+-    Goals:
+-    1. Minimize end-to-end latency = transmission latency + server queueing delay.
+-    2. Minimize total energy = routing energy + server compute energy.
+-    """
+     import heapq
+ 
+-    graph = [[] for _ in range(num_nodes)]
+-    for u, v, base_latency, energy_cost, capacity in edges:
+-        graph[u].append((v, base_latency, energy_cost, capacity))
+-        graph[v].append((u, base_latency, energy_cost, capacity))
++    # Build adjacency list
++    adj = [[] for _ in range(num_nodes)]
++    for u, v, bl, ec, cap in edges:
++        adj[u].append((v, bl, ec, cap))
++        adj[v].append((u, bl, ec, cap))
+ 
+-    def shortest_path(source, target):
+-        dist = [float("inf")] * num_nodes
+-        parent = [-1] * num_nodes
+-        dist[source] = 0.0
+-        heap = [(0.0, source)]
++    if not task_sources:
++        return {}
+ 
+-        while heap:
+-            cur_dist, node = heapq.heappop(heap)
+-            if cur_dist != dist[node]:
++    # Calculate average payload for Dijkstra weighting
++    all_payloads = [task_info[s][1] for s in task_sources]
++    avg_pay = sum(all_payloads) / len(all_payloads) if all_payloads else 1.0
++
++    # Precompute paths from each server node
++    # Since the graph is undirected, dist(S, T) == dist(T, S)
++    server_paths = {}
++    for snode in server_nodes:
++        dists = [float('inf')] * num_nodes
++        parents = [-1] * num_nodes
++        p_lat = [0.0] * num_nodes
++        p_en = [0.0] * num_nodes
++        
++        dists[snode] = 0.0
++        pq = [(0.0, snode)]
++        
++        while pq:
++            d, u = heapq.heappop(pq)
++            if d > dists[u]:
+                 continue
+-            if node == target:
+-                break
+-            for nxt, base_latency, energy_cost, _capacity in graph[node]:
+-                weight = base_latency + 0.35 * energy_cost
+-                cand = cur_dist + weight
+-                if cand < dist[nxt]:
+-                    dist[nxt] = cand
+-                    parent[nxt] = node
+-                    heapq.heappush(heap, (cand, nxt))
++            for v, bl, ec, cap in adj[u]:
++                # Weight combines latency and energy (scaled by avg payload)
++                weight = bl + 0.5 * ec * avg_pay
++                if dists[u] + weight < dists[v]:
++                    dists[v] = dists[u] + weight
++                    parents[v] = u
++                    p_lat[v] = p_lat[u] + bl
++                    p_en[v] = p_en[u] + ec
++                    heapq.heappush(pq, (dists[v], v))
++        server_paths[snode] = (parents, p_lat, p_en)
+ 
+-        if source != target and parent[target] == -1:
+-            return []
++    # Sort tasks by total load to prioritize heavy tasks
++    ranked_tasks = sorted(
++        task_sources, 
++        key=lambda s: task_info[s][0] * task_info[s][2], 
++        reverse=True
++    )
+ 
+-        path = [target]
+-        cur = target
+-        while cur != source:
+-            cur = parent[cur]
+-            if cur == -1:
+-                return []
+-            path.append(cur)
+-        path.reverse()
+-        return path
+-
+-    projected_load = {server: 0.0 for server in server_nodes}
++    current_load = {s: 0.0 for s in server_nodes}
+     plan = {}
+ 
+-    ranked_sources = sorted(
+-        task_sources,
+-        key=lambda src: task_info[src][0] * task_info[src][2],
+-        reverse=True,
+-    )
+-
+-    for source in ranked_sources:
+-        arrival_rate, _payload_size, compute_demand = task_info[source]
+-        best_server = None
+-        best_path = []
+-        best_score = float("inf")
+-
+-        for server in server_nodes:
+-            service_rate, idle_power, dynamic_power = server_info[server]
+-            projected = projected_load[server] + arrival_rate * compute_demand
+-            if projected >= 0.9 * service_rate:
++    for src in ranked_tasks:
++        arr, pay, comp = task_info[src]
++        best_s = None
++        best_score = float('inf')
++        
++        for s in server_nodes:
++            parents, p_lat, p_en = server_paths[s]
++            # Connectivity check
++            if parents[src] == -1 and src != s:
+                 continue
+-            path = shortest_path(source, server)
+-            if not path:
+-                continue
+-            utilization = projected / service_rate
+-            score = (
+-                (len(path) - 1)
+-                + 1.5 * utilization
+-                + 0.03 * idle_power
+-                + 0.06 * dynamic_power * utilization
+-            )
++            
++            mu, idle, dyn = server_info[s]
++            old_load = current_load[s]
++            new_load = old_load + arr * comp
++            
++            # Utilization check
++            if new_load >= 0.99 * mu:
++                marginal_q = 1e12
++            else:
++                old_q = old_load / (mu - old_load) if old_load < mu else 1e12
++                new_q = new_load / (mu - new_load)
++                marginal_q = new_q - old_q
++            
++            # Marginal Latency (Flow latency + Change in system queueing)
++            m_lat = arr * p_lat[src] + marginal_q
++            
++            # Marginal Energy (Routing + Dynamic Compute + Idle Power if first task)
++            m_en = arr * pay * p_en[src] + (arr * comp / mu) * dyn
++            if old_load == 0:
++                m_en += idle
++            
++            # Multi-objective score
++            score = m_lat + 0.5 * m_en
++            
+             if score < best_score:
+                 best_score = score
+-                best_server = server
+-                best_path = path
++                best_s = s
+ 
+-        if best_server is None:
+-            best_server = server_nodes[0]
+-            best_path = shortest_path(source, best_server)
+-
+-        plan[source] = {"server": best_server, "path": best_path}
+-        projected_load[best_server] += arrival_rate * compute_demand
++        if best_s is not None:
++            # Reconstruct path from source to server
++            parents, _, _ = server_paths[best_s]
++            path = [src]
++            curr = src
++            while curr != best_s:
++                curr = parents[curr]
++                path.append(curr)
++            
++            plan[src] = {"server": best_s, "path": path}
++            current_load[best_s] += arr * comp
++        else:
++            # Fallback for disconnected components
++            fallback_s = server_nodes[0]
++            plan[src] = {"server": fallback_s, "path": [src, fallback_s]}
+ 
+     return plan
+ # EVOLVE-BLOCK-END
+ 
+ import os
+ import sys
+ 
+ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+ from graph_evaluation import GraphRoutingGrader
+ 
+ 
+ def run_experiment(**kwargs):
+     del kwargs
+     grader = GraphRoutingGrader()
+     try:
+         avg_latency, avg_energy, final_score = grader.grade_silent(evolve_task_routing, timeout=12)
+     except Exception:
+         import traceback
+ 
+         traceback.print_exc()
+         avg_latency, avg_energy, final_score = float("inf"), float("inf"), float("inf")
+ 
+     return avg_latency, avg_energy, final_score

@@ -1,0 +1,358 @@
+# EVOLVE-BLOCK-START
+def evolve_drone_path(start, end, school, base, num_points):
+    import math
+
+    x0, y0 = start
+    x1, y1 = end
+    sx, sy = school
+    bx, by = base
+
+    if num_points <= 0:
+        return []
+
+    dx_total = x1 - x0
+    dy_total = y1 - y0
+
+    # Degenerate vertical-x case: simple linear y interpolation.
+    if abs(dx_total) < 1e-12:
+        step = dy_total / (num_points + 1.0)
+        return [float(y0 + (i + 1) * step) for i in range(num_points)]
+
+    def clamp(v, lo, hi):
+        return lo if v < lo else hi if v > hi else v
+
+    def line_y_at_t(t):
+        return y0 + t * dy_total
+
+    def line_y_at_x(x):
+        t = (x - x0) / dx_total
+        return y0 + t * dy_total
+
+    # Uniform x sampling required by interface.
+    xs = [x0 + (i + 1) * dx_total / (num_points + 1.0) for i in range(num_points)]
+    ts = [(x - x0) / dx_total for x in xs]
+
+    # Relative positions in normalized progress space.
+    ts_school = (sx - x0) / dx_total
+    ts_base = (bx - x0) / dx_total
+
+    school_line_y = line_y_at_x(sx)
+    base_line_y = line_y_at_x(bx)
+
+    away_dir = -1.0 if sy >= school_line_y else 1.0
+    toward_dir = 1.0 if by >= base_line_y else -1.0
+
+    span_x = abs(dx_total)
+    span_ref = max(12.0, abs(dy_total), abs(sy - school_line_y), abs(by - base_line_y))
+
+    # Knot layout (endpoints fixed, interior optimized offsets).
+    knot_t = [0.0, 0.14, 0.30, 0.48, 0.66, 0.84, 1.0]
+    m = len(knot_t)
+    var_idx = list(range(1, m - 1))  # interior indices to optimize
+
+    # Max deviation bound from line.
+    max_dev = 34.0 if away_dir == toward_dir else 28.0
+    max_dev += 0.10 * min(24.0, span_ref)
+
+    # Initial prior offsets: away near school + toward near base + gentle tail.
+    A_school = min(max_dev * 0.95, 6.0 + 0.18 * span_x + 0.58 * abs(sy - school_line_y))
+    A_base = min(max_dev * 1.05, 7.0 + 0.22 * span_x + 0.62 * abs(by - base_line_y))
+    A_tail = min(max_dev * 0.55, 4.0 + 0.10 * span_x)
+
+    sig_school = max(0.08, 0.16)
+    sig_base = max(0.10, 0.20)
+
+    def gauss(u, mu, sig):
+        z = (u - mu) / max(1e-6, sig)
+        return math.exp(-0.5 * z * z)
+
+    prior = [0.0] * m
+    for i, t in enumerate(knot_t):
+        if i == 0 or i == m - 1:
+            continue
+        s_term = away_dir * A_school * gauss(t, ts_school, sig_school)
+        b_term = toward_dir * A_base * gauss(t, ts_base, sig_base)
+        tail_term = toward_dir * A_tail * (t * t)
+        prior[i] = s_term + b_term + tail_term
+
+    # Soft global y bounds.
+    refs = [y0, y1, sy, by]
+    pad = 20.0 + 0.40 * (max(refs) - min(refs) + span_ref)
+    y_lo = min(refs) - pad
+    y_hi = max(refs) + pad
+
+    # Cubic Hermite interpolation across knots.
+    tension = 0.30  # lower -> smoother/curvier
+
+    def build_knot_y(offsets):
+        ky = []
+        for i, t in enumerate(knot_t):
+            base = line_y_at_t(t)
+            if i == 0 or i == m - 1:
+                y = base
+            else:
+                y = base + offsets[i]
+            ky.append(clamp(y, y_lo, y_hi))
+        return ky
+
+    def knot_slopes(ky):
+        ms = [0.0] * m
+        for i in range(m):
+            if i == 0:
+                dt = knot_t[1] - knot_t[0]
+                ms[i] = (ky[1] - ky[0]) / max(1e-9, dt)
+            elif i == m - 1:
+                dt = knot_t[-1] - knot_t[-2]
+                ms[i] = (ky[-1] - ky[-2]) / max(1e-9, dt)
+            else:
+                dt = knot_t[i + 1] - knot_t[i - 1]
+                ms[i] = (1.0 - tension) * (ky[i + 1] - ky[i - 1]) / max(1e-9, dt)
+        return ms
+
+    def y_from_offsets(offsets, t_query):
+        ky = build_knot_y(offsets)
+        ms = knot_slopes(ky)
+
+        # Find segment
+        if t_query <= 0.0:
+            return ky[0]
+        if t_query >= 1.0:
+            return ky[-1]
+
+        j = 0
+        while j + 1 < m and knot_t[j + 1] < t_query:
+            j += 1
+
+        tL, tR = knot_t[j], knot_t[j + 1]
+        h = tR - tL
+        if h < 1e-12:
+            return ky[j]
+
+        u = (t_query - tL) / h
+        u2 = u * u
+        u3 = u2 * u
+
+        h00 = 2.0 * u3 - 3.0 * u2 + 1.0
+        h10 = u3 - 2.0 * u2 + u
+        h01 = -2.0 * u3 + 3.0 * u2
+        h11 = u3 - u2
+
+        return h00 * ky[j] + h10 * h * ms[j] + h01 * ky[j + 1] + h11 * h * ms[j + 1]
+
+    def build_path(offsets):
+        ys = [y_from_offsets(offsets, t) for t in ts]
+        return ys
+
+    # Segment-integrated surrogate with max-biased school term.
+    sample_lams = (0.25, 0.5, 0.75)
+
+    def surrogate(ys):
+        pts = [start] + list(zip(xs, ys)) + [end]
+        nseg = len(pts) - 1
+
+        # F1 proxy
+        total_len = 0.0
+        for i in range(nseg):
+            dx = pts[i + 1][0] - pts[i][0]
+            dy = pts[i + 1][1] - pts[i][1]
+            total_len += math.hypot(dx, dy)
+        direct_len = math.hypot(dx_total, dy_total) + 1e-9
+        f1 = total_len / direct_len
+
+        school_acc = 0.0
+        base_acc = 0.0
+        w_base_sum = 0.0
+
+        for i in range(nseg):
+            xA, yA = pts[i]
+            xB, yB = pts[i + 1]
+
+            s_vals = []
+            b_vals = []
+            prog = (i + 0.5) / max(1.0, nseg)
+
+            for lam in sample_lams:
+                x = xA + lam * (xB - xA)
+                y = yA + lam * (yB - yA)
+
+                ds = math.hypot(x - sx, y - sy)
+                db = math.hypot(x - bx, y - by)
+
+                s_vals.append(1.0 / (ds + 1.25))  # near-school sensitivity
+                b_vals.append(db)
+
+            seg_school = 0.42 * (sum(s_vals) / len(s_vals)) + 0.58 * max(s_vals)  # max-biased
+            w_b = 0.62 + 1.18 * (prog ** 1.15)  # later path slightly more important
+            seg_base = sum(b_vals) / len(b_vals)
+
+            school_acc += seg_school
+            base_acc += w_b * seg_base
+            w_base_sum += w_b
+
+        f2 = school_acc / max(1, nseg)
+        f3 = base_acc / max(1e-9, w_base_sum)
+
+        # Smoothness (second-difference)
+        sm = 0.0
+        if len(ys) >= 3:
+            for i in range(1, len(ys) - 1):
+                sm += abs(ys[i - 1] - 2.0 * ys[i] + ys[i + 1])
+            sm /= (len(ys) - 2)
+
+        # Soft directional guidance near school/base x.
+        ys_at_school = y_from_offsets(offsets_curr, ts_school) if -0.05 <= ts_school <= 1.05 else line_y_at_x(sx)
+        ys_at_base = y_from_offsets(offsets_curr, ts_base) if -0.05 <= ts_base <= 1.05 else line_y_at_x(bx)
+
+        school_dir_pen = 0.0
+        if away_dir > 0:
+            school_dir_pen = max(0.0, (sy + 1.0) - ys_at_school)
+        else:
+            school_dir_pen = max(0.0, ys_at_school - (sy - 1.0))
+
+        base_dir_pen = abs(ys_at_base - by)
+
+        return (
+            4.35 * f1
+            + 16.8 * f2
+            + 0.165 * f3
+            + 0.10 * sm
+            + 0.040 * school_dir_pen
+            + 0.012 * base_dir_pen
+        )
+
+    # Multi-start deterministic seeds
+    seeds = []
+    zero = [0.0] * m
+    seeds.append(zero[:])
+
+    for scale in (0.55, 0.85, 1.10, 1.35):
+        s = [0.0] * m
+        for i in var_idx:
+            s[i] = clamp(scale * prior[i], -max_dev, max_dev)
+        seeds.append(s)
+
+    # School-heavy and base-heavy alternatives.
+    for school_scale, base_scale, tail_scale in ((1.25, 0.70, 0.55), (0.75, 1.25, 1.05)):
+        s = [0.0] * m
+        for i, t in enumerate(knot_t):
+            if i == 0 or i == m - 1:
+                continue
+            val = (
+                away_dir * (A_school * school_scale) * gauss(t, ts_school, sig_school)
+                + toward_dir * (A_base * base_scale) * gauss(t, ts_base, sig_base)
+                + toward_dir * (A_tail * tail_scale) * (t * t)
+            )
+            s[i] = clamp(val, -max_dev, max_dev)
+        seeds.append(s)
+
+    def project_offsets(v):
+        out = v[:]
+        out[0] = 0.0
+        out[-1] = 0.0
+        # clamp each interior and discourage sharp neighboring jumps
+        for i in var_idx:
+            out[i] = clamp(out[i], -max_dev, max_dev)
+        jump_lim = 0.92 * max_dev
+        for _ in range(2):
+            for i in range(1, m - 1):
+                dl = out[i] - out[i - 1]
+                if dl > jump_lim:
+                    out[i] = out[i - 1] + jump_lim
+                elif dl < -jump_lim:
+                    out[i] = out[i - 1] - jump_lim
+        return out
+
+    best_offsets = project_offsets(seeds[0])
+    offsets_curr = best_offsets
+    best_ys = build_path(best_offsets)
+    best_score = surrogate(best_ys)
+
+    # Pattern search over knot offsets.
+    for seed in seeds:
+        v = project_offsets(seed)
+        offsets_curr = v
+        ys = build_path(v)
+        score = surrogate(ys)
+
+        if score < best_score:
+            best_score = score
+            best_offsets = v[:]
+            best_ys = ys[:]
+
+        step = max(2.4, 0.34 * max_dev)
+        for _ in range(18):
+            improved = False
+
+            # Coordinate moves
+            for i in var_idx:
+                base_val = v[i]
+                for direction in (1.0, -1.0):
+                    cand = v[:]
+                    cand[i] = base_val + direction * step
+                    cand = project_offsets(cand)
+                    offsets_curr = cand
+                    cys = build_path(cand)
+                    cs = surrogate(cys)
+                    if cs < score:
+                        v, ys, score = cand, cys, cs
+                        improved = True
+
+            # Coupled moves: early knots away-school, late knots toward-base.
+            for sign in (1.0, -1.0):
+                cand = v[:]
+                for i in var_idx:
+                    t = knot_t[i]
+                    coupled = (0.55 * gauss(t, ts_school, 0.18) * away_dir +
+                               0.75 * (t ** 1.2) * toward_dir)
+                    cand[i] += sign * step * coupled * 0.35
+                cand = project_offsets(cand)
+                offsets_curr = cand
+                cys = build_path(cand)
+                cs = surrogate(cys)
+                if cs < score:
+                    v, ys, score = cand, cys, cs
+                    improved = True
+
+            if score < best_score:
+                best_score = score
+                best_offsets = v[:]
+                best_ys = ys[:]
+
+            if not improved:
+                step *= 0.58
+                if step < 0.35:
+                    break
+
+    # Final gentle smoothing (endpoint-aware).
+    ys = best_ys[:]
+    if len(ys) >= 3:
+        alpha = 0.16
+        smooth = ys[:]
+        for i in range(1, len(ys) - 1):
+            smooth[i] = (1.0 - alpha) * ys[i] + 0.5 * alpha * (ys[i - 1] + ys[i + 1])
+        ys = smooth
+
+    # Clamp to safe global bounds.
+    return [float(clamp(v, y_lo, y_hi)) for v in ys]
+# EVOLVE-BLOCK-END
+
+import sys
+import os
+
+# 将当前目录加入系统路径以便导入同级文件
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from drone_evaluation import DroneGrader
+
+def run_experiment(**kwargs):
+    """供 Shinka 触发的单次实验方法"""
+    grader = DroneGrader()
+
+    # 捕获异常防止大模型写出死循环炸毁测评机
+    try:
+        avg_f1, avg_f2, avg_f3, final_score = grader.grade_silent(evolve_drone_path, timeout=12)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        avg_f1, avg_f2, avg_f3, final_score = float('inf'), float('inf'), float('inf'), float('inf')
+
+    return avg_f1, avg_f2, avg_f3, final_score

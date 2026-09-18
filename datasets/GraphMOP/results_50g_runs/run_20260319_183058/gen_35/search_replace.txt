@@ -1,0 +1,255 @@
+<NAME>
+scarcity_aware_regret_and_tighter_queueing
+</NAME>
+
+<DESCRIPTION>
+This edit improves assignment quality in two coordinated ways.
+
+First, it makes the regret ordering explicitly scarcity-aware. The current construction phase prioritizes tasks mostly by the gap between their best and second-best placements, with a demand boost. That still allows flexible tasks to consume scarce low-load server capacity too early. The new priority computes how many candidate servers remain “safe” for each source under the current partial assignment: below the soft-utilization target and with modest queue-cost increase. Sources with fewer safe options get boosted, while highly flexible sources are slightly deprioritized. This better preserves rare good placements for harder tasks.
+
+Second, it slightly strengthens queue/activation tradeoffs by using a more M/M/1-like queue term in server_state_cost and a somewhat more latency-sensitive path set. This is intended to reduce placements that look cheap initially but create avoidable queueing pressure, while still keeping energy competitive.
+
+These are targeted changes only within the evolve block and preserve the required output format and validity behavior.
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+    PATH_MODES = (
+        (1.55, 0.08, 0.24),  # latency focused
+        (1.10, 0.35, 0.20),  # balanced
+        (0.80, 0.72, 0.17),  # energy aware
+        (0.55, 1.05, 0.13),  # strongly energy focused
+    )
+
+    # Surrogate objective weights
+    LAT_W = 1.00
+    EN_W = 0.88
+    DYN_W = 0.20
+    QUEUE_W = 0.72
+    ACT_W = 0.020
+=======
+    PATH_MODES = (
+        (1.68, 0.06, 0.26),  # latency focused
+        (1.18, 0.30, 0.21),  # balanced
+        (0.86, 0.64, 0.17),  # energy aware
+        (0.58, 1.00, 0.13),  # strongly energy focused
+        (1.05, 0.22, 0.34),  # more capacity aware
+    )
+
+    # Surrogate objective weights
+    LAT_W = 1.00
+    EN_W = 0.87
+    DYN_W = 0.19
+    QUEUE_W = 0.86
+    ACT_W = 0.018
+>>>>>>> REPLACE
+
+</DIFF>
+
+<DIFF>
+<<<<<<< SEARCH
+    def server_state_cost(server, load):
+        mu, idle_power, dynamic_power = server_info[server]
+        mu = max(mu, 1e-9)
+        util = load / mu
+
+        # Hard penalty for unstable queues / overload
+        if util >= HARD_UTIL:
+            return 1e6 + 1e5 * (util - HARD_UTIL + 1e-9)
+
+        # Convex queue pressure, still mild at low utilization
+        slack = max(mu - load, 1e-6)
+        queue_term = load / slack
+
+        # Soft pressure approaching high utilization
+        soft_penalty = 0.0
+        if util > SOFT_UTIL:
+            x = util - SOFT_UTIL
+            soft_penalty = 40.0 * x * x
+
+        active = 1.0 if load > 1e-12 else 0.0
+
+        return (
+            QUEUE_W * queue_term
+            + DYN_W * dynamic_power * util
+            + ACT_W * idle_power * active
+            + soft_penalty
+        )
+=======
+    def server_state_cost(server, load):
+        mu, idle_power, dynamic_power = server_info[server]
+        mu = max(mu, 1e-9)
+        util = load / mu
+
+        # Hard penalty for unstable queues / overload
+        if util >= HARD_UTIL:
+            return 1e6 + 1e5 * (util - HARD_UTIL + 1e-9)
+
+        # Stronger M/M/1-like queue growth near saturation.
+        slack = max(mu - load, 1e-6)
+        queue_term = load / slack + 0.22 * (load * load) / (slack * mu)
+
+        # Soft pressure approaching high utilization
+        soft_penalty = 0.0
+        if util > SOFT_UTIL:
+            x = util - SOFT_UTIL
+            soft_penalty = 52.0 * x * x + 8.0 * x * x * x
+
+        active = 1.0 if load > 1e-12 else 0.0
+
+        return (
+            QUEUE_W * queue_term
+            + DYN_W * dynamic_power * util
+            + ACT_W * idle_power * active
+            + soft_penalty
+        )
+>>>>>>> REPLACE
+
+</DIFF>
+
+<DIFF>
+<<<<<<< SEARCH
+    def ranked_options(src):
+        opts = []
+        for server, cand in candidates[src].items():
+            delta = assignment_delta(src, cand, server_load)
+            opts.append((delta, server, cand))
+        opts.sort(key=lambda x: (x[0], len(x[2]["path"])))
+        return opts
+
+    while unassigned:
+        chosen_src = None
+        chosen_opts = None
+        chosen_priority = -float("inf")
+
+        for src in list(unassigned):
+            opts = ranked_options(src)
+            if not opts:
+                continue
+
+            best_score = opts[0][0]
+            second_score = opts[1][0] if len(opts) > 1 else best_score + 5.0
+            regret = second_score - best_score
+            demand_factor = source_demand[src] / max_demand
+
+            # Regret-aware order, emphasizing high-demand tasks.
+            priority = regret * (1.0 + 0.55 * demand_factor) + 0.08 * best_score
+
+            if priority > chosen_priority:
+                chosen_priority = priority
+                chosen_src = src
+                chosen_opts = opts
+
+        if chosen_src is None:
+            break
+
+        picked = chosen_opts[0]
+
+        # Prefer feasible-under-hard-util first; otherwise take least bad.
+        for opt in chosen_opts:
+            _, server, cand = opt
+            mu = max(cand["service_rate"], 1e-9)
+            if (server_load[server] + cand["demand"]) / mu < HARD_UTIL:
+                picked = opt
+                break
+
+        _, server, cand = picked
+        plan[chosen_src] = {"server": server, "path": cand["path"]}
+        server_load[server] += cand["demand"]
+        unassigned.remove(chosen_src)
+=======
+    def ranked_options(src):
+        opts = []
+        for server, cand in candidates[src].items():
+            delta = assignment_delta(src, cand, server_load)
+            opts.append((delta, server, cand))
+        opts.sort(key=lambda x: (x[0], len(x[2]["path"])))
+        return opts
+
+    def scarcity_stats(src, opts):
+        safe_count = 0
+        modest_count = 0
+        best_score = opts[0][0]
+        for score, server, cand in opts:
+            mu = max(cand["service_rate"], 1e-9)
+            new_load = server_load[server] + cand["demand"]
+            util = new_load / mu
+            queue_bump = server_state_cost(server, new_load) - server_state_cost(server, server_load[server])
+
+            if util <= SOFT_UTIL:
+                safe_count += 1
+            if util <= min(HARD_UTIL, SOFT_UTIL + 0.04) and queue_bump <= 0.55:
+                modest_count += 1
+
+        near_best_count = 0
+        near_best_band = 0.20 + 0.10 * best_score
+        for score, _, _ in opts:
+            if score <= best_score + near_best_band:
+                near_best_count += 1
+
+        return safe_count, modest_count, near_best_count
+
+    while unassigned:
+        chosen_src = None
+        chosen_opts = None
+        chosen_priority = -float("inf")
+
+        for src in list(unassigned):
+            opts = ranked_options(src)
+            if not opts:
+                continue
+
+            best_score = opts[0][0]
+            second_score = opts[1][0] if len(opts) > 1 else best_score + 5.0
+            regret = second_score - best_score
+            demand_factor = source_demand[src] / max_demand
+            safe_count, modest_count, near_best_count = scarcity_stats(src, opts)
+
+            scarcity_boost = 1.0 / safe_count if safe_count > 0 else 2.5
+            scarcity_boost += 0.55 / modest_count if modest_count > 0 else 1.2
+            flexibility_penalty = 0.10 * max(0, near_best_count - 1)
+
+            # Regret-aware order, now explicitly scarcity-aware.
+            priority = (
+                regret * (1.0 + 0.42 * demand_factor + 0.95 * scarcity_boost)
+                - flexibility_penalty
+                - 0.03 * best_score
+            )
+
+            if priority > chosen_priority:
+                chosen_priority = priority
+                chosen_src = src
+                chosen_opts = opts
+
+        if chosen_src is None:
+            break
+
+        picked = chosen_opts[0]
+
+        # Prefer candidates that preserve healthy utilization and low incremental queue cost.
+        best_feasible = None
+        for opt in chosen_opts:
+            score, server, cand = opt
+            mu = max(cand["service_rate"], 1e-9)
+            new_load = server_load[server] + cand["demand"]
+            util = new_load / mu
+            queue_bump = server_state_cost(server, new_load) - server_state_cost(server, server_load[server])
+
+            if util < HARD_UTIL:
+                desirability = score
+                if util <= SOFT_UTIL:
+                    desirability -= 0.08
+                desirability += 0.18 * queue_bump
+                if best_feasible is None or desirability < best_feasible[0]:
+                    best_feasible = (desirability, opt)
+
+        if best_feasible is not None:
+            picked = best_feasible[1]
+
+        _, server, cand = picked
+        plan[chosen_src] = {"server": server, "path": cand["path"]}
+        server_load[server] += cand["demand"]
+        unassigned.remove(chosen_src)
+>>>>>>> REPLACE
+
+</DIFF>

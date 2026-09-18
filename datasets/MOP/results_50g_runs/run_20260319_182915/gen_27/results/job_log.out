@@ -1,0 +1,15 @@
+==========Running program evaluation 1/1...==========
+==========Run 1/1 completed in 0.51 seconds==========
+Correctness and error status saved to /home/evolve/evolvis/MOP/results_50g_runs/run_20260319_182915/gen_27/results/correct.json
+Metrics saved to /home/evolve/evolvis/MOP/results_50g_runs/run_20260319_182915/gen_27/results/metrics.json
+Evaluation completed successfully.
+Metrics:
+  combined_score: -22.46113687364506
+  public: {'F1 (Distance)': 1.4778887300452592, 'F2 (School Noise)': 0.4692329942236376, 'F3 (Signal Loss)': 32.389292010961796, 'MOP Multiplier Score': 22.46113687364506, 'Note': 'Lower MOP Multiplier Score is better. The evaluator will map this to -Score for maximization.'}
+  private: {}
+  text_feedback: Your generated function yielded a score of 22.4611 (F1:1.4779, F2:0.4692, F3:32.3893). Try to make this score even LOWER. The system maximizes the negated score: -22.4611
+  execution_time_mean: 0.5061528109945357
+  execution_time_std: 0.0
+  num_valid_runs: 1
+  num_invalid_runs: 0
+  all_validation_errors: []

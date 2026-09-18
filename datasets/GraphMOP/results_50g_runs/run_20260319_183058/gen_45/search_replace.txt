@@ -1,0 +1,133 @@
+<NAME>
+dynamic_regret_active_pool
+</NAME>
+
+<DESCRIPTION>
+Introduce a dynamic regret active-pool constructor for assignment order.
+Instead of committing directly to the single highest-priority source each step, we now:
+
+1. Recompute regret with current server loads (still fully dynamic).
+2. Build a small active pool of highest-regret sources.
+3. Choose the source within that pool whose best feasible assignment has the lowest immediate marginal delta.
+4. Keep a regret-aware fallback if feasibility is tight.
+
+This keeps the beneficial regret signal (protecting constrained tasks) while reducing greedy over-commitment that can hurt latency/energy later due to queue buildup. I also slightly adjust the priority formula to avoid favoring high primary cost too aggressively.
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+    # Improvement iterations
+    LOCAL_PASSES = 4
+=======
+    # Improvement iterations
+    LOCAL_PASSES = 4
+
+    # Dynamic regret active pool size during constructive assignment
+    ACTIVE_POOL_SIZE = 10
+>>>>>>> REPLACE
+</DIFF>
+
+<DIFF>
+<<<<<<< SEARCH
+    while unassigned:
+        chosen_src = None
+        chosen_opts = None
+        chosen_priority = -float("inf")
+
+        for src in list(unassigned):
+            opts = ranked_options(src)
+            if not opts:
+                continue
+
+            best_score = opts[0][0]
+            second_score = opts[1][0] if len(opts) > 1 else best_score + 5.0
+            regret = second_score - best_score
+            demand_factor = source_demand[src] / max_demand
+
+            # Regret-aware order, emphasizing high-demand tasks.
+            priority = regret * (1.0 + 0.55 * demand_factor) + 0.08 * best_score
+
+            if priority > chosen_priority:
+                chosen_priority = priority
+                chosen_src = src
+                chosen_opts = opts
+
+        if chosen_src is None:
+            break
+
+        picked = chosen_opts[0]
+
+        # Prefer feasible-under-hard-util first; otherwise take least bad.
+        for opt in chosen_opts:
+            _, server, cand = opt
+            mu = max(cand["service_rate"], 1e-9)
+            if (server_load[server] + cand["demand"]) / mu < HARD_UTIL:
+                picked = opt
+                break
+
+        _, server, cand = picked
+        plan[chosen_src] = {"server": server, "path": cand["path"]}
+        server_load[server] += cand["demand"]
+        unassigned.remove(chosen_src)
+=======
+    while unassigned:
+        scored_sources = []
+
+        # Refresh regret ordering with current loads (dynamic).
+        for src in list(unassigned):
+            opts = ranked_options(src)
+            if not opts:
+                continue
+
+            best_score = opts[0][0]
+            second_score = opts[1][0] if len(opts) > 1 else best_score + 5.0
+            regret = second_score - best_score
+            demand_factor = source_demand[src] / max_demand
+
+            # Strong regret signal, but do not over-favor high primary cost.
+            priority = regret * (1.0 + 0.45 * demand_factor) - 0.03 * best_score
+            scored_sources.append((priority, regret, best_score, src, opts))
+
+        if not scored_sources:
+            break
+
+        scored_sources.sort(key=lambda x: (x[0], x[1]), reverse=True)
+        pool = scored_sources[:ACTIVE_POOL_SIZE] if len(scored_sources) > ACTIVE_POOL_SIZE else scored_sources
+
+        chosen_src = None
+        picked = None
+        best_commit = float("inf")
+        best_pool_priority = -float("inf")
+
+        # Within high-regret pool, commit the source with best feasible immediate delta.
+        for priority, regret, _, src, opts in pool:
+            local_pick = opts[0]
+            for opt in opts:
+                _, server, cand = opt
+                mu = max(cand["service_rate"], 1e-9)
+                if (server_load[server] + cand["demand"]) / mu < HARD_UTIL:
+                    local_pick = opt
+                    break
+
+            local_score, _, _ = local_pick
+            # Regret-adjusted commit value: lower is better.
+            commit_value = local_score - 0.18 * regret
+            if commit_value < best_commit or (
+                commit_value == best_commit and priority > best_pool_priority
+            ):
+                best_commit = commit_value
+                best_pool_priority = priority
+                chosen_src = src
+                picked = local_pick
+
+        if chosen_src is None or picked is None:
+            # Fallback: highest-priority source and its best option.
+            _, _, _, chosen_src, chosen_opts = scored_sources[0]
+            picked = chosen_opts[0]
+
+        _, server, cand = picked
+        plan[chosen_src] = {"server": server, "path": cand["path"]}
+        server_load[server] += cand["demand"]
+        unassigned.remove(chosen_src)
+>>>>>>> REPLACE
+</DIFF>

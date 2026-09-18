@@ -1,0 +1,14 @@
+{
+  "generation": 32,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "class_based_geometry_aware_optimizer",
+  "patch_description": "Redesigned the program using an object-oriented approach by encapsulating the path optimization logic into a `DronePathOptimizer` class. This improves modularity and maintainability. Additionally, implemented the recommendation to make the school repulsion amplitude geometry-aware: it now calculates a dynamic amplitude based on the vertical distance between the baseline and the school, providing a stronger push when the path naturally conflicts with the school while maintaining a baseline fixed-force repulsion.",
+  "error_msg": null,
+  "timestamp": "2026-03-19T16:09:42.531019",
+  "llm_cost": 0.01558,
+  "llm_model": null
+}

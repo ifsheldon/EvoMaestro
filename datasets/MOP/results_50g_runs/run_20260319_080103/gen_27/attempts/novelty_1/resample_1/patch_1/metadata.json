@@ -1,0 +1,14 @@
+{
+  "generation": 27,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 3,
+  "patch_name": "school_aware_base_pull",
+  "patch_description": "Introduce a school-aware base-attraction mechanism and relax endpoint suppression so the path can recover signal quality more effectively after avoiding the school.\n\nKey ideas:\n1. **Condition base pull on school influence at the same x**: when school repulsion is strong, soften base pull to preserve safe deviation; when school influence fades, restore/boost pull toward the base to improve F3.\n2. **Reduce over-damping from the current window**: the old cubic window nearly cancels shaping near both ends, which can prevent useful late-stage pull toward the base region. A floored smooth window keeps paths stable while allowing optimization to act across the whole segment.\n3. **Retune modifier strengths**: slightly stronger, narrower school repulsion plus stronger/wider base attraction tends to preserve F2 while reducing F3 without excessive F1 inflation.",
+  "error_msg": null,
+  "timestamp": "2026-03-19T16:07:53.857254",
+  "llm_cost": 0.029835749999999998,
+  "llm_model": null
+}

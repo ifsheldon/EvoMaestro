@@ -1,0 +1,64 @@
+[project]
+name = "evomaestro"
+version = "0.1.0"
+description = "Understand and steer LLM-driven program evolution."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "google-genai>=2.23.0",
+    "pydantic>=2.13.5",
+    "python-dotenv>=1.2.3",
+    "shinka-evolve",
+    "tqdm>=4.70.1",
+]
+
+[tool.uv.sources]
+shinka-evolve = { workspace = true }
+
+[tool.uv.workspace]
+members = ["ShinkaEvolve", "evomaestro-interface"]
+
+[dependency-groups]
+dev = ["ipykernel>=7.3.0", "poethepoet>=0.48.0", "ruff>=0.16.7"]
+
+example-rust-adaptive-sort = ["numpy>=2.5.3"]
+
+[tool.uv]
+default-groups = ["dev", "example-rust-adaptive-sort"]
+
+[tool.ruff]
+extend-exclude = [
+    "docs/reference-papers",
+    "datasets/MOP/results_*",
+    "datasets/GraphMOP/results_*",
+    "datasets/*/tmp_eval",
+    "datasets/mock-demo",
+    "datasets/mock-guide",
+]
+
+[tool.poe.tasks]
+format = "uv run --locked --all-packages ruff format"
+
+
+[tool.poe.tasks.start-shinka-mop]
+cmd = "uv run --locked --all-packages shinka_visualize datasets/MOP/results_50g_runs  --port 9870"
+
+[tool.poe.tasks.start-shinka-graph-mop]
+cmd = "uv run --locked --all-packages shinka_visualize datasets/GraphMOP/results_50g_runs  --port 9871"
+
+[tool.poe.tasks.start-mock-interactive]
+cmd = "uv run --locked --all-packages python evomaestro-interface/tools/start_mock_demo.py"
+
+[tool.poe.tasks.start-mock-interactive-published]
+# Route https://evomaestro-demo.reify.ing to the frontend port, including WebSocket upgrades.
+cmd = "uv run --locked --all-packages python evomaestro-interface/tools/start_mock_demo.py --release --public-demo"
+
+[tool.poe.tasks.start-interactive-mop]
+args = [{ name = "N", positional = true, required = true }]
+shell = "EVOLVE_SHELL_URL=http://localhost:42${N} NEXT_PUBLIC_CHALLENGE=mop uv run --locked --all-packages python start.py  --shinka-search-root ../user-study-data/MOP/${N}/results_50g_runs/run_20260319_182915 --example-runner ../user-study-data/MOP/${N}/run_evo_explicit_50g.py --runner-args '--resume results_50g_runs/run_20260319_182915' --frontend-port 41${N} --backend-port 42${N}"
+cwd = "evomaestro-interface"
+
+[tool.poe.tasks.start-interactive-graph-mop]
+args = [{ name = "N", positional = true, required = true }]
+shell = "EVOLVE_SHELL_URL=http://localhost:152${N} NEXT_PUBLIC_CHALLENGE=graphmop uv run --locked --all-packages python start.py  --shinka-search-root ../user-study-data/GraphMOP/${N}/results_50g_runs/run_20260319_183058 --example-runner ../user-study-data/GraphMOP/${N}/run_evo_explicit_50g.py --runner-args '--resume results_50g_runs/run_20260319_183058' --frontend-port 151${N} --backend-port 152${N}"
+cwd = "evomaestro-interface"

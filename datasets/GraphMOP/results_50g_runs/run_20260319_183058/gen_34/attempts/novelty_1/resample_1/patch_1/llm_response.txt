@@ -1,0 +1,60 @@
+REPLACE
+        ```
+        This is correct.
+
+    *   Wait, the `candidates` generation for each source:
+        ```python
+        for s in task_sources:
+            payload = float(task_info[s][1])
+            # ...
+        ```
+        This is correct.
+
+    *   Wait, the `trees` precomputation:
+        ```python
+        for srv in server_nodes:
+            for a_lat, b_en, c_cap, rep in blends:
+                parent, dist = dijkstra_server_rooted(srv, rep, a_lat, b_en, c_cap)
+                trees[srv].append((parent, dist))
+        ```
+        This is correct.
+
+    *   Wait, the `edge_attr` building:
+        ```python
+        prev = edge_attr.get(k1)
+        if prev is None or (bl + 1.5 * avg_payload * ec) < (prev[0] + 1.5 * avg_payload * prev[1]):
+            edge_attr[k1] = (bl, ec, cp)
+            edge_attr[k2] = (bl, ec, cp)
+        ```
+        This is correct.
+
+    *   Wait, the `avg_payload` calculation:
+        ```python
+        payloads = [float(task_info[s][1]) for s in task_sources] if task_sources else [1.0]
+        avg_payload = sum(payloads) / max(len(payloads), 1)
+        ```
+        This is correct.
+
+    *   Wait, the `dijkstra_server_rooted` weight:
+        ```python
+        tx_lat = base_lat + rep_payload / max(cap, 1e-9)
+        tx_en = e_cost * rep_payload
+        w = a_lat * tx_lat + b_en * tx_en + c_cap * (rep_payload / max(cap, 1e-9))
+        ```
+        This is correct.
+
+    *   Wait, the `fallback_path` weight:
+        ```python
+        w = (base_lat + payload / max(cap, 1e-9)) + 1.5 * (e_cost * payload)
+        ```
+        This is correct.
+
+    *   Wait, the `val` calculation in the loops:
+        ```python
+        arr = float(task_info[s][0])
+        # ...
+        q_old = server_arr[srv] * queue_delay(server_load[srv], mu)
+        q_new = (server_arr[srv] + arr) * queue_delay(server_load[srv] + w, mu)
+        marginal_qd = q_new - q_old
+        # ...
+        val = arr * rlat + marginal_qd + 1.

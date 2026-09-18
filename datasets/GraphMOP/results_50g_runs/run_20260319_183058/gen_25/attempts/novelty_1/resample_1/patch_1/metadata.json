@@ -1,0 +1,14 @@
+{
+  "generation": 25,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "marginal_dualobjective_server_trees",
+  "patch_description": "This version crossovers the strongest parts of the provided implementations:\n\n- Keeps the **fast server-rooted precomputation** (only O(#servers) Dijkstra runs).\n- Uses a **routing weight combining latency + energy** (energy-aware path selection).\n- Uses the better **marginal assignment objective** from the stronger prior script:\n  - incremental queueing impact (including impact on already assigned arrivals),\n  - routing energy + server dynamic/idle compute energy.\n- Preserves valid output format and simple valid server paths.\n- Adds small stability guards and lightweight caching for reconstructed paths.\n\nOverall, this is designed to keep runtime low while improving latency-energy tradeoff quality compared with the current implementation.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:42:47.123429",
+  "llm_cost": 0.03458175,
+  "llm_model": null
+}

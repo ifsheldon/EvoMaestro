@@ -1,0 +1,58 @@
+<NAME>
+marginal_cost_routing
+</NAME>
+
+<DESCRIPTION>
+The previous implementation performed an expensive Dijkstra search for every source-server pair and used a simplified server score that ignored the non-linear impact of queueing. 
+
+My new algorithm, `marginal_cost_routing`, introduces these optimizations:
+1. **O(S) Path Precomputation**: Instead of $O(T \times S)$ path searches, it runs Dijkstra from each server node once ($O(S \times E \log N)$). Because the graph is undirected, $dist(server, source) = dist(source, server)$, drastically reducing computation time.
+2. **Marginal Total Cost Analysis**: For server assignment, it calculates the marginal increase in total system latency and energy. It uses an M/M/1 queueing model derivative ($1/(\mu - \lambda)$) to account for how a new task affects the latency of its own flow.
+3. **Task-Load Ranking**: Heavy tasks (high arrival rate $\times$ high compute) are prioritized in the greedy assignment phase to ensure efficient resource utilization.
+4. **Multi-Objective Path Weighting**: Dijkstra weights combine base latency and energy cost (scaled by average payload), ensuring the precomputed paths are optimized for both metrics simultaneously.
+</DESCRIPTION>
+
+<CODE>
+```python
+# EVOLVE-BLOCK-START
+def evolve_task_routing(
+    num_nodes,
+    edges,
+    server_nodes,
+    task_sources,
+    task_info,
+    server_info,
+):
+    """
+    Graph multi-objective routing problem.
+    Optimized using marginal cost analysis for latency and energy.
+    """
+    import heapq
+
+    # Build adjacency list
+    graph = [[] for _ in range(num_nodes)]
+    for u, v, bl, ec, cap in edges:
+        graph[u].append((v, bl, ec))
+        graph[v].append((u, bl, ec))
+
+    # Calculate global average payload to use in path discovery weighting
+    if not task_sources:
+        return {}
+    all_payloads = [task_info[s][1] for s in task_sources]
+    avg_pay = sum(all_payloads) / len(all_payloads) if all_payloads else 1.0
+
+    # Precompute Dijkstra paths from all server nodes once
+    # Weight balances latency and transmission energy cost
+    server_paths = {}
+    for snode in server_nodes:
+        dists = [float('inf')] * num_nodes
+        parents = [-1] * num_nodes
+        p_lat = [0.0] * num_nodes
+        p_en = [0.0] * num_nodes
+        
+        dists[snode] = 0.0
+        pq = [(0.0, snode)]
+        
+        while pq:
+            d, u = heapq.heappop(pq)
+            if d >

@@ -1,0 +1,135 @@
+<NAME>
+marginal_cost_routing
+</NAME>
+
+<DESCRIPTION>
+The previous approach used an inefficient O(T*S) path-finding strategy and a fixed heuristic that didn't scale with task-specific payloads or non-linear queueing costs. 
+
+My new algorithm, `marginal_cost_routing`, introduces the following improvements:
+1. **O(S) Complexity**: It precomputes shortest paths using Dijkstra beginning from each server node once, rather than from each task source. This drastically reduces runtime for large source counts.
+2. **Marginal Incremental Costing**: The server selection score now calculates the marginal latency increase using the M/M/1 queuing model ($1 / (\mu - \lambda)$), which accounts for the exponential delay increase as server capacity is reached.
+3. **Payload-Aware Path Heuristic**: Edge weights in Dijkstra are now balanced using the average payload size ($latency + \alpha \cdot energy\_cost \cdot payload_{avg}$), ensuring paths are optimized for both time and energy.
+4. **Dynamic Energy Scoring**: It weights the energy increase (routing energy + dynamic compute energy) against latency to ensure a multi-objective balance, leading to lower overall scores.
+</DESCRIPTION>
+
+<CODE>
+```python
+# EVOLVE-BLOCK-START
+def evolve_task_routing(
+    num_nodes,
+    edges,
+    server_nodes,
+    task_sources,
+    task_info,
+    server_info,
+):
+    import heapq
+
+    # Build adjacency list
+    adj = [[] for _ in range(num_nodes)]
+    for u, v, bl, ec, cap in edges:
+        adj[u].append((v, bl, ec, cap))
+        adj[v].append((u, bl, ec, cap))
+
+    if not task_sources:
+        return {}
+
+    # Calculate average payload for Dijkstra weighting
+    all_payloads = [task_info[s][1] for s in task_sources]
+    avg_pay = sum(all_payloads) / len(all_payloads) if all_payloads else 1.0
+
+    # Precompute paths from each server node
+    # Since the graph is undirected, dist(S, T) == dist(T, S)
+    server_paths = {}
+    for snode in server_nodes:
+        dists = [float('inf')] * num_nodes
+        parents = [-1] * num_nodes
+        p_lat = [0.0] * num_nodes
+        p_en = [0.0] * num_nodes
+        
+        dists[snode] = 0.0
+        pq = [(0.0, snode)]
+        
+        while pq:
+            d, u = heapq.heappop(pq)
+            if d > dists[u]:
+                continue
+            for v, bl, ec, cap in adj[u]:
+                # Weight combines latency and energy (scaled by avg payload)
+                weight = bl + 0.5 * ec * avg_pay
+                if dists[u] + weight < dists[v]:
+                    dists[v] = dists[u] + weight
+                    parents[v] = u
+                    p_lat[v] = p_lat[u] + bl
+                    p_en[v] = p_en[u] + ec
+                    heapq.heappush(pq, (dists[v], v))
+        server_paths[snode] = (parents, p_lat, p_en)
+
+    # Sort tasks by total load to prioritize heavy tasks
+    ranked_tasks = sorted(
+        task_sources, 
+        key=lambda s: task_info[s][0] * task_info[s][2], 
+        reverse=True
+    )
+
+    current_load = {s: 0.0 for s in server_nodes}
+    plan = {}
+
+    for src in ranked_tasks:
+        arr, pay, comp = task_info[src]
+        best_s = None
+        best_score = float('inf')
+        
+        for s in server_nodes:
+            parents, p_lat, p_en = server_paths[s]
+            # Connectivity check
+            if parents[src] == -1 and src != s:
+                continue
+            
+            mu, idle, dyn = server_info[s]
+            old_load = current_load[s]
+            new_load = old_load + arr * comp
+            
+            # Utilization check
+            if new_load >= 0.99 * mu:
+                marginal_q = 1e12
+            else:
+                old_q = old_load / (mu - old_load) if old_load < mu else 1e12
+                new_q = new_load / (mu - new_load)
+                marginal_q = new_q - old_q
+            
+            # Marginal Latency (Flow latency + Change in system queueing)
+            m_lat = arr * p_lat[src] + marginal_q
+            
+            # Marginal Energy (Routing + Dynamic Compute + Idle Power if first task)
+            m_en = arr * pay * p_en[src] + (arr * comp / mu) * dyn
+            if old_load == 0:
+                m_en += idle
+            
+            # Multi-objective score
+            score = m_lat + 0.5 * m_en
+            
+            if score < best_score:
+                best_score = score
+                best_s = s
+
+        if best_s is not None:
+            # Reconstruct path from source to server
+            parents, _, _ = server_paths[best_s]
+            path = [src]
+            curr = src
+            while curr != best_s:
+                curr = parents[curr]
+                path.append(curr)
+            
+            plan[src] = {"server": best_s, "path": path}
+            current_load[best_s] += arr * comp
+        else:
+            # Fallback for disconnected components
+            fallback_s = server_nodes[0]
+            plan[src] = {"server": fallback_s, "path": [src, fallback_s]}
+
+    return plan
+# EVOLVE-BLOCK-END
+```
+</CODE>

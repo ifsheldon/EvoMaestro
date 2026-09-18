@@ -1,0 +1,173 @@
+An effective strategy to handle highly non-convex multi-objective optimization paths is to perform "zero-shot multi-start seeding". Here, we provide several explicitly distinct, asymmetric path templates—such as pre-school bumps, broad post-school bends, and heavily inverted paths—evaluate what the exact "iteration zero" loss surface would be for each, and then start the Adam optimizer in the basin that looks the best from the very beginning.
+
+This prevents the optimizer from getting stuck trying to symmetrically balance school and base if an asymmetric path (e.g. going quickly to the side before the school, then dipping towards the base) already yields inherently better tradeoffs in length and noise penalty.
+
+Here is the exact modification implementing a 12-seed zero-shot evaluation multi-start.
+
+<NAME>
+zero_shot_multi_start
+</NAME>
+
+<DESCRIPTION>
+Replaces the single scalar analytic initialization with a set of diverse, deterministic basis templates (e.g., asymmetric broad bends, pre/post school repulsions, fully inverted functions). It computes the exact continuous gradient-equivalent proxy cost for each initialization structure, identifying the seed layout with the minimal starting loss before executing the Adam descent iterations.
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+    # ---------------- analytic initialization ----------------
+    school_sig = max(7.0, 0.13 * span_x)
+    base_sig = max(9.0, 0.16 * span_x)
+    trans_sig = max(4.0, 0.06 * span_x)
+
+    init_field = [0.0] * num_points
+    for i, x in enumerate(x_positions):
+        yref = y_line[i]
+        t = (i + 1) / (num_points + 1)
+        env = math.sin(math.pi * t) ** 0.92
+
+        away_s = -1.0 if ys >= yref else 1.0
+        to_b = 1.0 if yb >= yref else -1.0
+
+        g_s = math.exp(-((x - xs) / school_sig) ** 2)
+        g_b = math.exp(-((x - xb) / base_sig) ** 2)
+        late = 1.0 / (1.0 + math.exp(-(x - (0.58 * xs + 0.42 * xb)) / trans_sig))
+
+        init_field[i] = env * (
+            (0.95 * span * 0.16) * away_s * g_s +
+            (1.05 * span * 0.18) * to_b * g_b +
+            (0.70 * span * 0.10) * to_b * (0.30 + 0.70 * late)
+        )
+
+    # project init field to basis amplitudes (simple normalized correlation)
+    for k in range(K):
+        num = 0.0
+        den = 1e-9
+        phi = basis[k]
+        for i in range(num_points):
+            num += init_field[i] * phi[i]
+            den += phi[i] * phi[i]
+        amps[k] = num / den
+
+    # ---------------- optimization ----------------
+    def compose_y(a):
+        y = y_line[:]
+        for k in range(K):
+            ak = a[k]
+            if abs(ak) < 1e-14:
+                continue
+            phi = basis[k]
+            for i in range(num_points):
+                y[i] += ak * phi[i]
+        return y
+=======
+    # ---------------- multi-start analytic initialization ----------------
+    def compose_y(a):
+        y = y_line[:]
+        for k in range(K):
+            ak = a[k]
+            if abs(ak) < 1e-14:
+                continue
+            phi = basis[k]
+            for i in range(num_points):
+                y[i] += ak * phi[i]
+        return y
+
+    school_sig = max(7.0, 0.13 * span_x)
+    base_sig = max(9.0, 0.16 * span_x)
+    trans_sig = max(4.0, 0.06 * span_x)
+
+    def generate_seed(xs_shift, ys_mult, xb_shift, yb_mult, late_w, broad):
+        fld = [0.0] * num_points
+        for i, x in enumerate(x_positions):
+            yref = y_line[i]
+            t = (i + 1) / (num_points + 1)
+            env = math.sin(math.pi * t) ** 0.92 if not broad else math.sin(math.pi * t) ** 0.5
+
+            away_s = -1.0 if ys >= yref else 1.0
+            to_b = 1.0 if yb >= yref else -1.0
+
+            s_center = xs + xs_shift
+            b_center = xb + xb_shift
+
+            g_s = math.exp(-((x - s_center) / (school_sig * (1.5 if broad else 1.0))) ** 2)
+            g_b = math.exp(-((x - b_center) / base_sig) ** 2)
+            late = 1.0 / (1.0 + math.exp(-(x - (0.58 * xs + 0.42 * xb)) / trans_sig))
+
+            fld[i] = env * (
+                (0.95 * span * 0.16) * away_s * g_s * ys_mult +
+                (1.05 * span * 0.18) * to_b * g_b * yb_mult +
+                (0.70 * span * 0.10) * to_b * (0.30 + 0.70 * late) * late_w * yb_mult
+            )
+
+        a = [0.0] * K
+        for k in range(K):
+            num = 0.0
+            den = 1e-9
+            phi = basis[k]
+            for i in range(num_points):
+                num += fld[i] * phi[i]
+                den += phi[i] * phi[i]
+            a[k] = num / den
+        return a
+
+    seed_configs = [
+        (0.0, 1.0, 0.0, 1.0, 1.0, False),                      # 0: original
+        (-0.15 * span_x, 1.2, 0.0, 1.0, 0.8, False),           # 1: pre-school upward bump
+        (0.15 * span_x, 1.2, 0.0, 1.0, 1.2, False),            # 2: post-school bump
+        (0.0, 0.5, 0.15 * span_x, 1.0, 1.5, False),            # 3: right-heavy base attraction
+        (-0.1 * span_x, 1.5, 0.0, 1.0, 0.5, True),             # 4: broad pre-school bend
+        (0.1 * span_x, 1.5, 0.0, 1.0, 1.5, True),              # 5: broad post-school bend
+        (0.0, 1.5, -0.15 * span_x, 1.0, 1.0, True),            # 6: broad bridge-shaped bend
+        (0.0, -1.0, 0.0, -1.0, 1.0, False),                    # 7: fully inverted path
+        (0.0, 1.8, 0.0, 1.0, 0.0, False),                      # 8: pure strong school repulsion
+        (0.0, 0.0, 0.0, 1.5, 1.8, False),                      # 9: pure strong base attraction
+        (0.0, 1.0, 0.0, 1.0, 1.0, True),                       # 10: broad generic
+        (0.0, -1.0, 0.0, 1.0, 1.0, False)                      # 11: negative school repulsion (attract to school)
+    ]
+
+    def eval_seed_cost(a):
+        y = compose_y(a)
+        cost = 0.0
+        w1, w2, w3, ws = 1.00, 1.55, 1.45, 0.34
+        s_sigma_x = max(7.0, 0.14 * span_x)
+        b_sigma_x = max(9.0, 0.20 * span_x)
+        p = 0.92
+
+        for i, x in enumerate(x_positions):
+            dy_s = y[i] - ys
+            dxs = x - xs
+            r2 = dxs * dxs + dy_s * dy_s + 20.0
+            gate_s = 0.45 + 1.75 * math.exp(-((x - xs) / s_sigma_x) ** 2)
+            cost += w2 * gate_s * (r2 ** (-p))
+
+            dy_b = y[i] - yb
+            dxb = x - xb
+            d = math.sqrt(dxb * dxb + dy_b * dy_b + 25.0)
+            near_base_x = math.exp(-((x - xb) / b_sigma_x) ** 2)
+            t = (i + 1) / (num_points + 1)
+            late = 1.0 / (1.0 + math.exp(-(t - 0.58) / 0.12))
+            gate_b = 0.30 + 0.60 * late + 1.10 * near_base_x
+            cost += w3 * gate_b * d
+
+        for i in range(num_points + 1):
+            yl = y0 if i == 0 else y[i - 1]
+            yr = y1 if i == num_points else y[i]
+            dy_seg = yr - yl
+            cost += w1 * math.sqrt(dx * dx + dy_seg * dy_seg + 1e-9)
+            cost += ws * 0.5 * (dy_seg * dy_seg)
+
+        return cost
+
+    best_seed_idx = 0
+    best_cost = float('inf')
+    for idx, cfg in enumerate(seed_configs):
+        a = generate_seed(*cfg)
+        c = eval_seed_cost(a)
+        if c < best_cost:
+            best_cost = c
+            best_seed_idx = idx
+            amps = a
+
+    # ---------------- optimization ----------------
+>>>>>>> REPLACE
+</DIFF>

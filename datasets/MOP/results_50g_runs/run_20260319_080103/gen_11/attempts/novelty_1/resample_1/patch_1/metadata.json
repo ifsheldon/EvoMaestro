@@ -1,0 +1,14 @@
+{
+  "generation": 11,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "smooth_repulse_attract_path",
+  "patch_description": "The current approach has effectively no optimizer: it uses a pure straight-line interpolation with fixed slope, so its implicit parameters are just the linear step size `dy` and `num_points`. That keeps F1 very low, but it ignores the two harder objectives: avoiding the school region and moving closer to the base station.\n\nThe new method replaces the trivial line with a smooth parametric multi-objective heuristic plus a small deterministic parameter search.\n\nKey components and parameters in the new approach:\n- **Baseline path**: still starts from the straight line, preserving good F1 behavior.\n- **School repulsion term**:\n  - `w_school`: amplitude of the bend away from the school.\n  - `sigma_school`: spatial width of the repulsion bump.\n  - Direction is chosen adaptively from the relative position of the school to the baseline.\n- **Base attraction term**:\n  - `w_base`: amplitude of the bend toward the base station.\n  - `sigma_base`: spatial width of the attraction bump.\n  - Direction is also chosen adaptively from the base location relative to the baseline.\n- **Right-side ramp factor**:\n  - `ramp_power`: increases attraction influence more strongly near the base-side of the route, helping F3 without distorting the early path too much.\n- **Smoothing**:\n  - `smooth_steps` and `smooth_alpha`: repeated Laplacian smoothing to ensure the returned Y-coordinates form a smooth curve instead of a kinked polyline.\n- **Selection criterion**:\n  - A deterministic grid search over candidate parameter settings evaluates a surrogate score combining:\n    - approximate path length,\n    - school proximity penalty,\n    - base distance penalty,\n    - curvature penalty.\n  - Lower surrogate score is selected.\n\nWhy this should perform better:\n- It preserves the straight line\u2019s good distance property as a base solution.\n- It explicitly bends **away from (40, 20)** to reduce school-noise proximity.\n- It bends **toward (70, -30)** to reduce signal-loss-related base distance.\n- The parameter search allows different environments to pick a better trade-off than a single hard-coded curve.",
+  "error_msg": null,
+  "timestamp": "2026-03-19T16:03:44.188500",
+  "llm_cost": 0.0504625,
+  "llm_model": null
+}

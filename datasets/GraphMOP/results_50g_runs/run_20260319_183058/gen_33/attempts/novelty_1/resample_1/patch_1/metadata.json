@@ -1,0 +1,14 @@
+{
+  "generation": 33,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "hybrid_regret_queue_router",
+  "patch_description": "This version cross-breeds the stronger parts of both implementations:\n\n- **Server-rooted multi-mode Dijkstra candidate generation** (efficient for few servers, many sources).\n- Uses **5 path modes** (latency, balanced, energy, strong-energy, capacity-aware) to improve path diversity and avoid poor-capacity links.\n- Keeps only the **best candidate per (source, server)** using a baseline that includes routing + light compute proxy.\n- Uses a **marginal queue-aware scoring** (M/M/1-inspired delta) for assignment, with:\n  - overload protection near a utilization limit,\n  - routing latency/energy terms,\n  - dynamic compute energy term,\n  - activation-aware idle cost (higher first-use penalty).\n- Uses **regret-based construction** (assign hard-to-place sources first).\n- Adds **local relocation refinement** passes to reduce objective further after initial assignment.\n- Preserves I/O contract: returns `{source: {\"server\": ..., \"path\": [...]}}` with valid simple paths when reachable.\n\nI also reduced repeated lookup overhead with lightweight precomputed source/server parameter maps and kept robust fallback behavior for validity.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:45:37.866684",
+  "llm_cost": 0.0818335,
+  "llm_model": null
+}

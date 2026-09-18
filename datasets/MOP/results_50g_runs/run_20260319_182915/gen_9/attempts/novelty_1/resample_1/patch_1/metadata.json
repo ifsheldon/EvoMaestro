@@ -1,0 +1,14 @@
+{
+  "generation": 9,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "modular_potential_path",
+  "patch_description": "I redesigned the program into a small optimization pipeline instead of a fixed straight-line generator.\n\n### Structural changes\n1. **Modular architecture**:\n   - `PathContext`: centralizes input geometry and precomputed X positions.\n   - `CurveGenerator`: builds smooth Y curves from a compact parameter set.\n   - `SurrogateEvaluator`: computes a multi-objective proxy (distance, school avoidance, base affinity).\n   - `LocalSearchOptimizer`: performs deterministic multi-start local search over curve parameters.\n\n2. **Data flow redesign**:\n   - Input points are transformed once into a context object.\n   - Candidate parameter vectors are generated and refined.\n   - Best parameter vector is converted to final Y coordinates.\n\n3. **Control flow redesign**:\n   - Replaced one-pass direct line interpolation with:\n     `initialize candidates -> evaluate -> local refinement -> final decode`.\n\n### Why this should score better\n- The generated curve is **smooth** by construction.\n- It explicitly **bends away from school `(40,20)`** using a Gaussian repulsion term.\n- It **bends toward base `(70,-30)`** using a Gaussian attraction term.\n- Local search tunes amplitudes/widths/trend to balance the three objectives (F1/F2/F3), often beating a naive straight line while preserving stability and speed.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:32:39.046811",
+  "llm_cost": 0.04166925,
+  "llm_model": null
+}

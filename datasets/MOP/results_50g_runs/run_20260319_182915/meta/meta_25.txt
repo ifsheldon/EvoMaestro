@@ -1,0 +1,207 @@
+# INDIVIDUAL PROGRAM SUMMARIES
+
+The following are summaries of individual programs evaluated since the last meta update:
+
+**Program Name: Straight-Line Y Interpolation**
+- **Implementation**: The function extracts start/end coordinates and returns `num_points` intermediate Y values by linearly interpolating from `y_start` to `y_end` using a constant step `dy = (y_end - y_start) / (num_points + 1)`. It ignores the `school` and `base` inputs entirely, producing a simple straight-line path with uniformly spaced X progression implied by the evaluator.
+- **Performance**: The program passed validation and achieved a combined MOP multiplier score of 96.23 (reported to maximization as -96.23), with F1 = 1.00, F2 = 2.23, and F3 = 43.20.
+- **Feedback**: This baseline implementation performs well on distance, likely because the straight path is shortest, but it does not optimize around school-noise or signal-loss objectives. Evaluation suggests lowering the overall score further by replacing the naive line with a heuristic or rule-based path that uses `school` and `base` information.
+**Program Identifier:** Generation 0 - Patch Name initial_program - Correct Program: True
+
+**Program Name: Sinusoidal Gaussian Drone Path Heuristic**
+- **Implementation**: Builds intermediate y-coordinates from the straight-line path between start and end, then adds a sinusoidal endpoint-zero envelope over two Gaussian-shaped influences: a repulsive push away from the school and an attractive pull toward the base station. It also handles vertical-path edge cases, scales amplitudes and sigmas from geometry, and clamps offsets to limit detours and sharp bends.
+- **Performance**: The program passed validation and achieved a combined MOP score of 43.31 (reported to maximization as -43.31), with F1 = 1.11, F2 = 1.06, and F3 = 36.69.
+- **Feedback**: The heuristic keeps distance and school-noise terms relatively low, suggesting the straight-line baseline plus smooth school avoidance works reasonably well. The main weakness is high signal-loss cost (F3), so further improvement likely requires stronger or better-targeted attraction toward the base without excessively increasing path length or noise.
+**Program Identifier:** Generation 3 - Patch Name smooth_multiobjective_bias - Correct Program: True
+
+**Program Name: Gaussian Multi-Objective Path Search**
+- **Implementation**: Builds drone trajectories from a linear baseline plus Gaussian school-avoidance and base-attraction profiles, along with a sinusoidal global bend, then scores candidates using proxy objectives for path length, school proximity, base distance, and smoothness. It selects parameters with a two-stage search: coarse grid exploration followed by local coordinate-style refinement, then applies several smoothing passes to the best path.
+- **Performance**: Achieved a valid combined MOP multiplier score of 80.07 (reported as -80.07 for maximization), with F1=1.00, F2=1.94, and F3=41.14.
+- **Feedback**: The implementation is correct and passes all validation tests, showing especially strong distance performance and reasonable school-noise control. The main improvement opportunity is lowering the total score further, likely by improving the tradeoff around base signal loss, which remains the largest metric component.
+**Program Identifier:** Generation 4 - Patch Name potential_field_path_optimizer - Correct Program: True
+
+**Program Name: Gradient-Based Drone Path Optimizer**
+- **Implementation**: Uses a physics-inspired active-contour approach where intermediate y-coordinates are initialized on a straight line and iteratively updated with gradient descent while x-coordinates remain fixed. The update combines a smoothness term, Gaussian school-repulsion, Gaussian x-weighted attraction toward the base’s y-position, in-place Gauss-Seidel updates, and gradient clipping for stability over 500 iterations.
+- **Performance**: The program passes validation and achieves a combined MOP score of 14.19 (reported to maximize as -14.19), with F1 = 1.45, F2 = 0.32, and F3 = 30.17.
+- **Feedback**: The implementation is effective at keeping path length and school noise relatively low, but signal loss remains the dominant weakness because F3 is much larger than the other metrics. Evaluation indicates the current solution is correct but should further reduce the overall score, likely by improving the tradeoff around base attraction and path shaping.
+**Program Identifier:** Generation 5 - Patch Name active_contours_path - Correct Program: True
+
+**Program Name: Gaussian Push Polyline Heuristic**
+- **Implementation**: The function builds intermediate Y values along the straight start-to-end line using uniform X spacing, then adds smooth deviations from two Gaussian-shaped offset fields centered at the school and base. Push directions are chosen by each point’s position relative to the baseline, with a sine window applied so offsets taper to zero near the endpoints.
+- **Performance**: It passed validation and achieved a MOP Multiplier Score of 32.31 (F1: 1.29, F2: 0.70, F3: 35.69), corresponding to a maximized score of -32.31.
+- **Feedback**: The heuristic keeps distance and school-noise costs relatively low, but signal-loss cost F3 is very high and dominates the total score. Evaluation suggests the current fixed-amplitude Gaussian bending is valid but needs better tuning or a stronger tradeoff strategy to reduce the overall score further.
+**Program Identifier:** Generation 7 - Patch Name optimize_drone_path_with_gaussian_offsets - Correct Program: True
+
+**Program Name: Cubic Bent Drone Path**
+- **Implementation**: Computes intermediate Y-coordinates only, using uniform interpolation in parameter \(t\) between start and end, then adds a hand-crafted cubic offset \(-110 \cdot t(1-t)(0.8+0.4t)\). This bend preserves endpoints while biasing the path downward, intended to move away from the school and somewhat toward the base station region, with a slightly stronger effect later in the route.
+- **Performance**: Passed validation and achieved a combined MOP score of 71.40 (reported as maximization score -71.40), with F1 = 1.16, F2 = 1.43, and F3 = 43.08.
+- **Feedback**: The approach is correct and produces a reasonable multi-objective path, but signal-loss performance (F3) remains much larger than the other terms and dominates the total score. Evaluation explicitly suggests lowering the overall MOP score further, so the fixed cubic bend likely needs better tuning or a more adaptive shape.
+**Program Identifier:** Generation 2 - Patch Name cubic_bend_optimizer - Correct Program: True
+
+**Program Name: Gaussian Grid Search Path Optimizer**
+- **Implementation**: Builds a straight-line baseline between start and end, then perturbs the intermediate Y values using weighted Gaussian bumps centered near the school and base. It precomputes Gaussian shape templates for several width choices, exhaustively searches amplitude/width combinations, and scores each candidate in a single pass using the product of normalized path length, school-noise penalty, and base-signal distance.
+- **Performance**: Achieved a valid score of 16.52 with F1 = 1.53, F2 = 0.30, and F3 = 35.70, passing all validation tests.
+- **Feedback**: The heuristic search produced a reasonable tradeoff, especially keeping school-noise relatively low, but the overall multiplier score is still higher than desired and should be reduced further. The fixed Gaussian basis and coarse amplitude stepping likely limit solution quality despite the efficient precomputation and bounded search.
+**Program Identifier:** Generation 6 - Patch Name surrogate_multiobjective_grid_search - Correct Program: True
+
+**Program Name: Gaussian Local Search Path**
+- **Implementation**: Builds y-values on evenly spaced x-samples using a linear baseline plus Gaussian school repulsion, Gaussian base attraction, and small global tilt/cubic bend terms. It evaluates candidates with a weighted surrogate objective (path length, school proximity, base distance, smoothness) and uses deterministic multi-start coordinate descent with parameter clamping to optimize six curve parameters.
+- **Performance**: Passed validation and achieved combined MOP score 16.36 (reported as -16.36 for maximization), with F1 = 1.34, F2 = 0.41, and F3 = 29.63.
+- **Feedback**: The approach is stable and test-correct, with particularly good school-noise avoidance and reasonable path distance, but signal-loss/base-distance remains relatively high. Evaluation suggests lowering the overall score further will likely require improving attraction toward the base without sacrificing smoothness or school avoidance.
+**Program Identifier:** Generation 9 - Patch Name modular_potential_path - Correct Program: True
+
+**Program Name: Smooth Basis CEM Drone Path**
+- **Implementation**: Uses a smooth y-coordinate path model built from sinusoidal, quadratic, skew, and Gaussian basis functions centered around the school, base, and midpoint, with coefficient signs chosen to push the path away from the school and toward the base. Coefficients are optimized by a deterministic Cross-Entropy Method using seeded random sampling, preset heuristic candidates, a weighted proxy objective (length, school proximity, base distance, curvature, deviation), and light post-smoothing.
+- **Performance**: Passed validation and achieved a combined MOP score of 71.29 (reported as -71.29 for maximization), with F1 = 1.01, F2 = 1.76, and F3 = 40.15.
+- **Feedback**: The approach is stable and produces strong distance and school-noise metrics, but signal-loss/base-related performance remains the main weakness because F3 is much larger than F1 and F2. Evaluation indicates the solution is correct but the total score still needs to be lowered further, likely by improving how aggressively paths stay near the base without hurting smoothness or school avoidance.
+**Program Identifier:** Generation 10 - Patch Name cem_smooth_field_path - Correct Program: True
+
+**Program Name: Gaussian Potential Field Path Bend**
+- **Implementation**: Generates intermediate drone path y-coordinates by linearly interpolating from start to end, then applying a downward Gaussian-shaped deflection centered at x=65 with fixed parameters (`sigma=36.0`, `amplitude=30.5`). The deflection is modulated by a smooth envelope `4*t*(1-t)` so displacement is zero at the endpoints, producing a curved path intended to balance travel distance, school avoidance, and base-station signal gain.
+- **Performance**: The program passed validation and achieved a combined MOP score of 93.24 (reported to maximization as -93.24), with F1=1.16, F2=1.87, and F3=42.95.
+- **Feedback**: The approach is correct and stable, but the evaluator explicitly indicates the score should be lowered further to improve performance. The fixed Gaussian center, width, and amplitude produced a workable tradeoff, though signal loss (F3) remains the dominant contributor to the total score.
+**Program Identifier:** Generation 11 - Patch Name smooth_gaussian_potential_field - Correct Program: True
+
+**Program Name: Adam-Optimized Drone Polyline Path**
+- **Implementation**: The function initializes interior waypoint x-coordinates uniformly between start and end and optimizes only the y-coordinates over 800 iterations using a custom Adam optimizer. Its objective combines path length, inverse-square repulsion from the school, and distance-to-base attraction, with gradients normalized by current total F1/F2/F3 values to approximate minimizing `log(F1*F2*F3)`.
+- **Performance**: It passed validation and achieved a combined MOP multiplier score of 14.60 (reported as maximization score -14.60), with F1 = 1.65, F2 = 0.24, and F3 = 36.09.
+- **Feedback**: The implementation is correct and stable, but the evaluator indicates the score should be lowered further. A likely limitation is that only y-values are optimized while x-values remain fixed, which restricts path flexibility and may hurt multi-objective tradeoffs.
+**Program Identifier:** Generation 1 - Patch Name adam_physics_path_optimizer - Correct Program: True
+
+**Program Name: Gaussian Route Builder**
+- **Implementation**: The program uses a `RouteArchitect` class with a builder-style pipeline: it first creates a straight-line trajectory between `start` and `end`, then deforms the intermediate `y` values by applying two Gaussian-shaped forces along the x-axis. One force repels the path from the `school` point and one attracts it toward the `base`, using fixed strengths (`20.0`, `25.0`) and spreads (`1000.0`) while keeping x-coordinates evenly spaced.
+- **Performance**: It passed validation and achieved a combined MOP score of 26.3232 (reported for maximization as -26.32), with F1 = 1.3081, F2 = 0.6047, and F3 = 33.2768.
+- **Feedback**: The implementation is correct and stable, but the current smooth Gaussian deformation mainly helps distance and school-noise terms while leaving signal-loss relatively high, which dominates the total score. Evaluation feedback suggests further lowering the score by tuning the deformation parameters or using a more adaptive path-shaping strategy.
+**Program Identifier:** Generation 12 - Patch Name builder_pattern_optimizer - Correct Program: True
+
+**Program Name: Gaussian Heuristic Drone Path**
+- **Implementation**: Builds interior path points at uniform x positions from a straight-line baseline, then adds three smooth components: Gaussian repulsion from the school, Gaussian attraction toward the base, and a biased sag term toward the base side. It evaluates candidates with a weighted surrogate objective combining path-length ratio, school proximity penalty, base distance, and roughness, using coarse amplitude grid search plus local step-shrinking refinement and repeated smoothing.
+- **Performance**: Passed validation and achieved combined MOP score 133.71 (reported as maximization score -133.71), with F1 = 1.07, F2 = 2.82, and F3 = 44.10.
+- **Feedback**: The heuristic is correct and reasonably balanced, keeping distance inflation low while improving school avoidance and base attraction through smooth parameterized bends. Evaluation indicates the current surrogate-guided tuning is still suboptimal overall, and the score needs to be lowered further, likely by improving the tradeoff among F2/F3 gains and added path cost.
+**Program Identifier:** Generation 13 - Patch Name adaptive_contour_bend - Correct Program: True
+
+**Program Name: Gaussian-Perturbed Sine Path**
+- **Implementation**: The algorithm builds the drone path from the straight-line interpolation between start and end, then adds a smooth vertical offset using a sine envelope so deviations are zero at the endpoints and strongest mid-path. It applies Gaussian-shaped school repulsion and base attraction along the x-axis, clips offsets to ±60 for safety, and handles degenerate vertical-path and nonpositive-point cases explicitly.
+- **Performance**: It passed validation and achieved a combined MOP score of 38.46 (reported as maximization score -38.46), with F1 = 1.30, F2 = 0.88, and F3 = 33.56.
+- **Feedback**: The straight-line baseline and smooth heuristic kept distance and school-noise costs relatively low, but signal-loss (F3) remained the dominant contributor to the total score. Evaluation feedback indicates the solution is correct and stable, but further reductions should focus on lowering the overall MOP score, especially by improving base/signal-related behavior.
+**Program Identifier:** Generation 14 - Patch Name heuristic_parameter_tuning_and_envelope_optimization - Correct Program: True
+
+**Program Name: Smooth Basis CEM Drone Path**
+- **Implementation**: Uses a smooth y-only path model over fixed x positions, combining sinusoidal, quadratic, skew, and Gaussian basis functions centered around the school/base, then optimizes six coefficients with a deterministic Cross-Entropy Method seeded from the inputs. The objective is a handcrafted proxy score balancing path length, school avoidance, base proximity, curvature, fourth-derivative bending, and deviation from the straight-line path, followed by several local refinement passes with school/base-aware forces and smoothness regularization.
+- **Performance**: The program is correct and passed validation, achieving combined MOP score 87.27 (mapped to -87.27 for maximization) with F1=1.01, F2=2.13, and F3=40.61.
+- **Feedback**: The implementation produces strong distance and school-noise behavior, but the overall score remains limited by comparatively high signal-loss/base-related cost (F3). Evaluation suggests the method is solid but should push paths closer to the base or rebalance the proxy/CEM refinement to reduce the total score further.
+**Program Identifier:** Generation 16 - Patch Name school_aware_bilaplacian_refine - Correct Program: True
+
+**Program Name: Gaussian Control-Point Drone Path**
+- **Implementation**: Uses 12 evenly spaced control points along the x-axis, where each control point contributes a Gaussian-shaped y-deviation on top of a linear start-to-end baseline. It optimizes the control-point offsets by first trying heuristic initializations biased around the school and base locations, then refining them with coordinate descent to minimize the proxy objective \(F1 \times F2 \times F3\).
+- **Performance**: The program passed validation and achieved a multiplier score of 12.8216 with F1=1.5215, F2=0.2512, and F3=33.5484.
+- **Feedback**: The approach is correct and reasonably balanced, but the current optimization still leaves room to lower the combined score. Evaluation suggests further improving the trade-off among path length, school noise exposure, and base signal loss, since lower multiplier scores are better.
+**Program Identifier:** Generation 8 - Patch Name flexible_bump_coordinate_descent - Correct Program: True
+
+**Program Name: Physics-Based Gradient Drone Path**
+- **Implementation**: Uses a fixed-x active-contour style optimizer where only the intermediate y-coordinates are updated from a straight-line initialization via 800 iterations of gradient descent. The energy combines length smoothing, bi-Laplacian curvature regularization, Gaussian school repulsion, and x-weighted Gaussian attraction toward the base, with in-place Gauss-Seidel updates plus gradient clipping for stability.
+- **Performance**: Passed validation and achieved a combined MOP score of 14.50 (reported as -14.50 for maximization), with F1 = 1.49, F2 = 0.32, and F3 = 30.08.
+- **Feedback**: The approach is especially strong on school-noise avoidance and keeps path distance relatively low, but signal-loss remains the dominant weakness because F3 is much larger than the other terms. Evaluation suggests the implementation is correct and stable, but the score still needs to be lowered further, likely by improving the base-attraction/signal optimization tradeoff.
+**Program Identifier:** Generation 15 - Patch Name add_curvature_penalty - Correct Program: True
+
+**Program Name: Adam-Optimized Active Contour Path**
+- **Implementation**: The program models the drone route as intermediate y-coordinates over fixed x-spacing, initialized as a straight line and optimized for 600 iterations using an Adam-style update with linearly decaying learning rate. Its objective combines exact arc-length smoothness gradients, Gaussian school-repulsion, and x-weighted base-attraction, with small symmetry-breaking and numerical-stability terms.
+- **Performance**: It passed validation and achieved a combined MOP multiplier score of 14.01 (reported to maximize as -14.01), with F1=1.46, F2=0.32, and F3=30.14.
+- **Feedback**: The implementation is correct and produces low distance and school-noise terms, but signal-loss remains comparatively high and appears to dominate the final score. Evaluation feedback indicates the current 14.0097 score is competitive but should be reduced further, likely by improving the tradeoff around base attraction versus smoothness/repulsion.
+**Program Identifier:** Generation 17 - Patch Name adaptive_active_contours - Correct Program: True
+
+**Program Name: Multi-Phase Adam Drone Path**
+- **Implementation**: Optimizes only the intermediate y-coordinates of a polyline path while keeping x-coordinates evenly spaced between start and end, using 1200 Adam steps with a staged weight schedule that emphasizes school avoidance early, base attraction in the middle, and balanced refinement late. The objective is formed from path length, inverse squared distance to the school, and distance to the base, with gradients normalized by current objective totals to approximate minimizing a weighted log-sum.
+- **Performance**: Passed validation and achieved a combined MOP multiplier score of 16.37 (reported to maximization as -16.37), with F1 = 1.92, F2 = 0.21, and F3 = 40.39.
+- **Feedback**: The implementation produced a valid, reasonably short and school-safe path, but signal-loss performance remained weak as shown by the high F3 value. Evaluation explicitly recommends lowering the overall score further, suggesting the current weighting schedule or restricted y-only path parameterization may be limiting better trade-offs.
+**Program Identifier:** Generation 21 - Patch Name multiphase_adam_optimizer - Correct Program: True
+
+**Program Name: Heuristic Smoothed Multi-Objective Path**
+- **Implementation**: Builds uniformly spaced x-samples, initializes y-values from a straight line, then applies analytic Gaussian-like vertical bends away from the school and toward the base with endpoint tapering. It refines the path through 140–180 iterations of separately normalized smoothness, distance-shortening, school-repulsion, and base-attraction gradient terms, with periodic smoothing and final clipping to limit extreme excursions.
+- **Performance**: Passed validation and achieved combined MOP score 21.70 (reported as maximization score -21.70), with F1 = 1.61, F2 = 0.36, and F3 = 36.95.
+- **Feedback**: The approach is effective at keeping distance and school-noise proximity low, but signal-loss performance is much weaker and dominates the total score. Evaluation indicates the solution is correct and stable, but further score reductions likely require stronger or better-targeted base/signal optimization without sacrificing smoothness.
+**Program Identifier:** Generation 22 - Patch Name smooth_field_scheduler - Correct Program: True
+
+**Program Name: Adam-Optimized Energy Drone Path**
+- **Implementation**: The program models the path as intermediate y-coordinates between fixed endpoints and optimizes them with a from-scratch Adam optimizer over 400 iterations. Its gradient-based energy model combines path length tension, smoothness regularization, Gaussian repulsion from the school, Gaussian-weighted attraction to the base, and per-coordinate gradient clipping for stability.
+- **Performance**: It passed validation and achieved a combined MOP multiplier score of 13.35 (reported to maximization as -13.35), with F1 = 1.46, F2 = 0.29, and F3 = 30.98.
+- **Feedback**: The implementation is correct and stable, producing strong distance and school-noise metrics, but signal loss (F3) remains relatively high. Evaluation feedback indicates the main opportunity is to further lower the overall score, likely by improving the tradeoff between school avoidance and base proximity.
+**Program Identifier:** Generation 18 - Patch Name adam_energy_path - Correct Program: True
+
+**Program Name: Base-Targeted Sine Gaussian Path**
+- **Implementation**: Computes a linear interpolation from start to end, then adds a warped vertical offset using a sine envelope and a super-Gaussian influence centered on the base station. It derives the warp amplitude analytically from the base station’s y-offset, handles vertical paths as a special case by returning interpolated y-values only, and uses a fixed sigma proportional to horizontal distance.
+- **Performance**: The program passed validation and achieved a combined MOP score of 53.85 (F1: 1.25, F2: 1.28, F3: 33.74), which corresponds to an optimization score of -53.85.
+- **Feedback**: The approach is correct and reasonably balanced on distance and school-noise objectives, but signal loss (F3) dominates the total score. Evaluation suggests the score should be pushed lower, indicating the current base-focused warp and fixed-width influence are not yet strong enough to improve signal performance without further tuning.
+**Program Identifier:** Generation 23 - Patch Name super_gaussian_path_synthesis - Correct Program: True
+
+**Program Name: Gaussian Basis Drone Path Search**
+- **Implementation**: Builds intermediate y-values over uniformly spaced x-coordinates using a straight-line baseline plus two shaped influences: a local Gaussian school-repulsion term and a broader, earlier-shifted Gaussian base-attraction term, both tapered by a sinusoidal envelope. It then applies capped offsets, two passes of Laplacian smoothing, and a deterministic coarse-to-fine grid search over school/base amplitudes using a surrogate objective combining path length inflation, school proximity penalty, base distance, and smoothness.
+- **Performance**: The program is valid and achieved a MOP Multiplier Score of 26.17 (reported as combined score -26.17 for maximization), with F1 = 1.31, F2 = 0.61, and F3 = 32.58.
+- **Feedback**: The design preserves good school avoidance and reasonable path efficiency, but the overall score is still limited mainly by high F3 signal-loss relative to base proximity. Evaluation suggests the next improvement should focus on lowering the total score further, especially by improving base-region adherence without hurting the already solid F2 behavior.
+**Program Identifier:** Generation 24 - Patch Name surrogate_guided_s_curve - Correct Program: True
+
+**Program Name: Hybrid Heuristic Adam Drone Path**
+- **Implementation**: Uses a two-stage path generator: first initializes intermediate y-points with a smooth sinusoidal envelope that combines Gaussian-weighted school repulsion and base attraction, then refines them with 260 iterations of Adam optimization over a joint objective with arc-length smoothness, Laplacian regularization, school avoidance, and base attraction. It handles degenerate vertical movement separately by returning simple linear y interpolation, and clips both heuristic offsets and optimization gradients for stability.
+- **Performance**: The program passed validation and achieved a MOP Multiplier Score of 14.53 (reported as combined score -14.53 for maximization), with F1=1.38, F2=0.35, and F3=29.99.
+- **Feedback**: The implementation is strong at keeping distance and school-noise costs low, suggesting the smoothing and repulsion terms work well, but signal-loss/base-related performance remains comparatively high as reflected in F3≈29.99. Evaluation feedback indicates the function is correct but should further reduce the overall score below 14.5349.
+**Program Identifier:** Generation 25 - Patch Name hybrid_envelope_adam_path - Correct Program: True
+
+**Program Name: Adaptive Contour Drone Path**
+- **Implementation**: Builds a line-based path, then applies a structured initialization with Gaussian school repulsion, Gaussian base attraction, and a logistic late-stage bend, followed by iterative active-contour refinement. The optimizer combines separately normalized gradients for school avoidance, base attraction, distance proxy, second-difference curvature, fourth-order smoothness, and anchor-to-target-arc terms, with adaptive weights, endpoint-safe envelopes, periodic smoothing, and final clipping.
+- **Performance**: The program is correct and passes validation, achieving combined MOP score 24.29 (reported as maximization score -24.29) with F1=1.71, F2=0.37, and F3=38.16.
+- **Feedback**: The design appears to work well for distance and especially school-noise avoidance, but signal-loss performance is much weaker, dominating the total score. Evaluation feedback indicates the score is valid yet still needs to be lowered further, likely by improving base-station alignment without sacrificing smoothness and school clearance.
+**Program Identifier:** Generation 26 - Patch Name curvature_guided_arc - Correct Program: True
+
+# GLOBAL INSIGHTS SCRATCHPAD
+
+The following are global insights about optimization approaches and their effectiveness:
+
+## Successful Algorithmic Patterns
+- **The current best result is still the Gaussian Control-Point Drone Path, and the new comparisons strengthen the case for its design choices.** Its **12.82** score with **F1=1.52, F2=0.25, F3=33.55** remains better than all newly summarized programs, including **Adam-Optimized Energy Drone Path** (**13.35**), **Hybrid Heuristic Adam Drone Path** (**14.53**), **Adaptive Contour Drone Path** (**24.29**), **Gaussian Basis Drone Path Search** (**26.17**), and **Base-Targeted Sine Gaussian Path** (**53.85**). The standout pattern is a **low-dimensional Gaussian control-point parameterization optimized directly on the multiplicative proxy**, which continues to outperform denser additive-energy optimizers.
+
+- **Direct alignment with the actual ranking metric remains the most successful algorithmic change observed.** The best program explicitly minimizes **`F1 * F2 * F3`** through `proxy_score`, while the newer Adam/active-contour programs optimize additive combinations of length, smoothness, school repulsion, and base attraction. Even when those programs achieved favorable individual metrics—e.g. **Adam-Optimized Energy Drone Path** reached **F1=1.46** and **F3=30.98**—they still trailed the control-point method because their search objective was less tightly coupled to the evaluated product.
+
+- **Heuristic multi-start initialization around both school and base continues to correlate with strong scores.** The best program’s discrete grid over school-biased and base-biased control offsets appears more effective than starting from a single straight-line or single-shape initialization. This pattern is reinforced by the fact that the best non-control-point entrants with heuristic + refinement pipelines—**Adam-Optimized Energy Drone Path** (**13.35**) and **Hybrid Heuristic Adam Drone Path** (**14.53**)—were competitive, while more one-shot analytic shaping such as **Base-Targeted Sine Gaussian Path** collapsed to **53.85**.
+
+- **Aggressive school avoidance that stays geometrically smooth is still a major contributor to strong total score.** The best program’s **F2=0.25** remains the strongest balance among the top performers. Newer competitors like **Hybrid Heuristic Adam Drone Path** (**F2=0.35**) and **Adaptive Contour Drone Path** (**F2=0.37**) confirmed that good school avoidance helps, but they could not match the control-point method’s total score because they either inflated other terms or failed to preserve the same overall product balance.
+
+## Ineffective Approaches
+- **Base-focused shaping without sufficiently strong score-driven refinement remains weak, especially on F3.** The clearest example is **Base-Targeted Sine Gaussian Path**, which used an analytic warp centered on the base but still scored a poor **53.85**, with **F3=33.74** and a much worse **F2=1.28**. This shows that merely adding a base-oriented deformation field does not reliably improve the full product.
+
+- **Additive energy minimization continues to underperform direct product minimization, even when it produces good-looking component values.** **Adam-Optimized Energy Drone Path** scored **13.35** and **Hybrid Heuristic Adam Drone Path** scored **14.53**, both with relatively good **F1/F2** values, but both were explicitly flagged for persistent signal-loss tradeoff issues. Their implementations are more sophisticated numerically than the current best, yet they still underperform because their objective structure is less aligned with evaluation.
+
+- **Separately normalized or heavily engineered contour-force updates remain vulnerable to weak base/signal behavior.** **Adaptive Contour Drone Path** combined normalized gradients, adaptive weights, active-contour refinement, and periodic smoothing, but scored only **24.29** with a very poor **F3=38.16**. This extends the previous pattern that complex force balancing can become misaligned with the true score.
+
+- **Broader surrogate searches still lag when the surrogate does not match the actual metric closely enough.** **Gaussian Basis Drone Path Search** used coarse-to-fine grid search plus a surrogate objective over path length inflation, school penalty, base distance, and smoothness, yet only reached **26.17**. That is far behind the current best despite using a similarly structured Gaussian basis, indicating that **parameterization alone is not enough without direct score alignment**.
+
+## Implementation Insights
+- **What makes the current best program effective is the combination of a smooth basis representation and exact proxy-score optimization.** In code, path deformation is represented by **12 Gaussian control amplitudes** over a linear baseline, and `proxy_score` computes the same three-way structure that governs ranking: normalized path length, school exposure, and cumulative base distance. This avoids the mismatch seen in programs like **Adam-Optimized Energy Drone Path** and **Hybrid Heuristic Adam Drone Path**, which optimize additive handcrafted energies instead.
+
+- **The current best gets useful expressiveness from control points without paying the instability cost of full per-point optimization.** Compared with dense intermediate-y optimizers such as **Adam-Optimized Energy Drone Path** and **Adaptive Contour Drone Path**, the control-point model produces globally smooth deformations automatically through Gaussian overlap. That likely explains why it can maintain a strong **F2=0.25** without requiring explicit Laplacian, curvature, fourth-order, or repeated smoothing machinery.
+
+- **Discrete multi-start over school/base-biased initial shapes is a concrete implementation advantage in the best result.** The nested `scale_s` and `scale_b` loops try structured initial control settings before local search. This is more effective than the single deterministic shaping used by **Base-Targeted Sine Gaussian Path** and more basin-aware than straight-line-only refinement approaches. The continued gap over the Adam-based methods suggests initialization quality materially affected final optimization.
+
+- **Simple coordinate descent was empirically stronger than heavier optimizers when paired with the right representation.** The current best uses **25 rounds** of coordinate-wise trial moves with shrinking step size, yet still beat **400-iteration Adam** in **Adam-Optimized Energy Drone Path** and **260-iteration Adam** in **Hybrid Heuristic Adam Drone Path**. The evidence across these runs continues to show that **objective fidelity and parameterization mattered more than optimizer sophistication**.
+
+## Performance Analysis
+- **The current best remains clearly ahead of the newly evaluated field.** Relative to **Gaussian Control-Point Drone Path** at **12.82**, the strongest new entrant, **Adam-Optimized Energy Drone Path**, is about **4.1% worse** at **13.35**. **Hybrid Heuristic Adam Drone Path** is about **13.3% worse** at **14.53**. The remaining new methods trail far more severely: **Adaptive Contour Drone Path** (**24.29**), **Gaussian Basis Drone Path Search** (**26.17**), and **Base-Targeted Sine Gaussian Path** (**53.85**).
+
+- **The new results reinforce that top-tier performance comes from balancing the full product, not from winning F1 or F3 individually.** The current best does **not** have the best **F1** or **F3** among these programs: **Adam-Optimized Energy Drone Path** has better **F1=1.46** and **F3=30.98**, and **Hybrid Heuristic Adam Drone Path** has **F3=29.99**. But the best program’s much lower **F2=0.25** is enough to give it the best overall multiplier score.
+
+- **F3 remains the dominant failure mode for many weaker programs, but the new comparisons show that F3 alone does not determine the winner.** Very weak methods like **Adaptive Contour Drone Path** (**F3=38.16**) and **Base-Targeted Sine Gaussian Path** (**F3=33.74** with poor **F2**) confirm that high signal-loss often drives bad totals. However, the current best still wins despite a worse **F3=33.55** than some Adam-based competitors, because its school-noise term is substantially better.
+
+- **A clearer hierarchy is emerging across implementation styles.** Best is still the **direct product-optimized Gaussian control-point model** (**12.82**). Next are the **heuristic-plus-Adam dense path optimizers** around **13.35–14.53**. Below that sit **surrogate-searched Gaussian-basis and active-contour variants** around **24–26**, and far below them are **analytic one-shot warping methods** like **Base-Targeted Sine Gaussian Path** at **53.85**. This strengthens the earlier conclusion that the strongest observed programs combine **moderate-dimensional smooth geometry, explicit score alignment, and structured initialization**.
+
+# META RECOMMENDATIONS
+
+The following are actionable recommendations for the next program generations:
+
+1. **Extend the 12-control Gaussian basis with a second, wider deformation scale while keeping the same `proxy_score` objective.** Concretely, keep the current 12 narrow Gaussian amplitudes and add either 4–6 wide Gaussians or one low-frequency global bump basis spanning the whole route. This preserves the winning smooth low-dimensional representation, but gives the optimizer more freedom to improve `F3` through broad base-oriented bends without sacrificing the excellent school-avoidance behavior that currently drives `F2`.
+
+2. **Broaden the heuristic multi-start library beyond the current `scale_s × scale_b` grid using structured asymmetric seeds.** Add initializations such as left-heavy and right-heavy school repulsion, one or two bridge bumps between school and base, and seeds that place a single strong deviation just before or after the school’s x-position. The best program already benefits from basin-aware initialization, and the recent comparisons suggest that better starting shapes are more valuable than switching to a more sophisticated optimizer.
+
+3. **Augment coordinate descent with pairwise or small-block updates for neighboring controls, still evaluated by exact product score.** For example, after each single-control sweep, try joint updates on `(i, i+1)` using a tiny grid like `{−h, 0, +h}²`, or allow one control to rise while its neighbor falls. This directly targets a likely limitation of the current method: some useful `F2/F3` tradeoffs require coordinated local shape changes that single-coordinate moves may miss.
+
+4. **Allow limited optimization of Gaussian center x-positions, with monotonic ordering and spacing regularization.** Start from the current evenly spaced `ctrl_xs`, but let each center shift within a small window while enforcing sorted order and penalizing large spacing irregularities. This is a natural extension of the current best design and could concentrate flexibility near the school or base where it matters most, instead of spending equal representational capacity everywhere.
+
+5. **Make the search hierarchical: solve a coarse control problem first, then refine in the current 12-control space.** A practical mutation is to optimize 4–6 coarse Gaussian amplitudes with the same initialization and proxy score, interpolate that solution into 12 controls, and then run the existing local descent. This follows the strongest observed pattern—compact smooth parameterization with exact score alignment—but may find better large-scale route geometry before fine local adjustments lock in the final `F2/F3` balance.

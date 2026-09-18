@@ -1,0 +1,274 @@
+# EVOLVE-BLOCK-START
+def evolve_drone_path(start, end, school, base, num_points):
+    import math
+
+    x_start, y_start = start
+    x_end, y_end = end
+    x_school, y_school = school
+    x_base, y_base = base
+
+    if num_points <= 0:
+        return []
+
+    # Degenerate vertical-x case: fall back to linear interpolation in y.
+    dx_total = x_end - x_start
+    if abs(dx_total) < 1e-12:
+        return [
+            float(y_start + (y_end - y_start) * (i + 1) / (num_points + 1))
+            for i in range(num_points)
+        ]
+
+    n = num_points
+    inv_n1 = 1.0 / (n + 1)
+
+    x_coords = [x_start + dx_total * ((i + 1) * inv_n1) for i in range(n)]
+    y_line = [y_start + (y_end - y_start) * ((i + 1) * inv_n1) for i in range(n)]
+
+    def gauss(x, mu, sigma):
+        sigma = max(float(sigma), 1e-6)
+        z = (x - mu) / sigma
+        return math.exp(-0.5 * z * z)
+
+    def smoothstep01(u):
+        if u <= 0.0:
+            return 0.0
+        if u >= 1.0:
+            return 1.0
+        return u * u * (3.0 - 2.0 * u)
+
+    # Straight-line y-value at school x, used to determine "away" direction.
+    t_school = (x_school - x_start) / dx_total
+    y_line_at_school = y_start + (y_end - y_start) * t_school
+    school_dir = -1.0 if y_line_at_school <= y_school else 1.0
+
+    span_x = abs(dx_total)
+    span_y = abs(y_end - y_start)
+    dy_base_ref = abs(y_base - 0.5 * (y_start + y_end))
+    dy_school_ref = abs(y_school - 0.5 * (y_start + y_end))
+
+    # Basis widths: school more local, base broader and slightly earlier.
+    sigma_school = max(10.0, 0.10 * span_x)
+    sigma_base = max(16.0, 0.18 * span_x)
+    sigma_base_early = max(18.0, 0.24 * span_x)
+
+    x_bridge = 0.5 * (x_school + x_base)
+    sigma_bridge = max(10.0, 0.30 * abs(x_base - x_school))
+
+    school_basis = []
+    school_pre_basis = []
+    school_post_basis = []
+    bridge_basis = []
+    base_basis = []
+    envelopes = []
+
+    for i, x in enumerate(x_coords):
+        t = (i + 1) * inv_n1
+
+        # Smooth endpoint taper: zero at both ends, strong in middle.
+        env = math.sin(math.pi * t) ** 0.9
+
+        g_school = gauss(x, x_school, sigma_school)
+        g_pre = gauss(x, x_school - 0.12 * span_x, sigma_school)
+        g_post = gauss(x, x_school + 0.12 * span_x, sigma_school)
+        g_bridge = gauss(x, x_bridge, sigma_bridge)
+
+        # Broader base influence: encourage entering the base region earlier.
+        g_base_main = gauss(x, x_base, sigma_base)
+        g_base_early = gauss(x, x_base - 0.55 * sigma_base_early, sigma_base_early)
+        g_base = 0.65 * g_base_early + 1.00 * g_base_main
+
+        # Slightly stronger influence after passing the school area.
+        if x_base > x_school:
+            u = (x - (x_school - 0.10 * span_x)) / max(0.35 * span_x, 1e-6)
+        else:
+            u = ((x_school + 0.10 * span_x) - x) / max(0.35 * span_x, 1e-6)
+        corridor_gain = 0.55 + 0.45 * smoothstep01(u)
+
+        school_basis.append(env * school_dir * g_school)
+        school_pre_basis.append(env * school_dir * g_pre)
+        school_post_basis.append(env * school_dir * g_post)
+        bridge_basis.append(env * school_dir * g_bridge)
+        base_basis.append(env * corridor_gain * (y_base - y_line[i]) * g_base)
+        envelopes.append(env)
+
+    # Candidate construction.
+    def build_path(a_school, a_base, a_pre=0.0, a_post=0.0, a_bridge=0.0):
+        y = [0.0] * n
+        for i in range(n):
+            offset = (a_school * school_basis[i] +
+                      a_pre * school_pre_basis[i] +
+                      a_post * school_post_basis[i] +
+                      a_bridge * bridge_basis[i] +
+                      a_base * base_basis[i])
+
+            # Soft safety cap to avoid very long detours.
+            max_off = 34.0 + 0.10 * span_y + 0.12 * dy_base_ref
+            if offset > max_off:
+                offset = max_off
+            elif offset < -max_off:
+                offset = -max_off
+
+            y[i] = y_line[i] + offset
+
+        # Light Laplacian smoothing with fixed virtual endpoints.
+        # Keeps the S-shape while reducing unnecessary arc length.
+        passes = 2
+        for _ in range(passes):
+            y_new = y[:]
+            for i in range(n):
+                y_prev = y_start if i == 0 else y[i - 1]
+                y_next = y_end if i == n - 1 else y[i + 1]
+                target = 0.5 * (y_prev + y_next)
+
+                # Preserve more structure near the influence regions.
+                preserve = 0.78 - 0.18 * envelopes[i]
+                if preserve < 0.52:
+                    preserve = 0.52
+                y_new[i] = preserve * y[i] + (1.0 - preserve) * target
+            y = y_new
+
+        return y
+
+    # Surrogate score for internal search.
+    def surrogate_score(y):
+        # F1 proxy: normalized path length inflation.
+        total_len = 0.0
+        px, py = x_start, y_start
+        for i in range(n):
+            dx = x_coords[i] - px
+            dy = y[i] - py
+            total_len += math.sqrt(dx * dx + dy * dy)
+            px, py = x_coords[i], y[i]
+        dx = x_end - px
+        dy = y_end - py
+        total_len += math.sqrt(dx * dx + dy * dy)
+
+        straight = math.sqrt((x_end - x_start) ** 2 + (y_end - y_start) ** 2) + 1e-9
+        f1 = total_len / straight
+
+        # F2 proxy: strong penalty for staying close to school.
+        f2 = 0.0
+        for i in range(n):
+            dxs = x_coords[i] - x_school
+            dys = y[i] - y_school
+            d2 = dxs * dxs + dys * dys
+            f2 += math.exp(-d2 / (2.0 * (16.0 ** 2)))
+        f2 /= n
+
+        # F3 proxy: prefer staying closer to base, especially around/after school.
+        f3 = 0.0
+        for i in range(n):
+            dxb = x_coords[i] - x_base
+            dyb = y[i] - y_base
+            dist = math.sqrt(dxb * dxb + dyb * dyb)
+
+            # Weight points from mid-course into the base region more heavily.
+            if x_base > x_start:
+                u = (x_coords[i] - (x_school - 0.08 * span_x)) / max(0.42 * span_x, 1e-6)
+            else:
+                u = ((x_school + 0.08 * span_x) - x_coords[i]) / max(0.42 * span_x, 1e-6)
+            w = 0.35 + 0.65 * smoothstep01(u)
+            f3 += w * dist
+        f3 /= n
+
+        # Smoothness regularizer.
+        smooth = 0.0
+        for i in range(n):
+            y_prev = y_start if i == 0 else y[i - 1]
+            y_next = y_end if i == n - 1 else y[i + 1]
+            curv = y_prev - 2.0 * y[i] + y_next
+            smooth += curv * curv
+        smooth /= max(n, 1)
+
+        # Weighted combination: prioritize base signal improvement while
+        # preserving the strong school avoidance seen in the better baseline.
+        return 2.3 * f1 + 22.0 * f2 + 0.34 * f3 + 0.0025 * smooth
+
+    # Deterministic coarse-to-fine search over an expanded parameter family.
+    # Includes asymmetric and event-localized seeds for better basin coverage.
+    school_candidates = [
+        0.0, 4.0, 8.0, 12.0, 16.0, 20.0,
+        24.0 + 0.08 * dy_school_ref,
+        30.0 + 0.10 * dy_school_ref,
+    ]
+    base_candidates = [
+        0.35, 0.55, 0.75, 0.95, 1.15, 1.35, 1.60, 1.90, 2.20,
+    ]
+
+    configs = []
+    for a_school in school_candidates:
+        for a_base in base_candidates:
+            configs.append((a_school, a_base, 0.0, 0.0, 0.0))
+
+    for a_base in base_candidates:
+        # 1. Single bump just before school
+        configs.append((0.0, a_base, 20.0, 0.0, 0.0))
+        configs.append((0.0, a_base, 30.0, 0.0, 0.0))
+        # 2. Single bump just after school
+        configs.append((0.0, a_base, 0.0, 20.0, 0.0))
+        configs.append((0.0, a_base, 0.0, 30.0, 0.0))
+        # 3. Left-heavy school repulsion
+        configs.append((15.0, a_base, 15.0, 0.0, 0.0))
+        configs.append((20.0, a_base, 10.0, 0.0, 0.0))
+        # 4. Right-heavy school repulsion
+        configs.append((15.0, a_base, 0.0, 15.0, 0.0))
+        configs.append((20.0, a_base, 0.0, 10.0, 0.0))
+        # 5. Bridge bump between school and base
+        configs.append((15.0, a_base, 0.0, 0.0, 15.0))
+        configs.append((20.0, a_base, 0.0, 0.0, 20.0))
+        # 6. Bridge + Asymmetric combinations
+        configs.append((15.0, a_base, 10.0, 0.0, 10.0))
+        configs.append((15.0, a_base, 0.0, 10.0, 10.0))
+
+    best_y = y_line[:]
+    best_score = surrogate_score(best_y)
+    best_config = (0.0, 0.0, 0.0, 0.0, 0.0)
+
+    for cfg in configs:
+        y = build_path(*cfg)
+        s = surrogate_score(y)
+        if s < best_score:
+            best_score = s
+            best_y = y
+            best_config = cfg
+
+    # Small local refinement around the best coarse candidate.
+    best_as, best_ab, best_apre, best_apost, best_abridge = best_config
+    refine_school = [best_as - 4.0, best_as - 2.0, best_as, best_as + 2.0, best_as + 4.0]
+    refine_base = [best_ab - 0.20, best_ab - 0.10, best_ab, best_ab + 0.10, best_ab + 0.20]
+
+    for a_school in refine_school:
+        if a_school < 0.0:
+            continue
+        for a_base in refine_base:
+            if a_base < 0.0:
+                continue
+            y = build_path(a_school, a_base, best_apre, best_apost, best_abridge)
+            s = surrogate_score(y)
+            if s < best_score:
+                best_score = s
+                best_y = y
+
+    return [float(v) for v in best_y]
+# EVOLVE-BLOCK-END
+
+import sys
+import os
+
+# 将当前目录加入系统路径以便导入同级文件
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from drone_evaluation import DroneGrader
+
+def run_experiment(**kwargs):
+    """供 Shinka 触发的单次实验方法"""
+    grader = DroneGrader()
+
+    # 捕获异常防止大模型写出死循环炸毁测评机
+    try:
+        avg_f1, avg_f2, avg_f3, final_score = grader.grade_silent(evolve_drone_path, timeout=12)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        avg_f1, avg_f2, avg_f3, final_score = float('inf'), float('inf'), float('inf'), float('inf')
+
+    return avg_f1, avg_f2, avg_f3, final_score

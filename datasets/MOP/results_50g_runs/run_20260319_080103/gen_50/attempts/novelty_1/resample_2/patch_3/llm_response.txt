@@ -1,0 +1,36 @@
+<NAME>
+adaptive_school_push_and_base_priority
+</NAME>
+
+<DESCRIPTION>
+This modification implements the recommended two-stage adaptive school repulsion. It first projects the drone's path based on the base station's attraction and tail bias, then calculates the clearance from the school at its x-coordinate. A sharp school push is then applied with an amplitude that adaptively increases if the clearance is small, following the suggested formula `amp = min(52.0, max(32.0, a + b / (clearance + c)))`. 
+
+Additionally, the surrogate score weights have been rebalanced to prioritize minimizing F3 (Signal Loss), which was identified as the largest component of the current score, while still maintaining low F1 (Distance) and F2 (School Noise). The search parameters for sigmas and pulls have also been slightly tuned to better explore the solution space.
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+    # Conservative but effective search ranges.
+    school_sigmas = [max(6.0, 0.10 * span_x), max(9.0, 0.15 * span_x)]
+    base_sigmas = [max(10.0, 0.18 * span_x), max(14.0, 0.24 * span_x)]
+
+    school_amps = [
+        min(14.0, 4.0 + 0.22 * school_gap + 0.10 * span_x),
+        min(20.0, 6.0 + 0.34 * school_gap + 0.12 * span_x),
+    ]
+    base_pulls = [
+        min(0.45, 0.16 + 0.010 * base_gap),
+        min(0.68, 0.24 + 0.014 * base_gap),
+        min(0.88, 0.34 + 0.016 * base_gap),
+    ]
+    tail_gains = [0.0, 1.8, 3.6]
+    smooth_alphas = [0.18, 0.30]
+
+    if away_dir == toward_dir:
+        school_amps = [a * 1.05 for a in school_amps]
+        base_pulls = [min(0.95, b * 1.08) for b in base_pulls]
+        tail_gains = [g * 1.15 for g in tail_gains]
+
+    gauss_school = {sig: gaussian_arr(sx, sig) for sig in school_sigmas}
+    gauss_base = {sig: gaussian_arr(bx, sig) for sig in base_sigmas}
+    gauss_base_wide = {sig: gaussian_arr(

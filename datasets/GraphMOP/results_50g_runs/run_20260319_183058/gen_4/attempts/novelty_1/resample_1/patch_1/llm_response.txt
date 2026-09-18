@@ -1,0 +1,56 @@
+<NAME>
+theoretical_marginal_cost_routing
+</NAME>
+
+<DESCRIPTION>
+The proposed modification improves the task routing by using a more theoretically sound marginal cost heuristic. 
+
+1.  **Adaptive Dijkstra Weighting**: Instead of a fixed weight, the Dijkstra search now uses a weight that balances latency and energy based on the specific task's arrival rate and payload size: `weight = arrival_rate * (base_latency + payload_size * energy_cost)`. This represents the task's marginal contribution to the total system travel latency and routing energy.
+2.  **Marginal Delay Modeling**: The server selection now uses an M/M/1 queueing model to calculate the marginal increase in total system delay caused by adding a task to a server: `marginal_delay = new_load / (service_rate - new_load) - old_load / (service_rate - old_load)`. This captures the non-linear increase in latency as a server approaches saturation.
+3.  **Marginal Energy Modeling**: The server selection also accounts for the marginal increase in compute energy and the idle power cost of activating a new server.
+4.  **Efficiency**: Dijkstra is run once per task source (instead of once per source-server pair), which is more efficient and allows for a more thorough search of the solution space.
+5.  **Task Ranking**: Tasks are ranked by their total potential impact (load and routing) to prioritize the assignment of more demanding tasks.
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+    def shortest_path(source, target):
+        dist = [float("inf")] * num_nodes
+        parent = [-1] * num_nodes
+        dist[source] = 0.0
+        heap = [(0.0, source)]
+
+        while heap:
+            cur_dist, node = heapq.heappop(heap)
+            if cur_dist != dist[node]:
+                continue
+            if node == target:
+                break
+            for nxt, base_latency, energy_cost, _capacity in graph[node]:
+                weight = base_latency + 0.35 * energy_cost
+                cand = cur_dist + weight
+                if cand < dist[nxt]:
+                    dist[nxt] = cand
+                    parent[nxt] = node
+                    heapq.heappush(heap, (cand, nxt))
+
+        if source != target and parent[target] == -1:
+            return []
+
+        path = [target]
+        cur = target
+        while cur != source:
+            cur = parent[cur]
+            if cur == -1:
+                return []
+            path.append(cur)
+        path.reverse()
+        return path
+
+    projected_load = {server: 0.0 for server in server_nodes}
+    plan = {}
+
+    ranked_sources = sorted(
+        task_sources,
+        key=lambda src: task_info[src][0] * task_info[src][2],
+        

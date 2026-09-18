@@ -1,0 +1,14 @@
+{
+  "generation": 21,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "regret_activation_routing",
+  "patch_description": "Key parameters in the current approach are: path-weight configurations for candidate generation, latency/energy weights in the surrogate objective, server utilization thresholding, queue-delay scaling, and source ordering during assignment.\n\nThis version changes the configuration in several ways:\n\n1. **Different candidate-path frontier**\n   - Uses **4 server-rooted Dijkstra modes** instead of 3, with more separated latency/energy tradeoffs:\n     - strongly latency-biased,\n     - balanced,\n     - energy-aware,\n     - strongly energy-biased.\n   - Adds a light hop/congestion preference through `1/sqrt(capacity)` to avoid fragile low-capacity paths.\n\n2. **Global server-state surrogate instead of purely local marginal queue delta**\n   - Each assignment is scored by:\n     - routing latency,\n     - routing energy,\n     - server dynamic compute energy,\n     - convex queue-pressure cost,\n     - activation cost for turning on an unused server.\n   - This better captures the latency/energy tradeoff across many sources sharing a few servers.\n   - New parameters:\n     - `LAT_W = 1.00`\n     - `EN_W = 0.88`\n     - `DYN_W = 0.20`\n     - `QUEUE_W = 0.72`\n     - `ACT_W = 0.020`\n     - `SOFT_UTIL = 0.90`\n     - `HARD_UTIL = 0.985`\n\n3. **Best-vs-second-best regret-aware assignment order**\n   - For each unassigned source, compute its best and second-best options under current loads.\n   - Prioritize sources with:\n     - larger regret gap,\n     - higher demand (`arrival_rate * compute_demand`),\n     - slightly worse primary score.\n   - This preserves scarce good server slots for hard-to-place, high-impact sources.\n\n4. **Local improvement with exact surrogate deltas**\n   - After greedy construction, perform multiple relocation passes.\n   - Each move is accepted only if it reduces the global surrogate objective using old/new server state deltas.\n\nOverall, the new configuration is less myopic than the previous greedy marginal approach, more deliberate about server activation vs. congestion, and more aggressive in protecting high-value placements via regret ordering.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:42:15.603762",
+  "llm_cost": 0.08304,
+  "llm_model": null
+}

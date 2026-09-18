@@ -1,0 +1,59 @@
+
+```
+
+Wait, I cut off the REPLACE block. I need to finish it.
+
+```python
+    proj_load, plan = {s: 0.0 for s in server_nodes}, {}
+    sources = sorted(task_sources, key=lambda x: task_info[x][0] * task_info[x][2], reverse=True)
+    for src in sources:
+        arr, _, comp = task_info[src]
+        best_s, best_p, best_score = None, [], float('inf')
+        for s in server_nodes:
+            s_rate, i_pow, d_pow = server_info[s]
+            new_l = proj_load[s] + arr * comp
+            if new_l >= 0.99 * s_rate: continue
+            path, p_lat, p_nrg = get_metrics(s, src)
+            if path is None: continue
+            q_delay = 1.0 / (s_rate - new_l)
+            c_nrg = d_pow * (arr * comp / s_rate)
+            score = (p_lat + q_delay) + 0.5 * (p_nrg + c_nrg)
+            if score < best_score:
+                best_score, best_s, best_p = score, s, path
+        if best_s is None:
+            for s in server_nodes:
+                path, _, _ = get_metrics(s, src)
+                if path:
+                    best_s, best_p = s, path
+                    break
+        plan[src] = {"server": best_s, "path": best_p}
+        proj_load[best_s] += arr * comp
+    return plan
+```
+
+Wait, I should be careful about the `best_s is None` case. If `best_s` is still `None`, `plan[src]` will be `{"server": None, "path": None}`.
+
+Actually, the original code had:
+```python
+        if best_server is None:
+            best_server = server_nodes[0]
+            best_path = shortest_path(source, best_server)
+```
+If `shortest_path` returns `[]`, it's still assigned.
+
+Let's make sure I don't break the return type.
+`plan` must be `{source_node: {"server": server_node, "path": [...]}}`.
+
+One more check on the SEARCH block.
+The original code has:
+```python
+    ranked_sources = sorted(
+        task_sources,
+        key=lambda src: task_info[src][0] * task_info[src][2],
+        reverse=True,
+    )
+```
+I'll use the same variable names to be safe.
+
+```python
+    ranked_sources = sorted(task_sources, key

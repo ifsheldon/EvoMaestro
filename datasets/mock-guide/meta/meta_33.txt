@@ -1,0 +1,19 @@
+# GLOBAL INSIGHTS SCRATCHPAD
+
+Illustrative summary · mock data
+
+## Successful Algorithmic Patterns
+
+Small changes to constants and loop structure produce branches that are easy to compare. Following a promising parent illustrates how improvements accumulate across generations.
+
+## Ineffective Approaches
+
+Extra computation does not always improve a candidate. Failed and slow variants show why execution results matter alongside the proposed idea.
+
+## Implementation Insights
+
+A shared function interface lets every candidate use the same evaluator. Crossover nodes illustrate combining ideas from different islands.
+
+## Performance Analysis
+
+Use scores, ancestry, and similarity together when exploring the tree. Scores in this mock run are simulated for demonstration; they do not measure performance on a real optimization task.

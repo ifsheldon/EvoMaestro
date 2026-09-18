@@ -1,0 +1,56 @@
+
+<NAME>
+active_contour_adam
+</NAME>
+
+<DESCRIPTION>
+This redesign replaces the Cross-Entropy Method (CEM) on basis functions with a direct pointwise Active Contour optimization using the Adam optimizer. Since the final "MOP Multiplier Score" is exactly the product of F1, F2, and F3, we can perfectly optimize it by minimizing the sum of their logarithms. This ensures the gradients are naturally balanced relative to each objective's scale. We initialize multiple heuristic paths (straight, sine-deflected, base-attracted, school-repelled) and run 400 iterations of Adam on each, returning the one with the best proxy score. We also include Laplacian and bi-Laplacian smoothing forces to maintain path continuity and suppress sharp kinks (acting as curvature control).
+</DESCRIPTION>
+
+<CODE>
+```python
+# EVOLVE-BLOCK-START
+import math
+
+def get_initial_paths(N, x0, y0, x1, y1, sx, sy, bx, by, xs):
+    paths = []
+    
+    # 1. Straight line
+    paths.append([y0 + (y1 - y0) * (i + 1) / (N + 1) for i in range(N)])
+    
+    # 2. Sine waves (deflections)
+    amps = [20.0, -20.0, 50.0, -50.0, 100.0, -100.0]
+    for amp in amps:
+        path = []
+        for i in range(N):
+            t = (i + 1) / (N + 1)
+            base_y = y0 + (y1 - y0) * t
+            path.append(base_y + amp * math.sin(math.pi * t))
+        paths.append(path)
+        
+    # 3. Path that goes exactly towards the base
+    path = []
+    for i in range(N):
+        xi = xs[i]
+        if x1 != x0:
+            if xi < bx:
+                if bx != x0:
+                    y = y0 + (by - y0) * (xi - x0) / (bx - x0)
+                else:
+                    y = y0
+            else:
+                if x1 != bx:
+                    y = by + (y1 - by) * (xi - bx) / (x1 - bx)
+                else:
+                    y = by
+        else:
+            y = y0
+        path.append(y)
+    paths.append(path)
+    
+    # 4. Deflect away from school
+    path = []
+    for i in range(N):
+        t = (i + 1) / (N + 1)
+        base_y = y0 + (y1 - y0) * t
+        dist_x = xs[

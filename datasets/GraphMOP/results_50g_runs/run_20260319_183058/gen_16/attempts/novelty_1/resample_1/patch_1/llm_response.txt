@@ -1,0 +1,52 @@
+total_queue_increase`?
+`q1 + N * (q1 - q0)`.
+As `lam0` increases, `q0` and `q1` increase, and `q1 - q0` increases.
+Also `N` increases.
+So `total_queue_increase` INCREASES.
+What about `energy_delta`?
+It's constant (`dynamic_power * demand / mu`).
+So the ENTIRE `get_cost` function is monotonically INCREASING with server load!
+Except for the one-time drop when `N` goes from 0 to 1 (because `idle_increase` goes from `idle_power` to 0).
+So our optimization of only recomputing when `b_cand` or `s_cand` uses `assigned_server` (or when `just_activated` is true) is 100% mathematically sound!
+
+Let's write out the full `get_cost` function:
+```python
+    def get_cost(cand):
+        s = cand["server"]
+        mu = max(cand["service_rate"], 1e-9)
+        lam0 = server_load[s]
+        lam1 = lam0 + cand["demand"]
+        util1 = lam1 / mu
+        if util1 >= 0.98:
+            return float('inf')
+            
+        slack0 = max(mu - lam0, 1e-6)
+        slack1 = max(mu - lam1, 1e-6)
+        q0 = 1.0 / slack0
+        q1 = 1.0 / slack1
+        queue_delta = q1 - q0
+        
+        total_queue_increase = q1 + server_count[s] * queue_delta
+        energy_delta = cand["dynamic_power"] * (cand["demand"] / mu)
+        idle_increase = cand["idle_power"] if server_count[s] == 0 else 0.0
+        
+        util0 = lam0 / mu
+        p1 = 50.0 * (util1 - 0.85)**2 if util1 > 0.85 else 0.0
+        p0 = 50.0 * (util0 - 0.85)**2 if util0 > 0.85 else 0.0
+        util_penalty = p1 - p0
+            
+        return (
+            cand["route_latency"] +
+            cand["route_energy"] +
+            total_queue_increase +
+            energy_delta +
+            idle_increase +
+            util_penalty
+        )
+```
+
+Let's consider the edge case where `util1 >= 0.98`.
+If all candidates for a source return `float('inf')`, `best_c` will be `float('inf')`.
+In the regret loop:
+```python
+        if best_src is

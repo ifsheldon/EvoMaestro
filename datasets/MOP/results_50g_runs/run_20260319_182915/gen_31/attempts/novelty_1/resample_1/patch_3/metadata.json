@@ -1,0 +1,14 @@
+{
+  "generation": 31,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 3,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "optimize_influence_centers",
+  "patch_description": "This edit introduces the optimization of the influence centers (x-positions) for the school repulsion and base station attraction Gaussians. By allowing the centers to move, the path can more flexibly navigate around the school and towards the base station. Additionally, a 'fade' factor is introduced to the curve perturbations to ensure the path smoothly anchors to the start and end points, which improves both the distance (F1) and smoothness scores. The local search optimizer and surrogate evaluator weights are also refined to better balance the three objectives.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:43:19.585781",
+  "llm_cost": 0.01226,
+  "llm_model": null
+}

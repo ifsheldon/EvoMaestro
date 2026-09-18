@@ -1,0 +1,12 @@
+Evaluation error: closing parenthesis ']' does not match opening parenthesis '(' (main.py, line 105)
+Correctness and error status saved to /home/evolve/evolvis/GraphMOP/results_50g_runs/run_20260319_183058/gen_10/results/correct.json
+Metrics saved to /home/evolve/evolvis/GraphMOP/results_50g_runs/run_20260319_183058/gen_10/results/metrics.json
+Evaluation failed: closing parenthesis ']' does not match opening parenthesis '(' (main.py, line 105)
+Metrics:
+  combined_score: 0.0
+  execution_time_mean: 0.0
+  execution_time_std: 0.0
+  num_successful_runs: 0
+  num_valid_runs: 0
+  num_invalid_runs: 0
+  all_validation_errors: []

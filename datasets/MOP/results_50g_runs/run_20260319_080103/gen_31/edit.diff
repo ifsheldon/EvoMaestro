@@ -1,0 +1,370 @@
+--- a/original.py
++++ b/original.py
+@@ -1,208 +1,227 @@
+ # EVOLVE-BLOCK-START
+ def evolve_drone_path(start, end, school, base, num_points):
+-    """
+-    【无人机连续空间多目标折线优化】
+-    返回一个长度为 num_points 的列表，表示在 X 轴均匀采样下的中间 Y 坐标。
+-
+-    交叉改进策略：
+-    1. 使用起终点直线作为低距离成本基线；
+-    2. 在 school 附近施加局部高斯排斥，平滑远离噪音区；
+-    3. 在 base 附近施加更宽的高斯吸引，并叠加靠近终点的渐进拉拽，改善信号；
+-    4. 对少量候选参数进行确定性搜索，使用轻量代理目标挑选更优轨迹；
+-    5. 做轻度平滑，避免尖峰和不自然折线。
+-    """
+     import math
+ 
+-    x_start, y_start = start
+-    x_end, y_end = end
++    x0, y0 = start
++    x1, y1 = end
+     sx, sy = school
+     bx, by = base
+ 
+     if num_points <= 0:
+         return []
+ 
+-    dx_total = x_end - x_start
+-    dy_total = y_end - y_start
+-
++    dx_total = x1 - x0
++    dy_total = y1 - y0
++
++    # Degenerate vertical-x case: keep simple linear y interpolation
+     if abs(dx_total) < 1e-12:
+-        step = dy_total / (num_points + 1)
+-        return [float(y_start + (i + 1) * step) for i in range(num_points)]
+-
+-    xs = [x_start + (i + 1) * dx_total / (num_points + 1) for i in range(num_points)]
++        step = dy_total / (num_points + 1.0)
++        return [float(y0 + (i + 1) * step) for i in range(num_points)]
++
++    n = num_points
++    xs = [x0 + (i + 1) * dx_total / (n + 1.0) for i in range(n)]
++    abs_dx = abs(dx_total) / (n + 1.0) + 1e-9
++    span_x = abs(dx_total)
+ 
+     def line_y(x):
+-        t = (x - x_start) / dx_total
+-        return y_start + dy_total * t
++        t = (x - x0) / dx_total
++        return y0 + t * dy_total
++
++    baseline = [line_y(x) for x in xs]
++
++    # Directional hints from geometry
++    school_line_y = line_y(sx)
++    base_line_y = line_y(bx)
++    away_sign = -1.0 if sy >= school_line_y else 1.0
++    toward_sign = 1.0 if by >= base_line_y else -1.0
+ 
+     def gaussian(x, mu, sigma):
+-        sigma = max(1e-6, float(sigma))
+-        z = (x - mu) / sigma
++        s = max(1e-6, float(sigma))
++        z = (x - mu) / s
+         return math.exp(-0.5 * z * z)
+ 
+     def clamp(v, lo, hi):
+         return lo if v < lo else hi if v > hi else v
+ 
+-    baseline = [line_y(x) for x in xs]
+-
+-    school_line_y = line_y(sx)
+-    base_line_y = line_y(bx)
+-
+-    away_dir = -1.0 if sy >= school_line_y else 1.0
+-    toward_dir = 1.0 if by >= base_line_y else -1.0
+-
+-    span_x = abs(dx_total)
+-    scene_scale = max(12.0, 0.18 * span_x + 8.0)
+-
++    # Spatial influence windows
++    sig_s = max(6.0, 0.12 * span_x + 4.0)   # school: relatively local
++    sig_b = max(9.0, 0.22 * span_x + 6.0)   # base: broader recovery
++
++    w_sx = [gaussian(x, sx, sig_s) for x in xs]
++    w_bx = [gaussian(x, bx, sig_b) for x in xs]
++
++    # Seed curve: slight school dip + base pull (gated near school)
+     school_gap = abs(sy - school_line_y)
+     base_gap = abs(by - base_line_y)
+-
+-    # 让排斥局部一些，吸引更宽一些；两者都保持平滑
+-    school_sigmas = [max(5.0, 0.10 * span_x), max(7.0, 0.14 * span_x)]
+-    base_sigmas = [max(8.0, 0.16 * span_x), max(10.0, 0.22 * span_x)]
+-
+-    # 学校附近需要明显规避，基站吸引要更积极以压低 F3
+-    school_amps = [
+-        min(18.0, 4.0 + 0.30 * school_gap + 0.35 * scene_scale),
+-        min(24.0, 5.5 + 0.42 * school_gap + 0.50 * scene_scale),
+-    ]
+-    base_amps = [
+-        min(20.0, 5.0 + 0.28 * base_gap + 0.45 * scene_scale),
+-        min(28.0, 7.0 + 0.40 * base_gap + 0.65 * scene_scale),
+-        min(34.0, 8.0 + 0.52 * base_gap + 0.78 * scene_scale),
+-    ]
+-
+-    # 若学校规避和基站靠近方向一致，则可以更大胆地整体弯折
+-    if away_dir == toward_dir:
+-        school_amps = [a * 1.05 for a in school_amps]
+-        base_amps = [a * 1.12 for a in base_amps]
+-
+-    left = min(x_start, x_end)
+-    right = max(x_start, x_end)
+-    width = right - left + 1e-9
+-
+-    def build_candidate(amp_school, sigma_school, amp_base, sigma_base, tail_gain, smooth_alpha):
+-        ys = []
+-        for x, y0 in zip(xs, baseline):
+-            pos = (x - left) / width
+-            w_school = gaussian(x, sx, sigma_school)
+-            w_base = gaussian(x, bx, sigma_base)
+-
+-            # 学校处局部远离
+-            school_term = away_dir * amp_school * w_school
+-
+-            # 基站处吸引 + 越往后越偏向基站，利于后段信号改善
+-            tail = pos * pos
+-            base_term = toward_dir * amp_base * w_base * (0.55 + 0.85 * tail)
+-
+-            # 额外的全局渐进拉拽，保证整体趋势更自然地朝向基站一侧
+-            global_tail = toward_dir * tail_gain * tail * (0.35 + 0.65 * gaussian(x, bx, sigma_base * 1.35))
+-
+-            delta = school_term + base_term + global_tail
+-
+-            # 限制偏离，兼顾路径长度
+-            max_dev = 30.0 if away_dir == toward_dir else 24.0
+-            delta = clamp(delta, -max_dev, max_dev)
+-            ys.append(y0 + delta)
+-
+-        # 轻度平滑，保留趋势同时去掉毛刺
+-        if len(ys) >= 3:
+-            new_ys = ys[:]
+-            for i in range(1, len(ys) - 1):
+-                avg_nb = 0.5 * (ys[i - 1] + ys[i + 1])
+-                new_ys[i] = (1.0 - smooth_alpha) * ys[i] + smooth_alpha * avg_nb
+-            ys = new_ys
+-
+-        return ys
+-
++    amp_s0 = min(10.0, 1.8 + 0.16 * school_gap + 0.03 * span_x)
++    amp_b0 = min(11.0, 1.6 + 0.14 * base_gap + 0.03 * span_x)
++
++    y_init = []
++    x_left = min(x0, x1)
++    width = abs(x1 - x0) + 1e-9
++    for i, x in enumerate(xs):
++        pos = (x - x_left) / width
++        ws = w_sx[i]
++        wb = w_bx[i]
++        base_scale = 0.35 + 0.65 * (1.0 - ws)  # preserve school dip locally
++        seed = baseline[i]
++        seed += away_sign * amp_s0 * ws
++        seed += toward_sign * amp_b0 * wb * base_scale * (0.55 + 0.45 * pos)
++        y_init.append(seed)
++
++    # Surrogate used for model selection
+     def surrogate_score(ys):
+         pts = [start] + list(zip(xs, ys)) + [end]
+ 
+         total_len = 0.0
+         for i in range(len(pts) - 1):
+             dx = pts[i + 1][0] - pts[i][0]
+             dy = pts[i + 1][1] - pts[i][1]
+             total_len += math.hypot(dx, dy)
+         direct_len = math.hypot(dx_total, dy_total) + 1e-9
+         f1 = total_len / direct_len
+ 
+-        # 学校距离惩罚：对近距离更敏感
+         school_pen = 0.0
+         for x, y in zip(xs, ys):
+             d = math.hypot(x - sx, y - sy)
+-            school_pen += 1.0 / (d + 1.5)
+-        school_pen /= max(1, len(xs))
+-
+-        # 基站距离惩罚：后段更重，且对基站附近改善更敏感
++            school_pen += 1.0 / (d + 1.2)
++        school_pen /= max(1, n)
++
+         base_pen = 0.0
+         for i, (x, y) in enumerate(zip(xs, ys)):
+-            pos = (i + 1) / (len(xs) + 1.0)
+-            w = 0.60 + 1.10 * pos
++            pos = (i + 1) / (n + 1.0)
++            w = 0.65 + 0.95 * pos
+             d = math.hypot(x - bx, y - by)
+             base_pen += w * d
+-        base_pen /= max(1, len(xs))
+-
+-        # 二阶差分平滑度
++        base_pen /= max(1, n)
++
+         smooth_pen = 0.0
+-        for i in range(1, len(ys) - 1):
++        for i in range(1, n - 1):
+             smooth_pen += abs(ys[i - 1] - 2.0 * ys[i] + ys[i + 1])
+-        smooth_pen /= max(1, len(ys) - 2)
+-
+-        # 更偏向同时压低 F2/F3，但保持 F1 不恶化过多
+-        return 1.6 * f1 + 22.0 * school_pen + 0.12 * base_pen + 0.10 * smooth_pen
++        smooth_pen /= max(1, n - 2)
++
++        return 1.45 * f1 + 23.0 * school_pen + 0.10 * base_pen + 0.11 * smooth_pen
++
++    def optimize_path(params):
++        w_len = params["w_len"]
++        w_school = params["w_school"]
++        w_base = params["w_base"]
++        w_smooth = params["w_smooth"]
++        w_anchor = params["w_anchor"]
++        iters = params["iters"]
++        lr0 = params["lr"]
++
++        ys = y_init[:]
++
++        for t in range(iters):
++            lr = lr0 * (0.96 ** t)
++            grad = [0.0] * n
++
++            # Length term gradient
++            prev_x, prev_y = x0, y0
++            for i in range(n):
++                dx = xs[i] - prev_x
++                dy = ys[i] - prev_y
++                seg = math.hypot(dx, dy) + 1e-9
++                grad[i] += w_len * (dy / seg)
++                prev_x, prev_y = xs[i], ys[i]
++
++            next_x, next_y = x1, y1
++            for i in range(n - 1, -1, -1):
++                dx = next_x - xs[i]
++                dy = next_y - ys[i]
++                seg = math.hypot(dx, dy) + 1e-9
++                grad[i] += w_len * (-(dy / seg))
++                next_x, next_y = xs[i], ys[i]
++
++            # School + Base terms (with conditional base scaling)
++            for i, (x, y) in enumerate(zip(xs, ys)):
++                ds = math.hypot(x - sx, y - sy) + 1e-9
++                db = math.hypot(x - bx, y - by) + 1e-9
++
++                # d/dy [1/(d+1)] = -(y-sy)/(d*(d+1)^2)
++                grad[i] += w_school * (-(y - sy) / (ds * (ds + 1.0) * (ds + 1.0)))
++
++                pos = (i + 1) / (n + 1.0)
++                ws_local = w_sx[i]
++                base_scale = 0.35 + 0.65 * (1.0 - ws_local)
++                tail = 0.75 + 0.75 * pos
++
++                # d/dy [distance_to_base] = (y-by)/d
++                grad[i] += w_base * base_scale * tail * ((y - by) / db)
++
++                # Baseline anchor keeps F1 controlled
++                grad[i] += 2.0 * w_anchor * (y - baseline[i])
++
++            # Curvature regularization: sum(second_diff^2)
++            for i in range(1, n - 1):
++                s2 = ys[i - 1] - 2.0 * ys[i] + ys[i + 1]
++                c = 2.0 * w_smooth * s2
++                grad[i - 1] += c
++                grad[i] += -2.0 * c
++                grad[i + 1] += c
++
++            # Update + mild trust region around baseline
++            for i in range(n):
++                ys[i] -= lr * grad[i]
++                max_dev = 26.0
++                ys[i] = clamp(ys[i], baseline[i] - max_dev, baseline[i] + max_dev)
++
++        # final light smoothing pass
++        if n >= 3:
++            out = ys[:]
++            alpha = 0.22
++            for i in range(1, n - 1):
++                out[i] = (1.0 - alpha) * ys[i] + alpha * 0.5 * (ys[i - 1] + ys[i + 1])
++            ys = out
++
++        return ys
++
++    # Small deterministic hyperparameter sweep
++    candidates = [
++        {"w_len": 1.00, "w_school": 28.0, "w_base": 0.080, "w_smooth": 0.110, "w_anchor": 0.060, "iters": 26, "lr": 0.18},
++        {"w_len": 1.10, "w_school": 30.0, "w_base": 0.085, "w_smooth": 0.130, "w_anchor": 0.070, "iters": 28, "lr": 0.16},
++        {"w_len": 1.20, "w_school": 26.0, "w_base": 0.095, "w_smooth": 0.145, "w_anchor": 0.080, "iters": 30, "lr": 0.15},
++        {"w_len": 1.05, "w_school": 32.0, "w_base": 0.075, "w_smooth": 0.120, "w_anchor": 0.065, "iters": 24, "lr": 0.17},
++    ]
+ 
+     best_ys = baseline[:]
+-    best_score = surrogate_score(best_ys)
+-
+-    tail_gains = [0.0, 2.5, 5.0, 8.0]
+-    smooth_alphas = [0.20, 0.32]
+-
+-    for amp_school in school_amps:
+-        for sigma_school in school_sigmas:
+-            for amp_base in base_amps:
+-                for sigma_base in base_sigmas:
+-                    for tail_gain in tail_gains:
+-                        for smooth_alpha in smooth_alphas:
+-                            ys = build_candidate(
+-                                amp_school=amp_school,
+-                                sigma_school=sigma_school,
+-                                amp_base=amp_base,
+-                                sigma_base=sigma_base,
+-                                tail_gain=tail_gain,
+-                                smooth_alpha=smooth_alpha,
+-                            )
+-                            score = surrogate_score(ys)
+-                            if score < best_score:
+-                                best_score = score
+-                                best_ys = ys
+-
+-    # 基于关键点做软边界约束，防止极端值
+-    ref_vals = [y_start, y_end, sy, by] + best_ys
+-    y_lo = min(ref_vals)
+-    y_hi = max(ref_vals)
+-    pad = 0.35 * (y_hi - y_lo + 20.0)
+-    lo = min(y_start, y_end, sy, by) - pad
+-    hi = max(y_start, y_end, sy, by) + pad
++    best_sc = surrogate_score(best_ys)
++
++    for p in candidates:
++        ys = optimize_path(p)
++        sc = surrogate_score(ys)
++        if sc < best_sc:
++            best_sc = sc
++            best_ys = ys
++
++    # Soft global clamp for robustness
++    ref = [y0, y1, sy, by] + best_ys
++    lo0, hi0 = min(ref), max(ref)
++    pad = 0.34 * (hi0 - lo0 + 20.0)
++    lo = min(y0, y1, sy, by) - pad
++    hi = max(y0, y1, sy, by) + pad
+ 
+     return [float(clamp(y, lo, hi)) for y in best_ys]
+ # EVOLVE-BLOCK-END
+ 
+ import sys
+ import os
+ 
+ # 将当前目录加入系统路径以便导入同级文件
+ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+ from drone_evaluation import DroneGrader
+ 
+ def run_experiment(**kwargs):
+     """供 Shinka 触发的单次实验方法"""
+     grader = DroneGrader()
+     
+     # 捕获异常防止大模型写出死循环炸毁测评机
+     try:
+         avg_f1, avg_f2, avg_f3, final_score = grader.grade_silent(evolve_drone_path, timeout=12)
+     except Exception as e:
+         import traceback
+         traceback.print_exc()
+         avg_f1, avg_f2, avg_f3, final_score = float('inf'), float('inf'), float('inf'), float('inf')
+         
+     return avg_f1, avg_f2, avg_f3, final_score

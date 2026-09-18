@@ -1,0 +1,14 @@
+{
+  "generation": 40,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 4,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "smooth_hierarchical_adam",
+  "patch_description": "The program implements a robust multi-objective optimization using the Adam optimizer with a hierarchical coarse-to-fine schedule.\n\n1.  **Multi-Objective Gradient**: It minimizes the product of three objectives: Flying Distance (F1), School Noise Proximity (F2), and Signal Drop (F3). This is achieved by minimizing the sum of their logarithms. The total gradient for each point is computed as the sum of relative gradients: $\\nabla \\text{total} = \\frac{\\nabla F_1}{F_1} + \\frac{\\nabla F_2}{F_2} + \\frac{\\nabla F_3}{F_3}$.\n2.  **Hierarchical Smoothing**: To prevent the path from falling into poor local minima (common in repulsion-based environments like noise avoidance), the program applies a spatial box-blur to the gradients before updating the path. The blur radius is scheduled to decrease over time, starting with a wide radius to optimize the global path curvature and finishing with zero blur to allow fine-scale local refinement.\n3.  **Adaptive Learning with Adam**: A standard Adam optimizer handles the update step, ensuring stable convergence across the heterogeneous scales of the three objective functions. The learning rate is decayed to further stabilize the late-stage fine-tuning.\n4.  **Efficiency**: All calculations, including the gradient smoothing, are implemented to be $O(N)$ or $O(N \\cdot R)$ per step, ensuring the optimization completes within the strict 12-second time limit for the specified number of control points.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:47:32.158994",
+  "llm_cost": 0.008591,
+  "llm_model": null
+}

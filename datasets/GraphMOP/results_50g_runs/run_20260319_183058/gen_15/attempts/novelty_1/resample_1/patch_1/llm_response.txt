@@ -1,0 +1,52 @@
+
+```python
+<NAME>
+marginal_cost_regret_routing
+</NAME>
+
+<DESCRIPTION>
+This algorithm implements a robust multi-objective task routing strategy by combining marginal cost assignment with a regret-based priority policy. 
+
+Key features:
+1.  **Diverse Candidate Generation**: For each task source, it generates multiple candidate paths to all available servers using Dijkstra's algorithm with varying latency-energy trade-off weights (λ).
+2.  **Marginal Cost Analysis**: Instead of simple greedy assignment, it calculates the true marginal increase in the global objective function (Latency + 1.5 * Energy). This includes the increased queueing delay experienced by all tasks already assigned to a server when a new task is added.
+3.  **Regret-Based Prioritization**: Tasks are ordered by a combination of their total load and "regret" (the difference between the best and second-best candidate scores). This ensures that tasks with limited high-quality options are assigned before resources become saturated.
+4.  **Iterative Best-Response Refinement**: A local search phase iteratively re-evaluates each task's assignment, moving tasks to alternative candidate paths if they reduce the total system cost, effectively reaching a better equilibrium.
+5.  **Robust Queueing Model**: Uses an M/M/1-style queueing delay with a linear expansion beyond 95% utilization to maintain stability and provide a meaningful gradient for the optimization.
+</DESCRIPTION>
+
+<CODE>
+import heapq
+
+def evolve_task_routing(
+    num_nodes,
+    edges,
+    server_nodes,
+    task_sources,
+    task_info,
+    server_info,
+):
+    # ----------------------------
+    # Graph build (undirected)
+    # ----------------------------
+    graph = [[] for _ in range(num_nodes)]
+    for u, v, base_latency, energy_cost, capacity in edges:
+        graph[u].append((v, float(base_latency), float(energy_cost), float(capacity)))
+        graph[v].append((u, float(base_latency), float(energy_cost), float(capacity)))
+
+    # ----------------------------
+    # Helpers
+    # ----------------------------
+    def dijkstra(start_node, payload, lam):
+        dists = [float('inf')] * num_nodes
+        parents = [-1] * num_nodes
+        dists[start_node] = 0.0
+        pq = [(0.0, start_node)]
+        while pq:
+            d, u = heapq.heappop(pq)
+            if d > dists[u]:
+                continue
+            for v, base_lat, en_cost, cap in graph[u]:
+                # Weight = (Transmission Latency) + lam * (Routing Energy)
+                w = (base_lat + payload / max(cap, 1e-9)) + lam * (en_cost * payload)
+                if dists[u] +

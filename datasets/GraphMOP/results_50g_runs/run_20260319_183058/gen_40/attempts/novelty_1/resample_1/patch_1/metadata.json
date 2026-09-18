@@ -1,0 +1,14 @@
+{
+  "generation": 40,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "capacity_sensitive_routing_mode",
+  "patch_description": "1. Update the graph building to include link `capacity`.\n2. Add a second Dijkstra pass per server that penalizes low-capacity links using a weight proportional to the average payload size.\n3. Track the inverse capacity (`1.0 / capacity`) along the paths to accurately compute the true transmission latency (`payload_size * inv_cap`) during the assignment phase.\n4. Evaluate both routing trees for each server and select the combination of server and path that minimizes the true marginal cost.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:48:56.073897",
+  "llm_cost": 0.042038,
+  "llm_model": null
+}

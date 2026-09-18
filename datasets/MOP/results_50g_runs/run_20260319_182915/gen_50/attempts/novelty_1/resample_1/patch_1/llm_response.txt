@@ -1,0 +1,221 @@
+<NAME>
+hybrid_guided_adam_path
+</NAME>
+
+<DESCRIPTION>
+This proposal crossbreeds the stronger parts of the prior implementations:
+
+- From the active-contour version, it keeps the useful geometric intuition:
+  - explicit smoothness and curvature control,
+  - a strong school-avoidance field,
+  - a base-attraction field,
+  - and the successful heuristic pre-bend initialization.
+- From the Adam-based version, it keeps the more stable and faster optimization dynamics.
+
+The rewritten function is more efficient because it:
+- precomputes all X-dependent Gaussian weights once,
+- uses a compact gradient routine,
+- uses Adam for rapid convergence in fewer iterations,
+- finishes with a light smoothing pass to preserve a smooth line.
+
+It also explicitly biases the initialization to create a smooth trajectory that bends away from the school region near `(40, 20)` and then bends toward the base region near `(70, -30)`, matching the requested qualitative shape while still optimizing the three objectives jointly.
+
+The program keeps the same inputs and outputs and preserves all code outside the evolve block.
+</DESCRIPTION>
+
+<CODE>
+```python
+# EVOLVE-BLOCK-START
+import math
+
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    Hybrid guided path optimizer:
+    - smooth heuristic initialization,
+    - exact-ish multi-objective gradients,
+    - Adam updates for fast convergence,
+    - final smoothing to ensure a clean trajectory.
+    Returns Y coordinates for the interior points.
+    """
+    x_start, y_start = start
+    x_end, y_end = end
+    x_school, y_school = school
+    x_base, y_base = base
+
+    if num_points <= 0:
+        return []
+
+    inv_n = 1.0 / (num_points + 1)
+    dx = (x_end - x_start) * inv_n
+
+    x_coords = [x_start + (i + 1) * dx for i in range(num_points)]
+    y_linear = [y_start + (i + 1) * (y_end - y_start) * inv_n for i in range(num_points)]
+
+    # ---- Guided smooth initialization ----
+    # Choose side away from school based on straight-line position.
+    dx_total = x_end - x_start
+    if abs(dx_total) > 1e-12:
+        y_line_at_school = y_start + (x_school - x_start) * (y_end - y_start) / dx_total
+    else:
+        y_line_at_school = y_start
+
+    # If line is below school, bend downward; otherwise upward.
+    school_dir = -1.0 if y_line_at_school <= y_school else 1.0
+
+    # Precompute spatial weights once.
+    school_w = []
+    base_w = []
+    for x in x_coords:
+        ds = x - x_school
+        db = x - x_base
+        school_w.append(math.exp(-(ds * ds) / 320.0))
+        base_w.append(math.exp(-(db * db) / 520.0))
+
+    # Strong but smooth initial shape:
+    # repulse near school, attract near base, add broad trend toward base.
+    y_coords = []
+    for i in range(num_points):
+        t = (i + 1) * inv_n
+        y = y_linear[i]
+
+        # Smooth bend away from school and toward base.
+        y += school_dir * 20.0 * school_w[i]
+        y += (y_base - y) * 0.34 * base_w[i]
+
+        # Mild global bias so later path tends toward base region.
+        tail_bias = t * t * (3.0 - 2.0 * t)  # smoothstep
+        y += 0.10 * tail_bias * (y_base - y_end)
+
+        y_coords.append(y)
+
+    # ---- Adam state ----
+    m = [0.0] * num_points
+    v = [0.0] * num_points
+    beta1 = 0.9
+    beta2 = 0.999
+    eps = 1e-8
+
+    # ---- Hyperparameters ----
+    # Balanced to keep short/smooth path while reducing school proximity and signal loss.
+    w_len = 10.0
+    w_smooth = 1.8
+    w_curv = 0.9
+
+    w_school = 5200.0
+    sigma_school = 23.0
+    inv_sigma_school2 = 1.0 / (sigma_school * sigma_school)
+
+    w_base = 6.5
+    sigma_base = 32.0
+    inv_two_sigma_base2 = 1.0 / (2.0 * sigma_base * sigma_base)
+
+    iterations = 320
+
+    for step in range(1, iterations + 1):
+        # Slight LR decay stabilizes the end of optimization.
+        lr = 0.34 * (0.35 + 0.65 * (1.0 - step / iterations))
+        grads = [0.0] * num_points
+
+        # Compute gradients using current path snapshot.
+        for i in range(num_points):
+            y = y_coords[i]
+            x = x_coords[i]
+
+            y_prev = y_start if i == 0 else y_coords[i - 1]
+            y_next = y_end if i == num_points - 1 else y_coords[i + 1]
+
+            y_prev2 = y_start if i < 2 else y_coords[i - 2]
+            y_next2 = y_end if i > num_points - 3 else y_coords[i + 2]
+
+            # True local length gradient
+            d1 = y - y_prev
+            d2 = y_next - y
+            len1 = math.sqrt(dx * dx + d1 * d1) + 1e-8
+            len2 = math.sqrt(dx * dx + d2 * d2) + 1e-8
+            grad_len = d1 / len1 - d2 / len2
+
+            # Laplacian smoothing and bi-Laplacian curvature
+            grad_smooth = 2.0 * y - y_prev - y_next
+            grad_curv = y_prev2 - 4.0 * y_prev + 6.0 * y - 4.0 * y_next + y_next2
+
+            # School repulsion
+            dy_school = y - y_school
+            if -1e-9 < dy_school < 1e-9:
+                dy_school = 1e-9 * school_dir
+            dist_sq_school = (x - x_school) * (x - x_school) + dy_school * dy_school
+            grad_school = -w_school * math.exp(-0.5 * dist_sq_school * inv_sigma_school2) * dy_school * inv_sigma_school2
+
+            # Base attraction
+            wb = math.exp(-((x - x_base) * (x - x_base)) * inv_two_sigma_base2)
+            grad_base = w_base * wb * (y - y_base)
+
+            g = (
+                w_len * grad_len +
+                w_smooth * grad_smooth +
+                w_curv * grad_curv +
+                grad_school +
+                grad_base
+            )
+
+            # Stable clipping
+            if g > 80.0:
+                g = 80.0
+            elif g < -80.0:
+                g = -80.0
+
+            grads[i] = g
+
+        # Adam update
+        b1_c = 1.0 - beta1 ** step
+        b2_c = 1.0 - beta2 ** step
+        for i in range(num_points):
+            g = grads[i]
+            m[i] = beta1 * m[i] + (1.0 - beta1) * g
+            v[i] = beta2 * v[i] + (1.0 - beta2) * g * g
+            m_hat = m[i] / b1_c
+            v_hat = v[i] / b2_c
+            y_coords[i] -= lr * m_hat / (math.sqrt(v_hat) + eps)
+
+        # Occasional cheap smoothing pass to remove optimizer noise.
+        if step % 40 == 0:
+            prev = y_start
+            for i in range(num_points):
+                curr = y_coords[i]
+                nxt = y_end if i == num_points - 1 else y_coords[i + 1]
+                y_coords[i] = 0.15 * prev + 0.70 * curr + 0.15 * nxt
+                prev = curr
+
+    # Final light smoothing to ensure a smooth line.
+    for _ in range(2):
+        prev = y_start
+        for i in range(num_points):
+            curr = y_coords[i]
+            nxt = y_end if i == num_points - 1 else y_coords[i + 1]
+            y_coords[i] = 0.2 * prev + 0.6 * curr + 0.2 * nxt
+            prev = curr
+
+    return y_coords
+# EVOLVE-BLOCK-END
+
+import sys
+import os
+
+# 将当前目录加入系统路径以便导入同级文件
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from drone_evaluation import DroneGrader
+
+def run_experiment(**kwargs):
+    """供 Shinka 触发的单次实验方法"""
+    grader = DroneGrader()
+
+    # 捕获异常防止大模型写出死循环炸毁测评机
+    try:
+        avg_f1, avg_f2, avg_f3, final_score = grader.grade_silent(evolve_drone_path, timeout=12)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        avg_f1, avg_f2, avg_f3, final_score = float('inf'), float('inf'), float('inf'), float('inf')
+
+    return avg_f1, avg_f2, avg_f3, final_score
+```
+</CODE>

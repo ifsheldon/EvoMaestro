@@ -1,0 +1,40 @@
+: 34.20`.
+    If my code reduces $F_3$ significantly, the score will drop.
+    Does `amp_b * get_w(xi, xb, sig_b)` accurately represent hitting the base station?
+    `yi = yi_lin + amp_b * get_w(xb, xb, sig_b) + amp_s * get_w(xb, xs, sig_s)`
+    At $x=xb$, $yi = y_{lin} + (yb - y_{lin}) + \text{small repulsion error}$.
+    So $yi = yb + \text{error}$.
+    The error is `amp_s * get_w(xb, xs, sig_s)`.
+    Since $xb=70$ and $xs=40$ and $sig\_s=16$, $get\_w(70, 40, 16) \approx \exp(-1.7) \approx 0.17$.
+    $11.0 \times 0.17 \approx 1.8$.
+    So at $x=70, y$ will be $-30 \pm 1.8$. This is very close to base station. F3 will be low!
+
+    Ready.
+
+    Wait, the prompt says "Return an array of Y-coordinates that creates a smooth line bending away from (40, 20) and towards (70, -30)."
+    In the coordinate system where (40, 20) is school and (70, -30) is base:
+    School is at (40, 20).
+    Base is at (70, -30).
+    My code pulls towards (-30) at $x=70$. (Towards base).
+    My code pushes away from (20) at $x=40$. (Away from school).
+    Everything is perfect.
+
+    Final Code check:
+    ```python
+    def evolve_drone_path(start, end, school, base, num_points):
+        import math
+        x0, y0 = start
+        x1, y1 = end
+        xs, ys = school
+        xb, yb = base
+
+        if num_points <= 0: return []
+        dx = x1 - x0
+        if abs(dx) < 1e-12:
+            return [float(y0 + (i + 1) * (y1 - y0) / (num_points + 1)) for i in range(num_points)]
+
+        def get_w(x, mu, sig):
+            # Sigmoid/Gaussian-based influence with boundary pinning
+            # Returns displacement weight that is 0 at x0 and x1
+            w = math.exp(-0.5 * ((x - mu) / sig)**2)
+            w0 = math.exp(-0.5 * ((x0

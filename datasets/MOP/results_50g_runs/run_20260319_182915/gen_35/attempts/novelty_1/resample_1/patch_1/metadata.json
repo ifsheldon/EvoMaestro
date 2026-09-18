@@ -1,0 +1,14 @@
+{
+  "generation": 35,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "multistart_bent_route",
+  "patch_description": "The current program uses a single straight-line initialization, a fixed 800-step Adam loop, constant learning rate (`lr=0.5`), and equal relative weighting for distance, school avoidance, and base attraction. That makes it sensitive to its starting basin and can miss better smooth paths.\n\nThe new approach changes the configuration in three important ways:\n\n1. **Multi-start structured seeds instead of one initialization**\n   - Builds a library of asymmetric smooth trajectories using Gaussian bumps.\n   - Includes:\n     - strong/medium school-repulsion seeds,\n     - strong/medium base-attraction seeds,\n     - left-heavy and right-heavy school avoidance,\n     - bridge bumps between school and base,\n     - a directed bend away from `(40, 20)` and toward `(70, -30)`.\n   - This directly follows the feedback that better basin-aware starts matter more than simply using a more complex optimizer.\n\n2. **Adaptive two-phase refinement instead of a single fixed optimizer**\n   - Uses scheduled weights:\n     - early phase emphasizes school avoidance,\n     - middle/late phase increases pull toward the base,\n     - distance remains active throughout.\n   - Uses decaying learning rate rather than constant step size.\n   - Keeps a curvature/smoothness penalty to preserve a smooth line and avoid jagged solutions.\n\n3. **Selection by a proxy multi-objective score**\n   - Each candidate is scored using a proxy based on `log(F1)`, `log(F2)`, `log(F3)` plus curvature.\n   - Only the best seeds are refined, then the best refined route is returned.\n   - Key parameters changed from the current approach:\n     - `seed_library`: expanded structured initializations,\n     - `refine_steps`: moderate refinement loop instead of one long single-basin run,\n     - `lr_start/lr_end`: adaptive learning rate,\n     - `w1/w2/w3` schedules: phase-dependent objective emphasis,\n     - `curvature_weight`: explicit smoothness control,\n     - `top_k`: selection pressure on candidates.\n\nThis should improve performance by finding smoother routes that bend away from the school region while still drifting toward the base-station region, instead of relying on one straight-line start and hoping gradient descent discovers the right shape.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:41:42.989503",
+  "llm_cost": 0.079105,
+  "llm_model": null
+}

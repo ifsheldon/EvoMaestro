@@ -1,0 +1,212 @@
+# EVOLVE-BLOCK-START
+def evolve_drone_path(start, end, school, base, num_points):
+    import math
+
+    x_start, y_start = start
+    x_end, y_end = end
+    sx, sy = school
+    bx, by = base
+
+    if num_points <= 0:
+        return []
+
+    dx_total = x_end - x_start
+    if abs(dx_total) < 1e-12:
+        return [
+            float(y_start + (y_end - y_start) * (i + 1) / (num_points + 1))
+            for i in range(num_points)
+        ]
+
+    n = num_points
+    inv_n1 = 1.0 / (n + 1)
+    span_x = abs(dx_total)
+
+    # Precompute coordinates and baseline
+    x_coords = [x_start + dx_total * ((i + 1) * inv_n1) for i in range(n)]
+    y_line = [y_start + (y_end - y_start) * ((i + 1) * inv_n1) for i in range(n)]
+    dx = dx_total * inv_n1
+
+    def gauss(x, mu, sigma):
+        sigma = max(float(sigma), 1e-6)
+        z = (x - mu) / sigma
+        return math.exp(-0.5 * z * z)
+
+    # -------- Stage 1: heuristic seed (smooth + directional bias) --------
+    t_school = (sx - x_start) / dx_total
+    y_line_at_school = y_start + (y_end - y_start) * t_school
+    school_dir = -1.0 if y_line_at_school <= sy else 1.0
+
+    sigma_school = max(12.0, 0.15 * span_x)
+    sigma_base = max(18.0, 0.24 * span_x)
+    sigma_base_early = max(20.0, 0.30 * span_x)
+
+    y = [0.0] * n
+    for i in range(n):
+        t = (i + 1) * inv_n1
+        x = x_coords[i]
+        yl = y_line[i]
+
+        env = math.sin(math.pi * t) ** 0.85
+        g_school = gauss(x, sx, sigma_school)
+        g_base = 0.62 * gauss(x, bx - 0.50 * sigma_base_early, sigma_base_early) + gauss(x, bx, sigma_base)
+
+        # Strong local school avoidance + broad pull to base
+        off_school = (16.0 + 0.10 * abs(sy - yl)) * school_dir * g_school
+        off_base = 1.35 * (by - yl) * g_base
+
+        off = env * (off_school + off_base)
+        max_off = 40.0 + 0.10 * abs(by - 0.5 * (y_start + y_end))
+        if off > max_off:
+            off = max_off
+        elif off < -max_off:
+            off = -max_off
+        y[i] = yl + off
+
+    # Light pre-smoothing
+    for _ in range(2):
+        y_new = y[:]
+        for i in range(n):
+            yp = y_start if i == 0 else y[i - 1]
+            yn = y_end if i == n - 1 else y[i + 1]
+            y_new[i] = 0.78 * y[i] + 0.22 * 0.5 * (yp + yn)
+        y = y_new
+
+    # -------- Stage 2: Adam refinement on surrogate objective --------
+    # Weights chosen to prioritize reducing school noise while controlling distance/signal.
+    w_len = 8.5
+    w_school = 52.0
+    w_base = 0.42
+    w_smooth = 0.28
+
+    school_sigma_obj = max(13.0, 0.16 * span_x)
+    school_s2 = school_sigma_obj * school_sigma_obj
+
+    # More emphasis around/after school corridor toward base
+    if bx > sx:
+        corridor_center = sx - 0.08 * span_x
+    else:
+        corridor_center = sx + 0.08 * span_x
+    corridor_width = max(0.40 * span_x, 1e-6)
+
+    envs = [math.sin(math.pi * ((i + 1) * inv_n1)) ** 0.9 for i in range(n)]
+
+    # Adam state
+    m = [0.0] * n
+    v = [0.0] * n
+    beta1, beta2 = 0.9, 0.999
+    eps = 1e-8
+    lr0 = 0.24
+
+    for it in range(180):
+        grads = [0.0] * n
+
+        # Gradient computation
+        for i in range(n):
+            yi = y[i]
+            xi = x_coords[i]
+            yp = y_start if i == 0 else y[i - 1]
+            yn = y_end if i == n - 1 else y[i + 1]
+
+            # Length gradient
+            l_prev = math.sqrt(dx * dx + (yi - yp) * (yi - yp))
+            l_next = math.sqrt(dx * dx + (yn - yi) * (yn - yi))
+            g_len = (yi - yp) / max(l_prev, 1e-9) + (yi - yn) / max(l_next, 1e-9)
+
+            # School proximity gradient: derivative of exp(-d2 / 2s2)
+            dys = yi - sy
+            d2s = (xi - sx) * (xi - sx) + dys * dys
+            e_school = math.exp(-d2s / (2.0 * school_s2))
+            g_school = -e_school * dys / school_s2
+
+            # Base distance gradient with corridor weighting
+            dyb = yi - by
+            db = math.sqrt((xi - bx) * (xi - bx) + dyb * dyb) + 1e-9
+            if bx > sx:
+                u = (xi - corridor_center) / corridor_width
+            else:
+                u = (corridor_center - xi) / corridor_width
+            # smoothstep-clamped
+            if u <= 0.0:
+                w_corr = 0.35
+            elif u >= 1.0:
+                w_corr = 1.0
+            else:
+                su = u * u * (3.0 - 2.0 * u)
+                w_corr = 0.35 + 0.65 * su
+            g_base = w_corr * (dyb / db)
+
+            # Smoothness (spring-like)
+            g_smooth = 2.0 * yi - yp - yn
+
+            env = envs[i]
+            grad = (
+                w_len * g_len
+                + w_school * env * g_school
+                + w_base * g_base
+                + w_smooth * g_smooth
+            )
+
+            # Stabilize updates
+            if grad > 80.0:
+                grad = 80.0
+            elif grad < -80.0:
+                grad = -80.0
+            grads[i] = grad
+
+        # Adam update
+        t = it + 1
+        lr = lr0 * (0.985 ** it)
+        bc1 = 1.0 - beta1 ** t
+        bc2 = 1.0 - beta2 ** t
+        step_scale = lr * math.sqrt(bc2) / bc1
+
+        for i in range(n):
+            g = grads[i]
+            m[i] = beta1 * m[i] + (1.0 - beta1) * g
+            v[i] = beta2 * v[i] + (1.0 - beta2) * g * g
+            y[i] -= step_scale * m[i] / (math.sqrt(v[i]) + eps)
+
+            # Soft offset cap to avoid extreme detours
+            yl = y_line[i]
+            off = y[i] - yl
+            cap = 44.0
+            if off > cap:
+                y[i] = yl + cap
+            elif off < -cap:
+                y[i] = yl - cap
+
+    # Final polish smoothing to reduce zig-zag while preserving shape
+    for _ in range(2):
+        y_new = y[:]
+        for i in range(n):
+            yp = y_start if i == 0 else y[i - 1]
+            yn = y_end if i == n - 1 else y[i + 1]
+            keep = 0.80 - 0.16 * envs[i]
+            if keep < 0.58:
+                keep = 0.58
+            y_new[i] = keep * y[i] + (1.0 - keep) * 0.5 * (yp + yn)
+        y = y_new
+
+    return [float(vv) for vv in y]
+# EVOLVE-BLOCK-END
+
+import sys
+import os
+
+# 将当前目录加入系统路径以便导入同级文件
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from drone_evaluation import DroneGrader
+
+def run_experiment(**kwargs):
+    """供 Shinka 触发的单次实验方法"""
+    grader = DroneGrader()
+
+    # 捕获异常防止大模型写出死循环炸毁测评机
+    try:
+        avg_f1, avg_f2, avg_f3, final_score = grader.grade_silent(evolve_drone_path, timeout=12)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        avg_f1, avg_f2, avg_f3, final_score = float('inf'), float('inf'), float('inf'), float('inf')
+
+    return avg_f1, avg_f2, avg_f3, final_score

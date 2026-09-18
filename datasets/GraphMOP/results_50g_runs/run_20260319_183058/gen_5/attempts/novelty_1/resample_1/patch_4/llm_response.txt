@@ -1,0 +1,59 @@
+
+<NAME>
+marginal_cost_routing
+</NAME>
+
+<DESCRIPTION>
+The original algorithm uses a fixed-weight Dijkstra and a simple heuristic for server assignment that doesn't fully account for the non-linear impact of server load or the specific arrival rates of tasks. 
+
+My new algorithm, `marginal_cost_routing`, improves performance by:
+1.  **Marginal Cost Analysis**: It models the assignment of each task as a marginal increase in total system cost (latency + energy). This includes the M/M/1 queueing delay impact on all tasks at a server, not just the new task.
+2.  **Efficient Path Precomputation**: It runs Dijkstra from each server node once, using a balanced weight ($base\_latency + 0.25 \cdot energy\_cost$) to find optimal paths for both objectives.
+3.  **Dynamic Load Management**: Instead of a hard utilization cap, it uses a steep penalty function for high utilization, allowing for better load balancing under heavy traffic.
+4.  **Energy Optimization**: It accounts for the marginal routing energy (based on payload size) and dynamic compute energy.
+</DESCRIPTION>
+
+<CODE>
+```python
+# EVOLVE-BLOCK-START
+def evolve_task_routing(
+    num_nodes,
+    edges,
+    server_nodes,
+    task_sources,
+    task_info,
+    server_info,
+):
+    import heapq
+
+    # Build adjacency list
+    graph = [[] for _ in range(num_nodes)]
+    for u, v, bl, ec, cap in edges:
+        graph[u].append((v, bl, ec))
+        graph[v].append((u, bl, ec))
+
+    # Precompute Dijkstra paths from all server nodes once
+    # Weight balances latency and energy cost
+    server_paths = {}
+    for snode in server_nodes:
+        dists = [float('inf')] * num_nodes
+        parents = [-1] * num_nodes
+        p_lat = [0.0] * num_nodes
+        p_en = [0.0] * num_nodes
+        
+        dists[snode] = 0.0
+        pq = [(0.0, snode)]
+        
+        while pq:
+            d, u = heapq.heappop(pq)
+            if d > dists[u]:
+                continue
+            for v, bl, ec in graph[u]:
+                weight = bl + 0.25 * ec
+                if dists[u] + weight < dists[v]:
+                    dists[v] = dists[u] + weight
+                    parents[v] = u
+                    p_lat[v] = p_lat[u] + bl
+                    p_en[v] = p_en[u] + ec
+                    heapq.heappush(pq, (dists[v], v))
+        server_paths[snode] = (parents, p

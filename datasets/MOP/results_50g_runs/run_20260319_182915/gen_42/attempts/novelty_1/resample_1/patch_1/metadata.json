@@ -1,0 +1,14 @@
+{
+  "generation": 42,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "adaptive_control_points",
+  "patch_description": "This structural redesign introduces an adaptive control-point architecture. Instead of optimizing dense Y-coordinates directly or using fixed RBF centers, the path is parameterized by a set of movable control points `(cx, cy)`. Both the Y-coordinates and X-coordinates of these control points are optimized simultaneously using Adam. By allowing the X-coordinates to shift, the model dynamically reallocates representational capacity to regions that need it most (e.g., sharp bends near the school or base). Exact analytical gradients are backpropagated through linear interpolation to update the control points, and a Laplacian spring force ensures the X-coordinates maintain monotonic ordering and avoid collapsing.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:47:54.242476",
+  "llm_cost": 0.091274,
+  "llm_model": null
+}

@@ -1,0 +1,14 @@
+{
+  "generation": 50,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 3,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "analytical_adaptive_dual_projection",
+  "patch_description": "The `analytical_adaptive_dual_projection` algorithm utilizes a multi-objective geometric construction strategy. 1. **Signal Strength Priority (F3)**: Since signal loss was the primary bottleneck, the algorithm first establishes a broad Gaussian pull with an adaptive weighting factor `(1.02 / (taper + 0.01))` that ensures the path reaches proximity to the base station regardless of its relative position between the endpoints. 2. **Adaptive Clearance-Based Repulsion (F2)**: Following the recommendation from Gen 34, a \"two-stage\" approach is implemented where the path's height is first estimated at the school's x-coordinate (accounting for the base pull), and then a localized school-push amplitude is calculated using a narrow adaptive range `amp = min(52, max(32, a + b / (clearance + c)))`. 3. **Smooth Path Preservation (F1)**: Instead of iterative smoothing, which can introduce jagged artifacts or slow convergence, the path is constructed analytically using Gaussian basis functions and a sinusoid taper. This ensures C-infinity smoothness and exact adherence to start and end points while minimizing total distance.",
+  "error_msg": "Could not extract code from patch string",
+  "timestamp": "2026-03-19T16:21:43.297083",
+  "llm_cost": 0.0058070000000000005,
+  "llm_model": null
+}

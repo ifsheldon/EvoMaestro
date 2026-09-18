@@ -1,0 +1,14 @@
+{
+  "generation": 35,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "guided_dp_crossover",
+  "patch_description": "This version crosses the strong dynamic-programming path search with the smoother guide-curve heuristic.\n\nArgumentation:\n- The best prior score came from the DP/grid formulation, so that remains the core optimizer.\n- The weaker heuristic still had a useful idea: build a smooth guided curve that bends away from the school and toward the base. I use that guide to define a tighter, higher-resolution search band instead of a coarse global Y-grid.\n- The DP objective approximates the three goals directly: short segments for F1, inverse-distance penalty near the school for F2, and distance-to-base penalty for F3.\n- After DP, a light anchored smoothing pass reduces grid artifacts without drifting too far from the optimized path, then a small final base-attraction correction improves signal behavior.\n\nThis keeps the same input/output behavior, preserves the required markers, and should be more efficient and better aligned with the multi-objective score.",
+  "error_msg": null,
+  "timestamp": "2026-03-19T16:10:43.663483",
+  "llm_cost": 0.05339,
+  "llm_model": null
+}

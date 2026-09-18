@@ -1,0 +1,34 @@
+Count on `sB` also stays the same.
+So `counts[sA]` is constant.
+Which means `new_q_A = counts[sA] / (rateA - new_load_A)` perfectly calculates the final queue-length term.
+This is beautifully consistent.
+
+Wait, should candidates for `best_i_B` and `best_j_A` just use `c["proxy"]`?
+Yes, because `c["proxy"]` evaluates exactly `c.lat + W_E * c.en`. The proxy score in candidates matches the exact objective minus the queue part.
+Wait! `c["proxy"]` is `route_lat + W_E * task_en`. So it's exactly the path & energy contribution!
+Wait, but if I want the lowest *contribution* to `total_delta`, I should definitely pick the one with minimal `c["lat"] + W_E * c["en"]`.
+Yes, because the queue term is fixed for a given `sB`, `sA`, `new_load_A`, `new_load_B`.
+So selecting `best_i_B` exactly as `min(c["lat"] + W_E * c["en"])` is precisely optimal for that swap!
+The original code uses:
+```python
+        task_en = payload * route_en + (work / rate) * dyn_pwr + 0.005 * idle_pwr
+        proxy = route_lat + W_E * task_en
+```
+This implies the base `proxy` is identically `c["lat"] + W_E * c["en"]`.
+So finding `min c["proxy"]` among valid path choices guarantees the best swap.
+This entire logic is mathematically robust.
+
+What happens if `plan[src]` has an issue where no valid candidate exists initially?
+```python
+        if best_cand is None:
+            # Overcapacity fallback
+            best_cand = candidate_map[src][0]
+```
+If this happens, `loads[s] += work`, and it might push `loads[s] >= rate`.
+When Local Search runs, it removes the task, setting `loads[sA] -= work`.
+If the *residual* `loads[sA]` is still $\ge rateA$, `new_qA = 1e9` (penalized).
+Wait, if it was heavily penalized, `old_qA = 1e9` and `new_qA = 1e9`. Then `delta_A = 0`.
+This means we get NO reward for removing a task from an overcapacity server!
+We really WANT to reward removing a task from an overloaded server.
+If `rateA - loads[sA] - work <= 0`, it was violating capacity.
+When we remove the task, if the new load is strictly safe (`rateA - loads[sA] > 0`), we should have a HUGE negative delta (large cost

@@ -1,0 +1,74 @@
+<NAME>
+potential_field_gaussian_deformation
+</NAME>
+
+<DESCRIPTION>
+The proposed algorithm employs a **Potential Field with Gaussian Deformation** approach. Instead of a simple linear interpolation or a rigid geometric fix, this method treats the problem as a physical system where features in the environment exert "forces" on the path.
+
+1.  **Baseline Path:** It starts with a standard linear trajectory to maintain horizontal efficiency.
+2.  **Attraction (F3 - Signal Drop):** The base station (70, -30) acts as an attractor. A Gaussian kernel centered at the base station's X-coordinate pulls the path vertically towards the base station's Y-coordinate. This significantly reduces the signal drop penalty (F3) which was the primary cost driver.
+3.  **Repulsion (F2 - School Noise):** The school (40, 20) acts as a repulsor. A separate Gaussian kernel pushes the path vertically away from the school. This minimizes noise proximity (F2).
+4.  **Gaussian Continuity:** Using Gaussian functions ensures that path modifications are localized and infinitely differentiable (C-infinity continuous). This results in a smooth curve that adds very little total distance (F1) compared to sharp turns or piecewise linear corrections.
+
+By balancing these fields, the algorithm creates a path that "bends" intuitively towards the signal and away from the noise, optimizing all three objectives simultaneously through a sum of localized kernel influences.
+</DESCRIPTION>
+
+<CODE>
+```python
+import math
+
+# EVOLVE-BLOCK-START
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    【无人机连续空间多目标折线优化】
+    Uses a Potential Field algorithm with Gaussian kernels to minimize Distance (F1),
+    Noise (F2), and Signal Loss (F3).
+    """
+    import math
+
+    # Unpack coordinates
+    x_st, y_st = start
+    x_en, y_en = end
+    x_sc, y_sc = school
+    x_ba, y_ba = base
+    
+    # Path range information
+    dx = x_en - x_st
+    dy = y_en - y_st
+    
+    # Algorithm Parameters:
+    # sigma (s) controls the 'width' of the curve bend (influence radius)
+    # k (k) controls the 'strength' of the vertical shift
+    # We calibrate these to the journey's total length (dx)
+    s_attract = max(1.0, abs(dx) * 0.32)
+    s_repel = max(1.0, abs(dx) * 0.22)
+    
+    # Weighting factors for F3 (Attraction) and F2 (Repulsion)
+    k_attract = 0.88  # Pull 88% of the way towards base station Y height
+    k_repel_dist = 18.0  # Constant repulsion displacement units
+    
+    y_coords = []
+    
+    # Generate num_points intermediate Y coordinates
+    # X coordinates are uniformly distributed by the framework: xs + i/(n+1)*dx
+    for i in range(1, num_points + 1):
+        # Progress along the linear path (X-axis)
+        t = i / (num_points + 1)
+        curr_x = x_st + t * dx
+        curr_y_lin = y_st + t * dy
+        
+        # --- [F3: Signal Loss Optimization] ---
+        # Calculate Gaussian influence of the base station on current X
+        # Weight peaked (1.0) at curr_x == x_ba
+        dx_ba = curr_x - x_ba
+        w_att = math.exp(-(dx_ba**2) / (2 * s_attract**2))
+        # Determine the target displacement towards base station Y
+        y_shift_att = w_att * (y_ba - curr_y_lin) * k_attract
+        
+        # --- [F2: School Noise Optimization] ---
+        # Calculate Gaussian influence of the school on current X
+        dx_sc = curr_x - x_sc
+        w_rep = math.exp(-(dx_sc**2) / (2 * s_repel**2))
+        # Direction: push vertically away from the school's height
+        push_dir = -1.0 if y_sc > curr_y_lin else 1.0
+        # Determine the target displacement away from school Y

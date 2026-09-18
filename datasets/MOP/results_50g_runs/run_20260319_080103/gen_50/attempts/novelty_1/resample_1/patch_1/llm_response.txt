@@ -1,0 +1,56 @@
+```python
+<NAME>
+adaptive_dual_gaussian_projection
+</NAME>
+
+<DESCRIPTION>
+The `adaptive_dual_gaussian_projection` algorithm implements a two-stage geometric path deformation. 
+1. It first constructs a broad attraction field toward the base station using a Gaussian basis function to minimize signal loss (F3). 
+2. It then evaluates the resulting path's clearance from the school and applies a localized, adaptive Gaussian repulsion only if the path enters a critical noise threshold (F2). 
+3. To ensure the path remains smooth and adheres strictly to the start and end points (F1), a square-root sine tapering function is applied. This taper allows the path to deviate significantly in the middle while smoothly returning to the fixed endpoints. 
+This direct construction approach avoids the instability and computational cost of iterative gradient descent while specifically targeting the school noise and signal loss bottlenecks identified in the previous version.
+</DESCRIPTION>
+
+<CODE>
+import math
+
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    Optimizes a drone path by projecting a baseline through dual-Gaussian potential fields.
+    - Broad Gaussian pull toward the base station.
+    - Adaptive narrow Gaussian push away from the school.
+    - Square-root sine taper for endpoint smoothness.
+    """
+    if num_points <= 0:
+        return []
+
+    x0, y0 = start
+    x1, y1 = end
+    sx, sy = school
+    bx, by = base
+
+    # Calculate span and sampling points
+    x_span = abs(x1 - x0)
+    safe_span = max(1e-9, x_span)
+    
+    # Internal points only
+    xs = [x0 + (x1 - x0) * float(i) / (num_points + 1) for i in range(1, num_points + 1)]
+
+    def get_y_line(x):
+        t = (x - x0) / safe_span
+        return y0 * (1 - t) + y1 * t
+
+    # Hyperparameters for Gaussian fields
+    sig_base = 0.38 * safe_span
+    sig_school = 0.16 * safe_span
+    amp_base_factor = 0.85
+    clearance_target = 50.0
+
+    # Clamping limits
+    y_low = min(y0, y1, sy, by) - 120.0
+    y_high = max(y0, y1, sy, by) + 120.0
+
+    # Stage 1: Base Attraction Setup
+    y_line_at_bx = get_y_line(bx)
+    progress_bx = max(0.0, min(1.0, (bx - x0) / safe_span))
+    taper_bx = math.sin(math.pi * progress_bx)**0

@@ -1,0 +1,14 @@
+{
+  "generation": 24,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "server_diverse_multicriteria_routing",
+  "patch_description": "This rewrite changes the program from repeated per-source shortest-path searches into a server-centric, modular planning pipeline.\n\nStructural changes:\n- Precompute multi-criteria shortest-path trees from each server using several latency/energy tradeoff weights, instead of recomputing one path per source-server pair.\n- Build server-diverse candidate sets for each source first, keeping the best path variants per server before global pruning. This prevents one server from dominating the candidate pool and improves assignment quality.\n- Separate the logic into clear phases: graph building, path-tree generation, candidate extraction, greedy assignment, and local improvement.\n- Use a more faithful objective proxy combining transmission latency, routing energy, queueing delay, and compute energy with the task\u2019s actual payload and compute demand.\n- Add a lightweight local reassignment pass after greedy construction to reduce score further without expensive global search.\n\nThis organization improves maintainability and runtime efficiency on graphs with few servers and many task sources, while usually producing better latency-energy tradeoffs.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:42:41.806524",
+  "llm_cost": 0.058425000000000005,
+  "llm_model": null
+}

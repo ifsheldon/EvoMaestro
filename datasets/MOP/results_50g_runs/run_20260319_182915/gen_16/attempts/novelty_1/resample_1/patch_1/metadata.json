@@ -1,0 +1,14 @@
+{
+  "generation": 16,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 2,
+  "patch_name": "school_aware_bilaplacian_refine",
+  "patch_description": "Improve the path generator with two coordinated changes aimed at lowering combined score:\n\n1) **Proxy objective upgrade**: add a **bi-Laplacian bending penalty** (4th-order smoothness) so the optimizer can maintain globally smooth curvature while still creating a stronger local deflection away from school and toward base. At the same time, slightly rebalance weights to prioritize school avoidance more (current F2 is the main weakness) while keeping distance and signal terms active.\n\n2) **Deterministic post-CEM shape refinement**: replace simple averaging with a short, stable relaxation pass that combines:\n- Laplacian + bi-Laplacian smoothing (smooth yet controllable bend),\n- localized school repulsion around school x-position,\n- localized base attraction around base x-position,\n- mild tether to the current best path and baseline line.\nThis typically improves F2/F3 trade-off without introducing jaggedness or large F1 growth.\n\nThese edits are targeted, deterministic, and remain lightweight for runtime.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:33:59.647132",
+  "llm_cost": 0.04416825,
+  "llm_model": null
+}

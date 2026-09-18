@@ -1,0 +1,49 @@
+<NAME>
+adam_energy_path
+</NAME>
+
+<DESCRIPTION>
+Redesigned the program with a novel object-oriented architecture, decoupling the optimization logic into an explicit `AdamOptimizer` and a `PathEnergyModel`. The new formulation calculates physically-motivated, precise gradients (using true curve len/rubber-banding and smoothness stiffness). Instead of only a local force, the base attraction now exerts a global steady pull to guide the entire flight path into a sweeping curve toward the base station, avoiding sharp V-shape length penalties (F1) while substantially decreasing the base signal drop (F3).
+</DESCRIPTION>
+
+<CODE>
+```python
+# EVOLVE-BLOCK-START
+import math
+
+class AdamOptimizer:
+    """Standard Adam optimizer implemented from scratch for stable and fast convergence."""
+    def __init__(self, size, lr=0.5, beta1=0.9, beta2=0.99, eps=1e-8):
+        self.m = [0.0] * size
+        self.v = [0.0] * size
+        self.lr = lr
+        self.beta1 = beta1
+        self.beta2 = beta2
+        self.eps = eps
+        self.t = 0
+        
+    def step(self, params, grads):
+        self.t += 1
+        lr_t = self.lr * math.sqrt(1.0 - self.beta2**self.t) / (1.0 - self.beta1**self.t)
+        for i in range(len(params)):
+            self.m[i] = self.beta1 * self.m[i] + (1.0 - self.beta1) * grads[i]
+            # Clip gradients to prevent massive explosions
+            g = max(min(grads[i], 1000.0), -1000.0)
+            self.v[i] = self.beta2 * self.v[i] + (1.0 - self.beta2) * (g ** 2)
+            
+            # Apply update
+            params[i] -= lr_t * self.m[i] / (math.sqrt(self.v[i]) + self.eps)
+
+class PathEnergyModel:
+    """Computes exact gradients of the multi-objective drone path energy landscape."""
+    def __init__(self, start, end, school, base, num_points):
+        self.start = start
+        self.end = end
+        self.school = school
+        self.base = base
+        self.num_points = num_points
+        self.dx = (end[0] - start[0]) / (num_points + 1)
+        self.X = [start[0] + (i + 1) * self.dx for i in range(num_points)]
+        
+        # Hyperparameters for translating task constraints
+        self.w_len

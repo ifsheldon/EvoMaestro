@@ -1,0 +1,47 @@
+{
+  "name": "evomaestro-interface",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbo",
+    "start-frontend": "next dev --turbo",
+    "start-backend": "uv run --locked --all-packages python backend/main.py",
+    "build": "next build --turbo",
+    "start": "next start",
+    "lint": "biome check --write",
+    "format": "biome format --write"
+  },
+  "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
+    "@openai/codex-sdk": "^0.154.0",
+    "@tailwindcss/typography": "^0.5.20",
+    "clsx": "^2.1.1",
+    "d3": "^7.9.0",
+    "highlight.js": "^11.12.0",
+    "i18next": "26.4.2",
+    "jszip": "^3.10.2",
+    "lucide-react": "^1.46.0",
+    "marked": "^18.0.13",
+    "marked-highlight": "^2.2.4",
+    "next": "16.3.5",
+    "plotly.js": "^4.1.1",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-joyride": "^3.2.0",
+    "react-plotly.js": "^4.1.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.13",
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/d3": "^7.4.3",
+    "@types/node": "^26.5.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "lint-staged": "^17.5.1",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2"
+  },
+  "lint-staged": {
+    "*.{js,ts,jsx,tsx}": "biome format --write"
+  }
+}

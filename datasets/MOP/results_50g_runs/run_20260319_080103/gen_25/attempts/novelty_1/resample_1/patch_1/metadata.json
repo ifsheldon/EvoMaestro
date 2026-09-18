@@ -1,0 +1,14 @@
+{
+  "generation": 25,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "conditional_gaussian_multi_objective_bend",
+  "patch_description": "Implement dynamically computed localized Gaussian offsets based on precise `school` and `base` coordinates points. Introduce an intersection penalty that modulates base-attraction strength downwards directly proportionally to actual school displacement applied, ensuring minimum path length and accumulated signal dropping while preserving F2's tremendous evasion baseline.",
+  "error_msg": null,
+  "timestamp": "2026-03-19T16:10:20.435930",
+  "llm_cost": 0.05098,
+  "llm_model": null
+}

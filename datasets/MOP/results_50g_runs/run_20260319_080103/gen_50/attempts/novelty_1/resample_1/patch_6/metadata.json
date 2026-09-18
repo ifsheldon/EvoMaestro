@@ -1,0 +1,14 @@
+{
+  "generation": 50,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 6,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "analytical_dual_gaussian_projection",
+  "patch_description": "The `analytical_dual_gaussian_projection` algorithm replaces the iterative gradient descent with a direct, two-stage geometric construction. \n\n1. **Broad Signal Alignment (F3)**: It first calculates a Gaussian \"pull\" toward the base station. By determining the exact amplitude required to shift the linear baseline to the base station's y-coordinate at its x-location, it minimizes the signal drop penalty (F3) far more effectively than iterative methods.\n2. **Adaptive Clearance-Aware Repulsion (F2)**: Following the project recommendations, it performs a two-stage calculation. It estimates the path's position at the school's x-coordinate *after* applying the base pull, then calculates an adaptive repulsion amplitude based on the remaining clearance. This ensures that the school-push is only as strong as necessary (within the optimized range of 32.0 to 52.0), balancing noise reduction with distance efficiency.\n3. **Harmonic Endpoint Smoothing (F1)**: To ensure perfect adherence to endpoints and C-infinity smoothness, the Gaussian displacements are modulated by a sinusoidal taper function. This creates a natural, aerodynamic curve that minimizes the total flying distance (F1) while ensuring the path returns exactly to the start and end coordinates.",
+  "error_msg": "Could not extract code from patch string",
+  "timestamp": "2026-03-19T16:24:38.510700",
+  "llm_cost": 0.0079955,
+  "llm_model": null
+}

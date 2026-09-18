@@ -1,0 +1,330 @@
+--- a/original.py
++++ b/original.py
+@@ -1,240 +1,310 @@
+ # EVOLVE-BLOCK-START
+ import math
+ 
+ 
+ class PathContext:
+     """Immutable input bundle + precomputed evenly spaced X samples."""
+     __slots__ = ("start", "end", "school", "base", "num_points", "xs", "x_span")
+ 
+     def __init__(self, start, end, school, base, num_points):
+         self.start = start
+         self.end = end
+         self.school = school
+         self.base = base
+         self.num_points = int(num_points)
+         x0, _ = start
+         x1, _ = end
+         self.x_span = (x1 - x0) if x1 != x0 else 1.0
+ 
+         # 按 X 匀速布点（与题目要求一致）
+         self.xs = [
+             x0 + (i + 1) * (x1 - x0) / (self.num_points + 1)
+             for i in range(self.num_points)
+         ]
+ 
+ 
+ class CurveGenerator:
+     """
+     Smooth curve builder:
+     y(x) = linear + school_repulsion + base_attraction + mild_global_bend
+     """
+     @staticmethod
+     def linear_y(x, start, end):
+         x0, y0 = start
+         x1, y1 = end
+         if x1 == x0:
+             return (y0 + y1) * 0.5
+         t = (x - x0) / (x1 - x0)
+         return y0 + t * (y1 - y0)
+ 
+     @staticmethod
+     def gaussian(x, mu, sigma):
+         sigma = max(1e-3, sigma)
+         z = (x - mu) / sigma
+         return math.exp(-0.5 * z * z)
+ 
+     def build(self, ctx, params):
+         # params = (a_school, s_school, a_base, s_base, global_tilt, cubic_bend)
+         a_s, s_s, a_b, s_b, g_tilt, c_bend = params
+ 
+         sx, sy = ctx.school
+         bx, by = ctx.base
+         x0, _ = ctx.start
+         x1, _ = ctx.end
+ 
+         ys = []
+         for x in ctx.xs:
+             base_line = self.linear_y(x, ctx.start, ctx.end)
+ 
+             # School repulsion direction: move away in y from school
+             # sign determined from baseline relative position
+             dir_school = 1.0 if (base_line - sy) >= 0 else -1.0
+             repulse = dir_school * a_s * self.gaussian(x, sx, s_s)
+ 
+             # Base attraction direction: move toward base y
+             dir_base = 1.0 if (by - base_line) >= 0 else -1.0
+             attract = dir_base * a_b * self.gaussian(x, bx, s_b)
+ 
+             # Mild smooth global terms
+             if x1 != x0:
+                 t = (x - x0) / (x1 - x0)
+             else:
+                 t = 0.5
+             tilt = g_tilt * (t - 0.5)
+             cubic = c_bend * (2 * t - 1) ** 3
+ 
+             ys.append(float(base_line + repulse + attract + tilt + cubic))
+         return ys
+ 
+ 
+ class SurrogateEvaluator:
+     """
+     Fast proxy objective (lower is better):
+       F1 proxy: polyline length ratio
+       F2 proxy: school proximity penalty
+       F3 proxy: distance to base penalty
+     """
+     def __init__(self):
+         # Weights tuned for balancing all three objectives
+         self.w_dist = 1.0
+         self.w_school = 16.0
+         self.w_base = 0.23
+         self.w_smooth = 0.75
+ 
+-    @staticmethod
+-    def _polyline_points(ctx, ys):
+-        pts = [ctx.start]
+-        pts.extend((ctx.xs[i], ys[i]) for i in range(ctx.num_points))
+-        pts.append(ctx.end)
+-        return pts
+-
+     def score(self, ctx, ys):
+-        pts = self._polyline_points(ctx, ys)
+-
+         # F1 proxy: total length / straight-line length
+         total_len = 0.0
+-        for i in range(1, len(pts)):
+-            dx = pts[i][0] - pts[i - 1][0]
+-            dy = pts[i][1] - pts[i - 1][1]
++        
++        # start to ys[0]
++        dx = ctx.xs[0] - ctx.start[0]
++        dy = ys[0] - ctx.start[1]
++        total_len += math.hypot(dx, dy)
++        
++        # ys[i-1] to ys[i]
++        for i in range(1, ctx.num_points):
++            dx = ctx.xs[i] - ctx.xs[i - 1]
++            dy = ys[i] - ys[i - 1]
+             total_len += math.hypot(dx, dy)
++            
++        # ys[-1] to end
++        dx = ctx.end[0] - ctx.xs[-1]
++        dy = ctx.end[1] - ys[-1]
++        total_len += math.hypot(dx, dy)
+ 
+         straight = math.hypot(ctx.end[0] - ctx.start[0], ctx.end[1] - ctx.start[1]) + 1e-9
+         f1 = total_len / straight
+ 
+         # F2 proxy: school noise (high if too close)
+         sx, sy = ctx.school
+         f2 = 0.0
+-        for (x, y) in pts[1:-1]:
+-            d = math.hypot(x - sx, y - sy)
++        for i in range(ctx.num_points):
++            d = math.hypot(ctx.xs[i] - sx, ys[i] - sy)
+             f2 += 1.0 / (d + 3.0)  # soft inverse distance
+         f2 /= max(1, ctx.num_points)
+ 
+         # F3 proxy: signal drop approximated by distance to base
+         bx, by = ctx.base
+         f3 = 0.0
+-        for (x, y) in pts[1:-1]:
+-            f3 += math.hypot(x - bx, y - by)
++        for i in range(ctx.num_points):
++            f3 += math.hypot(ctx.xs[i] - bx, ys[i] - by)
+         f3 /= max(1, ctx.num_points)
+ 
+         # Smoothness penalty
+         smooth = 0.0
+-        for i in range(1, len(ys) - 1):
++        for i in range(1, ctx.num_points - 1):
+             smooth += abs(ys[i + 1] - 2 * ys[i] + ys[i - 1])
+         smooth /= max(1, ctx.num_points - 2)
+ 
+         return (
+             self.w_dist * f1
+             + self.w_school * f2
+             + self.w_base * f3
+             + self.w_smooth * smooth
+         )
+ 
+ 
+ class LocalSearchOptimizer:
+     """Deterministic multi-start local search in a compact parameter space."""
+     def __init__(self, generator, evaluator):
+         self.generator = generator
+         self.evaluator = evaluator
+ 
+     @staticmethod
+     def _clamp_params(p):
+         a_s, s_s, a_b, s_b, g_t, c_b = p
+         return (
+             max(0.0, min(80.0, a_s)),
+             max(4.0, min(80.0, s_s)),
+             max(0.0, min(80.0, a_b)),
+             max(4.0, min(90.0, s_b)),
+             max(-30.0, min(30.0, g_t)),
+             max(-40.0, min(40.0, c_b)),
+         )
+ 
+     def _refine(self, ctx, p0):
+         best_p = self._clamp_params(p0)
+         best_y = self.generator.build(ctx, best_p)
+         best_s = self.evaluator.score(ctx, best_y)
+ 
+         # Coordinate-wise step descent
+         steps = [8.0, 6.0, 8.0, 6.0, 4.0, 4.0]
+         for _ in range(24):
+             improved = False
+             for k in range(6):
+                 for direction in (-1.0, 1.0):
+                     cand = list(best_p)
+                     cand[k] += direction * steps[k]
+                     cand = self._clamp_params(tuple(cand))
+ 
+                     ys = self.generator.build(ctx, cand)
+                     sc = self.evaluator.score(ctx, ys)
+                     if sc < best_s:
+                         best_s, best_p, best_y = sc, cand, ys
+                         improved = True
+             if not improved:
+                 steps = [s * 0.6 for s in steps]
+                 if max(steps) < 0.25:
+                     break
+         return best_p, best_y, best_s
+ 
+     def optimize(self, ctx):
+         # Seeds intentionally bias "away from school" and "toward base"
+         seeds = [
+             (18.0, 16.0, 24.0, 18.0, -4.0, -6.0),
+             (24.0, 12.0, 30.0, 16.0, -6.0, -8.0),
+             (12.0, 22.0, 20.0, 22.0, -2.0, -4.0),
+             (30.0, 14.0, 26.0, 20.0, -8.0, -10.0),
+         ]
+ 
+         best = None
+         for p0 in seeds:
+             cand = self._refine(ctx, p0)
+             if best is None or cand[2] < best[2]:
+                 best = cand
+ 
+         return best[1]
+ 
+ 
++class YSFineTuner:
++    """Directly fine-tunes the y-coordinates using single, pair, and triple block moves."""
++    def __init__(self, evaluator):
++        self.evaluator = evaluator
++
++    def refine(self, ctx, ys):
++        best_ys = list(ys)
++        best_score = self.evaluator.score(ctx, best_ys)
++        
++        step_sizes = [2.0, 1.0, 0.5, 0.25]
++        
++        for step in step_sizes:
++            improved = True
++            iters = 0
++            while improved and iters < 15:
++                improved = False
++                iters += 1
++                
++                # 1. Single point moves
++                for i in range(ctx.num_points):
++                    for d in (-step, step):
++                        best_ys[i] += d
++                        sc = self.evaluator.score(ctx, best_ys)
++                        if sc < best_score:
++                            best_score = sc
++                            improved = True
++                        else:
++                            best_ys[i] -= d
++                            
++                # 2. Pair moves
++                for i in range(ctx.num_points - 1):
++                    for d1 in (-step, step):
++                        for d2 in (-step, step):
++                            best_ys[i] += d1
++                            best_ys[i+1] += d2
++                            sc = self.evaluator.score(ctx, best_ys)
++                            if sc < best_score:
++                                best_score = sc
++                                improved = True
++                            else:
++                                best_ys[i] -= d1
++                                best_ys[i+1] -= d2
++                                
++                # 3. Triple moves
++                for i in range(ctx.num_points - 2):
++                    for d1 in (-step, step):
++                        for d2 in (-step, 0, step):
++                            for d3 in (-step, step):
++                                best_ys[i] += d1
++                                best_ys[i+1] += d2
++                                best_ys[i+2] += d3
++                                sc = self.evaluator.score(ctx, best_ys)
++                                if sc < best_score:
++                                    best_score = sc
++                                    improved = True
++                                else:
++                                    best_ys[i] -= d1
++                                    best_ys[i+1] -= d2
++                                    best_ys[i+2] -= d3
++                                    
++        return best_ys
++
++
+ def evolve_drone_path(start, end, school, base, num_points):
+     """
+     返回长度为 num_points 的 y 坐标列表（对应按 X 匀速的中间点）。
+     """
+     if num_points <= 0:
+         return []
+ 
+     ctx = PathContext(start, end, school, base, num_points)
+     generator = CurveGenerator()
+     evaluator = SurrogateEvaluator()
+     optimizer = LocalSearchOptimizer(generator, evaluator)
+ 
+     ys = optimizer.optimize(ctx)
++    
++    finetuner = YSFineTuner(evaluator)
++    ys = finetuner.refine(ctx, ys)
++    
+     return [float(y) for y in ys]
+ # EVOLVE-BLOCK-END
+ 
+ import sys
+ import os
+ 
+ # 将当前目录加入系统路径以便导入同级文件
+ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+ from drone_evaluation import DroneGrader
+ 
+ def run_experiment(**kwargs):
+     """供 Shinka 触发的单次实验方法"""
+     grader = DroneGrader()
+     
+     # 捕获异常防止大模型写出死循环炸毁测评机
+     try:
+         avg_f1, avg_f2, avg_f3, final_score = grader.grade_silent(evolve_drone_path, timeout=12)
+     except Exception as e:
+         import traceback
+         traceback.print_exc()
+         avg_f1, avg_f2, avg_f3, final_score = float('inf'), float('inf'), float('inf'), float('inf')
+         
+     return avg_f1, avg_f2, avg_f3, final_score

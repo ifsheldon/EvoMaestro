@@ -1,0 +1,14 @@
+{
+  "generation": 50,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 10,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "analytical_two_stage_gaussian_optimization",
+  "patch_description": "This algorithm replaces iterative gradient descent with a direct two-stage analytical construction based on the winning logic of Gen 34. \n\nKey insights:\n1. **Prioritized Signal Drop Mitigation (F3)**: Since the signal drop is the largest contributor to the score, the algorithm first computes a wide Gaussian \"pull\" toward the base station. It determines the amplitude required to align the baseline with the base station's Y-coordinate at its specific X-location, modulated by a sinus taper for smooth endpoint resolution.\n2. **Adaptive School Clearance (F2)**: Following the recommendation, the path's height is estimated at the school's X-location *after* the base pull is applied. This \"clearance\" is used to calculate a precise school repulsion magnitude using the non-linear adaptive formula: `amp = min(52, max(32, 31 + 115 / (clearance + 5.5)))`. This ensures the noise penalty is minimized without unnecessarily increasing the path length.\n3. **Aerodynamic Smoothness (F1)**: By using Gaussian kernels and a harmonic taper ($sin(\\pi t)$), the path maintains $C^\\infty$ smoothness and strictly adheres to the start/end points. This minimizes the total flying distance while providing a natural curve that bends away from the school and towards the base station as requested.",
+  "error_msg": "Could not extract code from patch string",
+  "timestamp": "2026-03-19T16:26:39.816639",
+  "llm_cost": 0.01081,
+  "llm_model": null
+}

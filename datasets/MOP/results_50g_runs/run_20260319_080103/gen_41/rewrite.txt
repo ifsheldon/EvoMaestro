@@ -1,0 +1,118 @@
+# EVOLVE-BLOCK-START
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    Optimizes drone path using a Gaussian potential field and a multi-sample grid search.
+    Minimizes Distance (F1), School Proximity (F2), and Signal Loss (F3).
+    """
+    import math
+
+    x_start, y_start = start
+    x_end, y_end = end
+    sx, sy = school
+    bx, by = base
+
+    if num_points <= 0:
+        return []
+
+    dx_total = x_end - x_start
+    dy_total = y_end - y_start
+    path_width = abs(dx_total)
+    direct_dist = math.hypot(dx_total, dy_total)
+    
+    if path_width < 1e-12:
+        step = dy_total / (num_points + 1)
+        return [float(y_start + (i + 1) * step) for i in range(num_points)]
+
+    # Normalized sampling points
+    xs = [x_start + (i + 1) * dx_total / (num_points + 1) for i in range(num_points)]
+    
+    def get_candidate(s_amp, s_sig, b_pull, b_sig):
+        # Determine direction to move away from school
+        # line_y at school x
+        t_s = (sx - x_start) / dx_total
+        y_line_s = y_start + t_s * dy_total
+        away_sign = -1.0 if y_line_s <= sy else 1.0
+        
+        ys = []
+        for i in range(num_points):
+            t = (i + 1) / (num_points + 1)
+            x = xs[i]
+            y_base_line = y_start + t * dy_total
+            
+            # School repulsion
+            dist_x_s = x - sx
+            repel = away_sign * s_amp * math.exp(-(dist_x_s**2) / (2.0 * s_sig**2))
+            
+            # Base attraction
+            dist_x_b = x - bx
+            attract_weight = math.exp(-(dist_x_b**2) / (2.0 * b_sig**2))
+            attract = b_pull * (by - y_base_line) * attract_weight
+            
+            ys.append(y_base_line + repel + attract)
+        
+        # Smooth pass
+        for _ in range(2):
+            new_ys = []
+            for j in range(num_points):
+                prev_y = y_start if j == 0 else ys[j-1]
+                next_y = y_end if j == num_points - 1 else ys[j+1]
+                new_ys.append(0.65 * ys[j] + 0.35 * 0.5 * (prev_y + next_y))
+            ys = new_ys
+        return ys
+
+    def evaluate(ys):
+        pts = [(x_start, y_start)] + list(zip(xs, ys)) + [(x_end, y_end)]
+        f1_len = 0.0
+        f2_noise = 0.0
+        f3_signal = 0.0
+        
+        for i in range(len(pts) - 1):
+            p1, p2 = pts[i], pts[i+1]
+            seg_dx = p2[0] - p1[0]
+            seg_dy = p2[1] - p1[1]
+            f1_len += math.hypot(seg_dx, seg_dy)
+            
+            # 3-point quadrature for F2 and F3
+            for k in [0.25, 0.5, 0.75]:
+                qx = p1[0] + k * seg_dx
+                qy = p1[1] + k * seg_dy
+                
+                # F2 proxy (inverse square distance common for noise)
+                d_school = math.hypot(qx - sx, qy - sy)
+                f2_noise += 1.0 / (d_school + 1.5)
+                
+                # F3 proxy (linear distance common for signal drop)
+                d_base = math.hypot(qx - bx, qy - by)
+                f3_signal += d_base
+        
+        # Weights roughly tuned to the problem metrics (F1 is prioritized, then F2/F3)
+        score = 18.0 * (f1_len / max(1.0, direct_dist)) + 12.0 * (f2_noise / num_points) + 0.12 * (f3_signal / num_points)
+        return score
+
+    # Parameter search grid
+    best_score = float('inf')
+    best_ys = []
+    
+    # Try combinations of school repulsion and base attraction strengths
+    s_amps = [12.0, 20.0, 28.0]
+    b_pulls = [0.45, 0.65, 0.85]
+    s_sigmas = [0.12 * path_width, 0.18 * path_width]
+    b_sigmas = [0.20 * path_width, 0.28 * path_width]
+    
+    # Include baseline
+    baseline_ys = [y_start + (i + 1) / (num_points + 1) * dy_total for i in range(num_points)]
+    best_ys = baseline_ys
+    best_score = evaluate(baseline_ys)
+
+    for sa in s_amps:
+        for bp in b_pulls:
+            for ss in s_sigmas:
+                for bs in b_sigmas:
+                    candidate = get_candidate(sa, max(5.0, ss), bp, max(8.0, bs))
+                    score = evaluate(candidate)
+                    if score < best_score:
+                        best_score = score
+                        best_ys = candidate
+
+    return [float(y) for y in best_ys]
+# EVOLVE-BLOCK-END

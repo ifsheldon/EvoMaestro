@@ -1,0 +1,177 @@
+@import "tailwindcss";
+@import "highlight.js/styles/github.css";
+@plugin "@tailwindcss/typography";
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body,
+#__next {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+  background-color: #f8f9fa;
+}
+
+@layer base {
+  .code-panel {
+    background-color: #f8f8f8;
+    overflow: auto;
+  }
+
+  .code-container {
+    display: flex;
+    min-width: fit-content;
+  }
+
+  .line-numbers-gutter {
+    font-family: "Consolas", "Monaco", "Andale Mono", monospace;
+    font-size: 10px;
+    line-height: 1.3;
+    text-align: right;
+    padding: 10px;
+    color: rgba(0, 0, 0, 0.3);
+    background: #f5f5f5;
+    border-right: 1px solid #ddd;
+    user-select: none;
+  }
+
+  .line-numbers-gutter span {
+    display: block;
+  }
+
+  .code-panel pre {
+    margin: 0;
+    flex: 1;
+    background-color: #ffffff;
+    border: 1px solid #eaeaea;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    border-radius: 0;
+    padding: 10px;
+    overflow: auto;
+  }
+
+  pre code.hljs {
+    font-size: 10px;
+    line-height: 1.3;
+  }
+}
+
+.code-panel pre code.hljs .hljs-keyword {
+  color: #0000ff;
+  font-weight: bold;
+}
+
+.code-panel pre code.hljs .hljs-string {
+  color: #a31515;
+}
+
+.code-panel pre code.hljs .hljs-built_in,
+.code-panel pre code.hljs .hljs-function {
+  color: #795e26;
+}
+
+.code-panel pre code.hljs .hljs-comment {
+  color: #008000;
+}
+
+.code-panel pre code.hljs .hljs-number {
+  color: #098658;
+}
+
+.node-tooltip {
+  position: absolute;
+  text-align: left;
+  padding: 8px;
+  font-size: 12px;
+  background: rgba(0, 0, 0, 0.85);
+  color: #fff;
+  border-radius: 4px;
+  pointer-events: none;
+  line-height: 1.5;
+  z-index: 1000;
+  max-width: 280px;
+  word-wrap: break-word;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
+}
+
+.meta-content-body h1,
+.meta-content-body h2,
+.meta-content-body h3,
+.meta-content-body h4,
+.meta-content-body h5,
+.meta-content-body h6 {
+  color: #333;
+  margin-top: 20px;
+  margin-bottom: 10px;
+}
+
+.meta-content-body p {
+  margin: 10px 0;
+  line-height: 1.6;
+}
+
+.meta-content-body ul,
+.meta-content-body ol {
+  margin: 10px 0 10px 20px;
+  padding-left: 20px;
+}
+
+.meta-content-body code {
+  background-color: #f4f4f4;
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-family: "Courier New", monospace;
+  font-size: 13px;
+}
+
+.meta-content-body pre {
+  background-color: #f8f8f8;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 12px;
+  overflow-x: auto;
+  margin: 15px 0;
+}
+
+@keyframes review-priority-flash {
+  0% {
+    box-shadow: 0 0 0 0 rgba(251, 146, 60, 0.5);
+  }
+  30% {
+    box-shadow: 0 0 0 6px rgba(251, 146, 60, 0.3);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(251, 146, 60, 0);
+  }
+}
+
+.review-priority-highlight-flash {
+  animation: review-priority-flash 1.2s ease-out;
+  border-radius: 8px;
+}
+
+/* Monaco editor code-note decorations */
+/* Always visible: orange left border */
+.code-note-bar {
+  border-left: 3px solid #f59e0b !important;
+}
+
+/* Only shown when a note is clicked/active: transparent orange background */
+.code-note-active {
+  background-color: rgba(251, 191, 36, 0.15) !important;
+}
+
+/* Glyph icon on the first line of each annotated range */
+.code-note-glyph {
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23f59e0b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z'/%3E%3C/svg%3E")
+    center center no-repeat !important;
+  cursor: pointer;
+}

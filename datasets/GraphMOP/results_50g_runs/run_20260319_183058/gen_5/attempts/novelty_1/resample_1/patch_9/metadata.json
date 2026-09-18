@@ -1,0 +1,14 @@
+{
+  "generation": 5,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 9,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "marginal_cost_routing",
+  "patch_description": "The previous approach used an inefficient O(T*S) path-finding strategy and a fixed heuristic that didn't scale with task-specific payloads or non-linear queueing costs. \n\nMy new algorithm, `marginal_cost_routing`, introduces the following improvements:\n1. **O(S) Complexity**: It precomputes shortest paths using Dijkstra beginning from each server node once, rather than from each task source. This drastically reduces runtime for large source counts.\n2. **Marginal Incremental Costing**: The server selection score now calculates the marginal latency increase using the M/M/1 queuing model ($1 / (\\mu - \\lambda)$), which accounts for the exponential delay increase as server capacity is reached.\n3. **Payload-Aware Path Heuristic**: Edge weights in Dijkstra are now balanced using the average payload size ($latency + \\alpha \\cdot energy\\_cost \\cdot payload_{avg}$), ensuring paths are optimized for both time and energy.\n4. **Dynamic Energy Scoring**: It weights the energy increase (routing energy + dynamic compute energy) against latency to ensure a multi-objective balance, leading to lower overall scores.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:43:21.970445",
+  "llm_cost": 0.008165,
+  "llm_model": null
+}

@@ -1,0 +1,5 @@
+{
+    "correct": false,
+    "error": "Validation failed: Evaluation crashed, timed out, or produced an invalid routing plan.",
+    "error_type": "runtime_error"
+}

@@ -1,0 +1,5 @@
+{
+    "correct": false,
+    "error": "'return' outside function (main.py, line 2)",
+    "error_type": "runtime_error"
+}

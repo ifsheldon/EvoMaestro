@@ -1,0 +1,14 @@
+{
+  "generation": 17,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 2,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "sinusoidal_sequential_field",
+  "patch_description": "This algorithm implements a sequential potential field with sinusoidal windowing. It draws inspiration from Gaussian kernels but introduces two key improvements: \n1. **Sequential Transformation**: Instead of adding independent offsets, it first calculates a 'repulsion' from the school and then applies a 'pull' toward the base station relative to the already-deflected path. This ensures the base station attraction (targeting F3) is more effective as it acts on the modified trajectory.\n2. **Sinusoidal Windowing**: A `sin(pi * t)` window is applied to all displacements. This guarantees that the path starts and ends exactly at the boundary coordinates with zero derivative shift, ensuring maximum smoothness and minimizing the distance penalty (F1). \nThe base station pull strength is significantly increased (k=0.95) and localized around the base's X-coordinate to drastically reduce signal loss (F3) while the school repulsion maintains safety (F2).",
+  "error_msg": null,
+  "timestamp": "2026-03-19T16:05:51.401001",
+  "llm_cost": 0.0042895,
+  "llm_model": null
+}

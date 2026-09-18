@@ -1,0 +1,14 @@
+{
+  "generation": 4,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 4,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "marginal_cost_routing",
+  "patch_description": "This improvement optimizes task routing by:\n1.  **Pre-calculating shortest paths**: Instead of running Dijkstra for every task-server pair ($T \\times S$), we run it once per server ($S$). This significantly improves efficiency.\n2.  **Using a combined cost metric**: Dijkstra now uses a weight that balances transmission latency and routing energy.\n3.  **Theoretically-grounded server selection**: Servers are selected based on the marginal increase in total system latency (transmission + M/M/1 queueing delay) and total system energy (routing + compute energy).\n4.  **Improved task prioritization**: Tasks are processed in descending order of their total computational load to ensure that the most demanding tasks are assigned to the most efficient servers.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:36:13.760483",
+  "llm_cost": 0.006914,
+  "llm_model": null
+}

@@ -1,0 +1,14 @@
+{
+  "generation": 15,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 4,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "marginal_regret_routing",
+  "patch_description": "The marginal_regret_routing algorithm improves upon previous iterations by focusing on two key insights: \n1. **Efficient Path Discovery**: Instead of running Dijkstra from every task source, it runs Dijkstra from the few server nodes to all other nodes. This significantly reduces computation time while allowing us to explore multiple routing trade-offs (using different lambda weights for latency vs. energy).\n2. **Marginal Cost & Regret-Based Assignment**: It uses a sophisticated task-ordering policy. Tasks are prioritized based on their \"regret\"\u2014the difference in cost between their best and second-best server options\u2014combined with their total compute demand. During assignment, it calculates the *marginal* impact of adding a task to a server, which includes the increased queueing delay for all other tasks already assigned to that server.\n3. **Iterative Refinement**: A local search phase follows the initial assignment, where tasks are moved to alternative paths or servers if the move reduces the global system cost (Latency + Energy).",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:41:04.804115",
+  "llm_cost": 0.009764499999999999,
+  "llm_model": null
+}

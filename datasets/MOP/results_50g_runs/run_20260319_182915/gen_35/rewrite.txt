@@ -1,0 +1,303 @@
+# EVOLVE-BLOCK-START
+import math
+
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    Multi-start smooth parametric search + adaptive local refinement.
+
+    Objectives handled simultaneously:
+    - F1: shorter path
+    - F2: farther from school
+    - F3: closer to base
+
+    Returns:
+        list[float]: y-coordinates of interior waypoints
+    """
+    x0, y0 = start
+    x1, y1 = end
+    sx, sy = school
+    bx, by = base
+
+    if num_points <= 0:
+        return []
+
+    # Interior x coordinates
+    dx = (x1 - x0) / (num_points + 1)
+    xs = [x0 + (i + 1) * dx for i in range(num_points)]
+
+    # Base straight line
+    def line_y(x):
+        t = 0.0 if x1 == x0 else (x - x0) / (x1 - x0)
+        return y0 * (1.0 - t) + y1 * t
+
+    base_line = [line_y(x) for x in xs]
+
+    # Direction choices: repel away from school, attract toward base
+    school_line_y = line_y(sx)
+    base_line_y = line_y(bx)
+    school_dir = -1.0 if sy >= school_line_y else 1.0
+    base_dir = 1.0 if by >= base_line_y else -1.0
+
+    # Extra requested shape bias: bend away from (40,20) and toward (70,-30)
+    bend_away_x, bend_away_y = 40.0, 20.0
+    bend_to_x, bend_to_y = 70.0, -30.0
+    bend_away_dir = -1.0 if bend_away_y >= line_y(bend_away_x) else 1.0
+    bend_to_dir = 1.0 if bend_to_y >= line_y(bend_to_x) else -1.0
+
+    # Smooth bump helper
+    def gauss(x, c, s):
+        return math.exp(-((x - c) * (x - c)) / max(1e-6, s))
+
+    # Structured seed builder
+    def build_seed(scale_s, scale_b, left_bias, right_bias, bridge_amp, away_amp, to_amp):
+        ys = []
+        mid_sb = 0.5 * (sx + bx)
+        spread_s = 140.0 + 2.0 * abs(x1 - x0)
+        spread_b = 180.0 + 2.5 * abs(x1 - x0)
+        spread_bridge = 220.0 + 2.0 * abs(x1 - x0)
+
+        for x, yl in zip(xs, base_line):
+            # School repulsion with asymmetry around school x
+            asym = left_bias if x <= sx else right_bias
+            g_school = gauss(x, sx, spread_s)
+            g_base = gauss(x, bx, spread_b)
+            g_bridge = gauss(x, mid_sb, spread_bridge)
+            g_away = gauss(x, bend_away_x, 170.0)
+            g_to = gauss(x, bend_to_x, 170.0)
+
+            y = yl
+            y += school_dir * scale_s * asym * g_school
+            y += base_dir * scale_b * g_base
+            y += school_dir * bridge_amp * g_bridge
+            y += bend_away_dir * away_amp * g_away
+            y += bend_to_dir * to_amp * g_to
+            ys.append(y)
+
+        # One smoothing pass to avoid over-sharp seeds
+        if num_points >= 3:
+            sm = ys[:]
+            for i in range(1, num_points - 1):
+                sm[i] = 0.2 * ys[i - 1] + 0.6 * ys[i] + 0.2 * ys[i + 1]
+            ys = sm
+        return ys
+
+    # Proxy score for candidate selection
+    def score_path(ys, curvature_weight=0.10, w1=1.0, w2=1.0, w3=1.0):
+        pts_x = [x0] + xs + [x1]
+        pts_y = [y0] + ys + [y1]
+
+        f1 = 0.0
+        for i in range(num_points + 1):
+            f1 += math.hypot(pts_x[i + 1] - pts_x[i], pts_y[i + 1] - pts_y[i])
+
+        f2 = 0.0
+        f3 = 0.0
+        for i in range(num_points):
+            x = xs[i]
+            y = ys[i]
+            ds2 = (x - sx) * (x - sx) + (y - sy) * (y - sy)
+            db2 = (x - bx) * (x - bx) + (y - by) * (y - by)
+            f2 += 1.0 / (ds2 + 1e-6)
+            f3 += math.sqrt(db2 + 1e-6)
+
+        curv = 0.0
+        if num_points >= 3:
+            prev = y0
+            for i in range(num_points):
+                cur = ys[i]
+                nxt = ys[i + 1] if i + 1 < num_points else y1
+                lap = nxt - 2.0 * cur + prev
+                curv += lap * lap
+                prev = cur
+
+        return (
+            w1 * math.log(f1 + 1e-9) +
+            w2 * math.log(f2 + 1e-12) +
+            w3 * math.log(f3 + 1e-9) +
+            curvature_weight * curv / max(1, num_points)
+        )
+
+    # Adaptive local refinement
+    def refine(init_ys, steps=240):
+        ys = init_ys[:]
+        m = [0.0] * num_points
+        v = [0.0] * num_points
+
+        beta1 = 0.88
+        beta2 = 0.995
+        eps = 1e-8
+        lr_start = 0.34
+        lr_end = 0.07
+
+        for step in range(1, steps + 1):
+            p = step / float(steps)
+
+            # Scheduled weights:
+            # early: stronger school avoidance
+            # middle/late: stronger base attraction and smoothness
+            if p < 0.35:
+                w1, w2, w3 = 1.0, 1.75, 0.80
+                curv_w = 0.12
+            elif p < 0.75:
+                w1, w2, w3 = 1.0, 1.25, 1.10
+                curv_w = 0.18
+            else:
+                w1, w2, w3 = 1.0, 1.05, 1.22
+                curv_w = 0.24
+
+            lr = lr_start * (1.0 - p) + lr_end * p
+
+            pts_x = [x0] + xs + [x1]
+            pts_y = [y0] + ys + [y1]
+
+            f1 = 0.0
+            for i in range(num_points + 1):
+                f1 += math.hypot(pts_x[i + 1] - pts_x[i], pts_y[i + 1] - pts_y[i])
+
+            f2 = 0.0
+            f3 = 0.0
+            for i in range(num_points):
+                x = xs[i]
+                y = ys[i]
+                ds2 = (x - sx) * (x - sx) + (y - sy) * (y - sy)
+                db2 = (x - bx) * (x - bx) + (y - by) * (y - by)
+                f2 += 1.0 / (ds2 + 1e-6)
+                f3 += math.sqrt(db2 + 1e-6)
+
+            grads = [0.0] * num_points
+            for i in range(num_points):
+                x = xs[i]
+                y = ys[i]
+
+                py = pts_y[i]
+                ny = pts_y[i + 2]
+                px = pts_x[i]
+                nx = pts_x[i + 2]
+
+                d1 = math.hypot(x - px, y - py)
+                d2 = math.hypot(nx - x, ny - y)
+
+                # F1 gradient
+                grad_f1 = 0.0
+                if d1 > 1e-8:
+                    grad_f1 += (y - py) / d1
+                if d2 > 1e-8:
+                    grad_f1 -= (ny - y) / d2
+
+                # F2 gradient
+                ds2 = (x - sx) * (x - sx) + (y - sy) * (y - sy)
+                grad_f2 = -2.0 * (y - sy) / ((ds2 + 1e-6) ** 2)
+
+                # F3 gradient
+                db2 = (x - bx) * (x - bx) + (y - by) * (y - by)
+                grad_f3 = (y - by) / math.sqrt(db2 + 1e-6)
+
+                # Curvature/smoothness penalty
+                prevy = y0 if i == 0 else ys[i - 1]
+                nexty = y1 if i == num_points - 1 else ys[i + 1]
+                grad_curv = 2.0 * (2.0 * y - prevy - nexty)
+
+                # Mild geometric priors to preserve desired bend
+                prior = 0.0
+                prior += 0.010 * (y - (base_line[i] + school_dir * 7.0 * gauss(x, sx, 180.0)))
+                prior += 0.008 * (y - (base_line[i] + base_dir * 10.0 * gauss(x, bx, 220.0)))
+
+                grads[i] = (
+                    w1 * (grad_f1 / max(f1, 1e-9)) +
+                    w2 * (grad_f2 / max(f2, 1e-12)) +
+                    w3 * (grad_f3 / max(f3, 1e-9)) +
+                    curv_w * grad_curv +
+                    prior
+                )
+
+            # Adam update
+            clip = 2.5
+            for i in range(num_points):
+                g = grads[i]
+                if g > clip:
+                    g = clip
+                elif g < -clip:
+                    g = -clip
+
+                m[i] = beta1 * m[i] + (1.0 - beta1) * g
+                v[i] = beta2 * v[i] + (1.0 - beta2) * (g * g)
+
+                m_hat = m[i] / (1.0 - beta1 ** step)
+                v_hat = v[i] / (1.0 - beta2 ** step)
+                ys[i] -= lr * m_hat / (math.sqrt(v_hat) + eps)
+
+            # Light smoothing every few steps
+            if num_points >= 3 and step % 12 == 0:
+                old = ys[:]
+                for i in range(1, num_points - 1):
+                    ys[i] = 0.15 * old[i - 1] + 0.70 * old[i] + 0.15 * old[i + 1]
+
+        return ys
+
+    # Broadened multi-start seed library with asymmetric options
+    seed_params = [
+        (10.0,  8.0, 1.0, 1.0,  3.0, 4.0, 5.0),
+        (14.0, 10.0, 1.0, 1.0,  4.0, 5.0, 6.0),
+        (18.0, 12.0, 1.0, 1.0,  5.0, 6.0, 7.0),
+        (12.0, 14.0, 1.0, 1.0,  2.0, 4.0, 8.0),
+        (16.0, 16.0, 1.0, 1.0,  4.0, 5.0, 9.0),
+        # left-heavy school repulsion
+        (16.0, 12.0, 1.30, 0.85, 4.5, 5.0, 7.0),
+        (20.0, 12.0, 1.45, 0.80, 5.0, 6.0, 7.0),
+        # right-heavy school repulsion
+        (16.0, 12.0, 0.85, 1.30, 4.5, 5.0, 7.0),
+        (20.0, 12.0, 0.80, 1.45, 5.0, 6.0, 7.0),
+        # bridge-focused
+        (15.0, 13.0, 1.0, 1.0,  7.0, 5.0, 7.0),
+        (17.0, 15.0, 1.0, 1.0,  8.5, 6.0, 8.0),
+        # more aggressive base pull
+        (14.0, 18.0, 1.0, 1.0,  3.0, 4.0, 10.0),
+        (18.0, 20.0, 1.0, 1.0,  4.0, 5.0, 11.0),
+        # explicit bend pattern away from (40,20) and toward (70,-30)
+        (13.0, 15.0, 1.10, 0.95, 3.5, 9.0, 12.0),
+        (16.0, 17.0, 1.20, 0.90, 4.5, 10.0, 13.0),
+    ]
+
+    # Build and rank seeds
+    candidates = []
+    for params in seed_params:
+        ys0 = build_seed(*params)
+        s = score_path(ys0, curvature_weight=0.08, w1=1.0, w2=1.15, w3=0.95)
+        candidates.append((s, ys0))
+
+    candidates.sort(key=lambda t: t[0])
+
+    # Refine only top candidates for speed and robustness
+    top_k = min(5, len(candidates))
+    best_score = float("inf")
+    best_ys = candidates[0][1]
+
+    for idx in range(top_k):
+        init_ys = candidates[idx][1]
+        refined = refine(init_ys, steps=250 if idx < 2 else 180)
+
+        # Final scoring weights slightly favor smooth balanced solutions
+        s = score_path(refined, curvature_weight=0.14, w1=1.0, w2=1.10, w3=1.05)
+        if s < best_score:
+            best_score = s
+            best_ys = refined
+
+    return [float(y) for y in best_ys]
+# EVOLVE-BLOCK-END
+
+import sys
+import os
+
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from drone_evaluation import DroneGrader
+
+def run_experiment(**kwargs):
+    """Single experiment entry point"""
+    grader = DroneGrader()
+    try:
+        avg_f1, avg_f2, avg_f3, final_score = grader.grade_silent(evolve_drone_path, timeout=12)
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        avg_f1, avg_f2, avg_f3, final_score = float('inf'), float('inf'), float('inf'), float('inf')
+    return avg_f1, avg_f2, avg_f3, final_score

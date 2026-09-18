@@ -1,0 +1,16 @@
+{
+    "combined_score": -6.049247611375349,
+    "public": {
+        "Latency": 2.574540606771487,
+        "Energy": 2.0257747866262656,
+        "Graph MOP Score": 6.049247611375349,
+        "Note": "Lower latency, lower energy, and lower final score are better."
+    },
+    "private": {},
+    "text_feedback": "Your routing function yielded score=6.049248, latency=2.574541, energy=2.025775. Try to lower both latency and energy simultaneously while keeping valid paths.",
+    "execution_time_mean": 0.0007419988978654146,
+    "execution_time_std": 0.0,
+    "num_valid_runs": 1,
+    "num_invalid_runs": 0,
+    "all_validation_errors": []
+}

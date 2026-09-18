@@ -1,0 +1,14 @@
+{
+  "generation": 33,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 2,
+  "patch_name": "add_second_recovery_pass",
+  "patch_description": "Adds a secondary, narrower attraction pass towards the base station to further reduce signal drop (F3) without significantly impacting the flying distance (F1) or school noise (F2). This localized cleanup pass nudges points close to the base station closer to its Y-coordinate, acting sequentially after the parallel potential fields are combined.",
+  "error_msg": null,
+  "timestamp": "2026-03-19T16:09:47.582863",
+  "llm_cost": 0.011168,
+  "llm_model": null
+}

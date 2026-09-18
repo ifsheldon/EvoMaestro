@@ -1,0 +1,14 @@
+{
+  "generation": 33,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "multiscale_basis_adam_path",
+  "patch_description": "Key parameters in the current approach were mainly point-wise gradient weights (`w_school`, `w_base`, `w_dist`, `w_smooth`), fixed smoothing passes, and direct per-point updates. That gave good F1/F2, but F3 remained relatively high because local updates can struggle to create broad, base-oriented bends.\n\nThis rewrite switches to a **low-dimensional multi-scale basis optimizer**:\n\n- **Representation change**: path is parameterized by Gaussian basis amplitudes (12 narrow + 5 wide = 17 controls), instead of directly updating every point.\n- **Initialization**: analytic target offset combines:\n  - repulsion from school,\n  - attraction toward base,\n  - late-route downward/upward drift toward base.\n- **Objective proxy (joint multi-objective)**:\n  - `J1`: arc length (F1 proxy),\n  - `J2`: inverse-distance school risk (F2 proxy),\n  - `J3`: weighted distance-to-base (F3 proxy, stronger in mid/late route),\n  - `Js`: curvature regularization for smoothness.\n- **Optimizer**: Adam with gradient clipping, decaying learning rate, and periodic mild smoothing.  \n  This improves stability and allows broader trajectory shaping for better F3 while preserving low F1/F2.\n\nImportant parameter/config updates:\n- Control dim: from per-point to `K=17` basis amplitudes.\n- Iterations: adaptive (`200` for shorter paths, `240` for longer).\n- Learning rate: `0.085 -> 0.028` decay schedule.\n- Proxy weights (time-varying):\n  - `w1` (distance): `1.00 -> 1.18`\n  - `w2` (school): `1.55 -> 1.20`\n  - `w3` (base): `1.45 -> 1.95` (increasing emphasis to reduce F3)\n  - `ws` (smoothness): `0.34 -> 0.62`\n- Basis scales:\n  - narrow sigma `0.09 * span_x`\n  - wide sigma `0.28 * span_x`",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:40:39.718294",
+  "llm_cost": 0.06698649999999999,
+  "llm_model": null
+}

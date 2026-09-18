@@ -1,0 +1,14 @@
+{
+  "generation": 22,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 3,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "regret_marginal_refiner",
+  "patch_description": "The algorithm uses a regret-aware initial assignment followed by iterative local refinement. \nKey insights:\n1. **Diverse Path Candidates**: For every server-source pair, we precalculate three candidate paths using different Dijkstra weights: latency-prioritized, energy-prioritized, and balanced.\n2. **Marginal System Cost**: Instead of simple individual task metrics, the evaluation uses the marginal cost of adding a task to the system, which includes the derivative of total queueing delay ($d/d\\lambda [\\lambda/(\\mu-\\lambda)] = \\mu/(\\mu-\\lambda)^2$) and incremental server energy.\n3. **Regret-Aware Ordering**: Tasks are sorted and assigned based on \"regret\"\u2014the cost difference between the best and second-best server/path options. This ensures that sources with limited connectivity or high sensitivity are prioritized.\n4. **Local Refinement**: A final pass re-evaluates each source's assignment given the global load distribution, allowing tasks to migrate to better nodes as server congestions change.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:44:41.998824",
+  "llm_cost": 0.012225,
+  "llm_model": null
+}

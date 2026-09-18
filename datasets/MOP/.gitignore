@@ -1,0 +1,7 @@
+# Keep the recorded runs; new experiments and temporary outputs stay local.
+/results_50g/
+/results_50g_runs/*
+!/results_50g_runs/run_20260319_080103/
+!/results_50g_runs/run_20260319_182915/
+/results_50g_runs_bk/
+/tmp_eval/

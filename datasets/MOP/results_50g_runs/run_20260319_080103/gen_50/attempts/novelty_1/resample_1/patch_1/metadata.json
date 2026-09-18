@@ -1,0 +1,14 @@
+{
+  "generation": 50,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "adaptive_dual_gaussian_projection",
+  "patch_description": "The `adaptive_dual_gaussian_projection` algorithm implements a two-stage geometric path deformation. \n1. It first constructs a broad attraction field toward the base station using a Gaussian basis function to minimize signal loss (F3). \n2. It then evaluates the resulting path's clearance from the school and applies a localized, adaptive Gaussian repulsion only if the path enters a critical noise threshold (F2). \n3. To ensure the path remains smooth and adheres strictly to the start and end points (F1), a square-root sine tapering function is applied. This taper allows the path to deviate significantly in the middle while smoothly returning to the fixed endpoints. \nThis direct construction approach avoids the instability and computational cost of iterative gradient descent while specifically targeting the school noise and signal loss bottlenecks identified in the previous version.",
+  "error_msg": "Could not extract code from patch string",
+  "timestamp": "2026-03-19T16:18:49.006012",
+  "llm_cost": 0.0031385,
+  "llm_model": null
+}

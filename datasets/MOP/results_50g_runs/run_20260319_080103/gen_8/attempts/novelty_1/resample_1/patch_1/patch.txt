@@ -1,0 +1,276 @@
+--- a/original.py
++++ b/original.py
+@@ -1,79 +1,225 @@
+ # EVOLVE-BLOCK-START
+ def evolve_drone_path(start, end, school, base, num_points):
+     """
+-    多目标启发式：
+-    - 以直线为基底（控制距离）
+-    - 远离 school（降低噪声风险）
+-    - 靠近 base（降低信号损失）
+-    - 局部平滑，得到连续自然弯曲路径
++    Smooth multi-objective drone path planner.
++
++    Input:
++        start, end, school, base: (x, y)
++        num_points: number of interior samples with uniformly spaced X
++
++    Output:
++        list[float]: Y coordinates for the interior X samples
+     """
+     import math
+ 
+-    x_start, y_start = start
+-    x_end, y_end = end
+-    sx, sy = school
+-    bx, by = base
+-
+     if num_points <= 0:
+         return []
+ 
+-    # 均匀 x 采样
+-    dx = (x_end - x_start) / (num_points + 1)
+-
+-    # 势场参数（偏保守，优先保持较短路径）
+-    school_sigma = max(8.0, abs(x_end - x_start) * 0.16)
+-    base_sigma = max(10.0, abs(x_end - x_start) * 0.22)
+-    school_amp = 18.0
+-    base_pull = 0.55
+-
+-    y_coords = []
+-    for i in range(num_points):
+-        t = (i + 1) / (num_points + 1)
+-        x = x_start + (i + 1) * dx
+-
+-        # 直线基底
+-        y_line = y_start + t * (y_end - y_start)
+-
+-        # 学校斥力：沿 y 方向远离 school
+-        away_sign = -1.0 if y_line <= sy else 1.0
+-        repel = away_sign * school_amp * math.exp(-((x - sx) ** 2) / (2.0 * school_sigma ** 2))
+-
+-        # 基站引力：在 base 的 x 邻域，向 base.y 靠拢
+-        attract_w = math.exp(-((x - bx) ** 2) / (2.0 * base_sigma ** 2))
+-        attract = base_pull * attract_w * (by - y_line)
+-
+-        y_coords.append(float(y_line + repel + attract))
+-
+-    # 轻量平滑，减少折线抖动与额外路程
+-    smooth_alpha = 0.35
+-    for _ in range(2):
+-        smoothed = []
+-        for i in range(num_points):
+-            left = y_start if i == 0 else y_coords[i - 1]
+-            right = y_end if i == num_points - 1 else y_coords[i + 1]
+-            smoothed.append((1.0 - smooth_alpha) * y_coords[i] + smooth_alpha * 0.5 * (left + right))
+-        y_coords = smoothed
+-
+-    return [float(y) for y in y_coords]
++    # ---------- context ----------
++    def build_context(start, end, school, base, num_points):
++        x0, y0 = start
++        x1, y1 = end
++        sx, sy = school
++        bx, by = base
++        span = max(1e-6, x1 - x0)
++        xs = [x0 + (i + 1) * span / (num_points + 1) for i in range(num_points)]
++
++        def line_y(x):
++            t = (x - x0) / span
++            return y0 + t * (y1 - y0)
++
++        school_t = max(0.05, min(0.95, (sx - x0) / span))
++        base_t = max(0.05, min(0.95, (bx - x0) / span))
++
++        return {
++            "x0": x0, "y0": y0,
++            "x1": x1, "y1": y1,
++            "sx": sx, "sy": sy,
++            "bx": bx, "by": by,
++            "span": span,
++            "xs": xs,
++            "line_y": line_y,
++            "school_t": school_t,
++            "base_t": base_t,
++        }
++
++    ctx = build_context(start, end, school, base, num_points)
++
++    # ---------- interpolation ----------
++    def catmull_rom_y(anchor_pts, x):
++        """
++        Evaluate y(x) on a monotonic-in-x Catmull-Rom chain.
++        Anchor points are [(x, y), ...] with increasing x.
++        """
++        n = len(anchor_pts)
++        if x <= anchor_pts[0][0]:
++            return float(anchor_pts[0][1])
++        if x >= anchor_pts[-1][0]:
++            return float(anchor_pts[-1][1])
++
++        seg = 0
++        for i in range(n - 1):
++            if anchor_pts[i][0] <= x <= anchor_pts[i + 1][0]:
++                seg = i
++                break
++
++        p1 = anchor_pts[seg]
++        p2 = anchor_pts[seg + 1]
++        p0 = anchor_pts[seg - 1] if seg - 1 >= 0 else p1
++        p3 = anchor_pts[seg + 2] if seg + 2 < n else p2
++
++        x1, y1 = p1
++        x2, y2 = p2
++        denom = max(1e-9, x2 - x1)
++        u = (x - x1) / denom
++
++        m1 = 0.5 * (y2 - p0[1])
++        m2 = 0.5 * (p3[1] - y1)
++
++        u2 = u * u
++        u3 = u2 * u
++        h00 = 2 * u3 - 3 * u2 + 1
++        h10 = u3 - 2 * u2 + u
++        h01 = -2 * u3 + 3 * u2
++        h11 = u3 - u2
++
++        return float(h00 * y1 + h10 * m1 + h01 * y2 + h11 * m2)
++
++    # ---------- candidate construction ----------
++    def build_anchor_path(ctx, dodge_depth, base_gain, recover_gain):
++        x0, y0 = ctx["x0"], ctx["y0"]
++        x1, y1 = ctx["x1"], ctx["y1"]
++        sx, sy = ctx["sx"], ctx["sy"]
++        bx, by = ctx["bx"], ctx["by"]
++        span = ctx["span"]
++        line_y = ctx["line_y"]
++
++        # Anchor X locations
++        x_pre = x0 + span * max(0.12, min(0.32, ctx["school_t"] - 0.10))
++        x_school = x0 + span * ctx["school_t"]
++        x_mid = x0 + span * min(0.82, max(ctx["school_t"] + 0.10, 0.5 * (ctx["school_t"] + ctx["base_t"])))
++        x_base = x0 + span * ctx["base_t"]
++        x_post = x0 + span * min(0.94, max(ctx["base_t"] + 0.10, 0.82))
++
++        # Desired behavior:
++        # - bend below school strongly
++        # - move toward base.y around base
++        # - recover smoothly toward end
++        y_pre = line_y(x_pre) - 0.20 * dodge_depth
++        y_school = min(line_y(x_school) - dodge_depth, sy - 8.0)
++        y_mid = 0.65 * y_school + 0.35 * (by + 0.25 * (line_y(x_mid) - by))
++        y_base = line_y(x_base) + base_gain * (by - line_y(x_base))
++        y_post = line_y(x_post) + recover_gain * (y_base - line_y(x_post))
++
++        anchors = [
++            (x0, y0),
++            (x_pre, y_pre),
++            (x_school, y_school),
++            (x_mid, y_mid),
++            (x_base, y_base),
++            (x_post, y_post),
++            (x1, y1),
++        ]
++
++        ys = [catmull_rom_y(anchors, x) for x in ctx["xs"]]
++        return fair_path(ys, y0, y1)
++
++    # ---------- smoothing ----------
++    def fair_path(ys, y_start, y_end, rounds=3, alpha=0.42):
++        cur = list(ys)
++        n = len(cur)
++        for _ in range(rounds):
++            nxt = []
++            for i in range(n):
++                left = y_start if i == 0 else cur[i - 1]
++                right = y_end if i == n - 1 else cur[i + 1]
++                center = cur[i]
++                nxt.append((1.0 - alpha) * center + alpha * 0.5 * (left + right))
++            cur = nxt
++        return [float(v) for v in cur]
++
++    # ---------- surrogate objective ----------
++    def surrogate_score(ctx, ys):
++        x0, y0 = ctx["x0"], ctx["y0"]
++        x1, y1 = ctx["x1"], ctx["y1"]
++        sx, sy = ctx["sx"], ctx["sy"]
++        bx, by = ctx["bx"], ctx["by"]
++        xs = ctx["xs"]
++
++        # F1 proxy: polyline length ratio
++        px = [x0] + xs + [x1]
++        py = [y0] + ys + [y1]
++        total = 0.0
++        for i in range(len(px) - 1):
++            dx = px[i + 1] - px[i]
++            dy = py[i + 1] - py[i]
++            total += math.hypot(dx, dy)
++        straight = math.hypot(x1 - x0, y1 - y0) + 1e-9
++        f1 = total / straight
++
++        # F2 proxy: strong penalty near school
++        school_pen = 0.0
++        for x, y in zip(xs, ys):
++            d = math.hypot(x - sx, y - sy)
++            school_pen += math.exp(-d / 10.0)
++        f2 = school_pen / max(1, len(xs))
++
++        # F3 proxy: prefer proximity to base, especially near base x-region
++        base_pen = 0.0
++        for x, y in zip(xs, ys):
++            d = math.hypot(x - bx, y - by)
++            wx = 0.35 + 0.65 * math.exp(-((x - bx) ** 2) / (2.0 * (0.18 * ctx["span"]) ** 2 + 1e-9))
++            base_pen += wx * d
++        f3 = base_pen / max(1, len(xs))
++
++        # Weighted to emphasize the empirical bottleneck: signal loss,
++        # while keeping school avoidance and path length under control.
++        return 5.0 * f1 + 18.0 * f2 + 1.0 * f3
++
++    # ---------- lightweight search ----------
++    line_school_y = ctx["line_y"](ctx["sx"])
++    base_line_y = ctx["line_y"](ctx["bx"])
++
++    # Default bend amount informed by geometry
++    raw_dodge = max(10.0, (ctx["sy"] - line_school_y) + 12.0)
++    raw_base_gap = abs(ctx["by"] - base_line_y)
++
++    dodge_grid = [raw_dodge * 0.85, raw_dodge, raw_dodge * 1.2]
++    base_grid = [0.72, 0.84, 0.92]
++    recover_grid = [0.35, 0.50, 0.65]
++
++    best_ys = None
++    best_score = float("inf")
++
++    for dodge_depth in dodge_grid:
++        for base_gain in base_grid:
++            for recover_gain in recover_grid:
++                ys = build_anchor_path(ctx, dodge_depth, base_gain, recover_gain)
++                score = surrogate_score(ctx, ys)
++                if score < best_score:
++                    best_score = score
++                    best_ys = ys
++
++    return best_ys
+ # EVOLVE-BLOCK-END
+ 
+ import sys
+ import os
+ 
+ # 将当前目录加入系统路径以便导入同级文件
+ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+ from drone_evaluation import DroneGrader
+ 
+ def run_experiment(**kwargs):
+     """供 Shinka 触发的单次实验方法"""
+     grader = DroneGrader()
+ 
+     # 捕获异常防止大模型写出死循环炸毁测评机
+     try:
+         avg_f1, avg_f2, avg_f3, final_score = grader.grade_silent(evolve_drone_path, timeout=12)
+     except Exception as e:
+         import traceback
+         traceback.print_exc()
+         avg_f1, avg_f2, avg_f3, final_score = float('inf'), float('inf'), float('inf'), float('inf')
+ 
+     return avg_f1, avg_f2, avg_f3, final_score

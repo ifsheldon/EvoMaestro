@@ -1,0 +1,14 @@
+{
+  "generation": 44,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "sampled_surrogate_path_search",
+  "patch_description": "The current approach is a single-pass rule with these key parameters: school Gaussian width `350.0`, base Gaussian width `450.0`, school amplitude in roughly `[15, 50]`, and a fixed order of \u201crepel from school, then attract to base.\u201d Its main weakness is that it optimizes only pointwise shape, while evaluation is likely influenced by whole-segment behavior. That can miss brief close passes near the school or weak signal regions between sampled vertices.\n\nThe new algorithm changes both the parameterization and the optimization strategy:\n\n- **Richer path model**:\n  - a localized **school repulsion bump**\n  - a broader **base attraction bump**\n  - a smooth **late downward tail** that helps the route keep moving toward the base region\n- **Different parameter ranges/configurations**:\n  - school amplitude candidates: `22, 30, 38, 46`\n  - school width candidates: `220, 320, 460`\n  - base width candidates: `700, 1100, 1500`\n  - tail strength candidates: `0.18, 0.32, 0.46`\n  - smoothing passes: `1 or 2`\n- **Internal surrogate optimization**:\n  - evaluates each candidate with **3 interior samples per segment** (`1/4, 1/2, 3/4`)\n  - uses a **slightly max-biased school penalty** so short close approaches are punished more strongly\n  - combines approximate distance, school proximity, and base distance into a surrogate score, then picks the best candidate\n- **Adaptive directionality**:\n  - determines the repulsion direction from the baseline relative to the school, so it works for general inputs while still naturally bending away from `(40, 20)` and toward `(70, -30)`.\n\nThis keeps the same function signature and output format, but uses a more search-driven, segment-aware configuration that should better reduce the combined score.",
+  "error_msg": null,
+  "timestamp": "2026-03-19T16:13:04.489596",
+  "llm_cost": 0.044230000000000005,
+  "llm_model": null
+}

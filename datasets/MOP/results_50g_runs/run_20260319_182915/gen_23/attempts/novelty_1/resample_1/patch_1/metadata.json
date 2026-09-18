@@ -1,0 +1,14 @@
+{
+  "generation": 23,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "analytical_warping_synthesis",
+  "patch_description": "This approach replaces the iterative physics-based optimization with a closed-form analytical synthesis. It models the drone path as a linear baseline modulated by a sine-envelope and Gaussian-based \"warps.\" \n\nKey advantages:\n1. **Perfect Smoothness**: By using infinitely differentiable Gaussian and Sine functions, we minimize the distance penalty (F1) far more effectively than iterative methods which can introduce local wiggles.\n2. **Targeted Influence**: It calculates the exact \"pull\" needed to reach the base station (F3) and the \"push\" required to maintain a safety margin from the school (F2), rather than relying on gradient descent to find these values.\n3. **Efficiency and Stability**: The O(N) single-pass calculation is computationally trivial and avoids the numerical instability or convergence issues of gradient-based simulations.\n4. **Super-Gaussian Dwell**: It uses a Super-Gaussian for the base station attraction to create a flatter \"well,\" allowing the drone to stay in the high-signal zone for a longer duration, significantly reducing F3.",
+  "error_msg": "Could not extract code from patch string",
+  "timestamp": "2026-03-20T02:36:51.124088",
+  "llm_cost": 0.004201,
+  "llm_model": null
+}

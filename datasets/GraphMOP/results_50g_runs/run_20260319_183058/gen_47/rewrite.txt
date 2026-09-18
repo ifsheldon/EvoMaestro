@@ -1,0 +1,364 @@
+# EVOLVE-BLOCK-START
+def evolve_task_routing(
+    num_nodes,
+    edges,
+    server_nodes,
+    task_sources,
+    task_info,
+    server_info,
+):
+    """
+    Graph multi-objective routing problem.
+
+    Returns:
+    {
+        source_node: {
+            "server": server_node,
+            "path": [source_node, ..., server_node],
+        },
+        ...
+    }
+    """
+    import heapq
+
+    # Build undirected graph
+    graph = [[] for _ in range(num_nodes)]
+    for u, v, base_latency, energy_cost, capacity in edges:
+        graph[u].append((v, float(base_latency), float(energy_cost), float(capacity)))
+        graph[v].append((u, float(base_latency), float(energy_cost), float(capacity)))
+
+    # Theoretically aligned routing weights based on average payload
+    if task_sources:
+        avg_payload = sum(task_info[src][1] for src in task_sources) / len(task_sources)
+    else:
+        avg_payload = 1.0
+
+    w_lat = 1.0
+    w_eng = 0.33 * avg_payload
+    w_cap = avg_payload
+
+    def edge_weight(lat, eng, cap):
+        return w_lat * lat + w_eng * eng + w_cap * (1.0 / max(1e-9, cap))
+
+    # Dijkstra from each server (few servers, many sources)
+    trees = {}
+    for root in server_nodes:
+        dist = [float("inf")] * num_nodes
+        parent = [-1] * num_nodes
+        pedge = [None] * num_nodes
+        dist[root] = 0.0
+        heap = [(0.0, root)]
+
+        while heap:
+            cd, u = heapq.heappop(heap)
+            if cd != dist[u]:
+                continue
+            for v, lat, eng, cap in graph[u]:
+                nd = cd + edge_weight(lat, eng, cap)
+                if nd < dist[v]:
+                    dist[v] = nd
+                    parent[v] = u
+                    pedge[v] = (lat, eng, cap)
+                    heapq.heappush(heap, (nd, v))
+
+        trees[root] = (parent, pedge, dist)
+
+    # Reconstruct path source -> server using server-rooted tree
+    path_cache = {}
+
+    def get_path_data(source, server):
+        key = (source, server)
+        if key in path_cache:
+            return path_cache[key]
+
+        if source == server:
+            out = ([source], 0.0, 0.0, 0.0)
+            path_cache[key] = out
+            return out
+
+        parent, pedge, _dist = trees[server]
+        if parent[source] == -1:
+            path_cache[key] = None
+            return None
+
+        cur = source
+        path = [cur]
+        lat_sum = 0.0
+        eng_sum = 0.0
+        invcap_sum = 0.0
+
+        seen = 0
+        while cur != server:
+            p = parent[cur]
+            if p == -1:
+                path_cache[key] = None
+                return None
+            e = pedge[cur]
+            if e is None:
+                path_cache[key] = None
+                return None
+            lat, eng, cap = e
+            lat_sum += lat
+            eng_sum += eng
+            invcap_sum += 1.0 / max(1e-9, cap)
+            cur = p
+            path.append(cur)
+            seen += 1
+            if seen > num_nodes:
+                path_cache[key] = None
+                return None
+
+        out = (path, lat_sum, eng_sum, invcap_sum)
+        path_cache[key] = out
+        return out
+
+    load = {s: 0.0 for s in server_nodes}
+    plan = {}
+
+    # Higher-demand sources first
+    ranked_sources = sorted(
+        task_sources,
+        key=lambda src: (
+            task_info[src][0] * task_info[src][2],
+            task_info[src][1],
+        ),
+        reverse=True,
+    )
+
+    def server_energy_cost(server, lval):
+        mu, idle_p, dyn_p = server_info[server]
+        if lval <= 0.0:
+            return 0.0
+        util = min(0.999999, lval / max(1e-9, mu))
+        return 0.02 * idle_p + dyn_p * (util ** 1.7)
+
+    def server_queue_penalty(server, lval):
+        mu, _idle_p, _dyn_p = server_info[server]
+        util = min(0.999999, lval / max(1e-9, mu))
+        return (util * util) / max(1e-6, 1.0 - util)
+
+    def source_cost_if_assigned(src, server, new_server_load):
+        arr, payload, comp = task_info[src]
+        pdata = get_path_data(src, server)
+        if pdata is None:
+            return float("inf")
+        _path, lat_sum, eng_sum, invcap_sum = pdata
+
+        mu, _idle_p, _dyn_p = server_info[server]
+        if new_server_load >= 0.985 * mu:
+            return float("inf")
+
+        net_latency = lat_sum + payload * invcap_sum
+        queue_delay = comp / max(1e-9, (mu - new_server_load))
+        route_energy = payload * eng_sum
+
+        return net_latency + queue_delay + 0.33 * route_energy
+
+    # Initial greedy assignment
+    for src in ranked_sources:
+        arr, payload, comp = task_info[src]
+        task_load = arr * comp
+
+        best = None
+        best_server = None
+
+        for s in server_nodes:
+            pdata = get_path_data(src, s)
+            if pdata is None:
+                continue
+
+            old_l = load[s]
+            new_l = old_l + task_load
+            base = source_cost_if_assigned(src, s, new_l)
+            if base == float("inf"):
+                continue
+
+            delta_energy = server_energy_cost(s, new_l) - server_energy_cost(s, old_l)
+            util_pen = 0.28 * server_queue_penalty(s, new_l)
+
+            score = base + 0.22 * delta_energy + util_pen
+            if (best is None) or (score < best):
+                best = score
+                best_server = s
+
+        if best_server is None:
+            fallback = None
+            fb_server = None
+            for s in server_nodes:
+                pdata = get_path_data(src, s)
+                if pdata is None:
+                    continue
+                _path, lat_sum, eng_sum, invcap_sum = pdata
+                score = lat_sum + 0.4 * eng_sum + 0.4 * invcap_sum
+                if (fallback is None) or (score < fallback):
+                    fallback = score
+                    fb_server = s
+            if fb_server is None:
+                fb_server = server_nodes[0]
+                plan[src] = {"server": fb_server, "path": [src] if src == fb_server else []}
+                continue
+            best_server = fb_server
+
+        pdata = get_path_data(src, best_server)
+        path = pdata[0] if pdata is not None else ([src] if src == best_server else [])
+        plan[src] = {"server": best_server, "path": path}
+        load[best_server] += task_load
+
+    # Local improvement passes
+    for _pass in range(5):
+        moved_any = False
+        
+        server_utils = [(s, load[s] / server_info[s][0]) for s in server_nodes]
+        server_utils.sort(key=lambda x: x[1], reverse=True)
+        server_util_map = {s: u for s, u in server_utils}
+        
+        # Prioritize sources on hotter servers
+        current_sources = sorted(ranked_sources, key=lambda src: server_util_map[plan[src]["server"]], reverse=True)
+        
+        for src in current_sources:
+            cur_server = plan[src]["server"]
+            arr, payload, comp = task_info[src]
+            tload = arr * comp
+
+            old_cur_load = load[cur_server]
+            cur_source_cost = source_cost_if_assigned(src, cur_server, old_cur_load)
+            if cur_source_cost == float("inf"):
+                continue
+
+            best_delta = 0.0
+            best_new_server = cur_server
+
+            for s in server_nodes:
+                if s == cur_server:
+                    continue
+
+                pdata = get_path_data(src, s)
+                if pdata is None:
+                    continue
+
+                new_s_load_old = load[s]
+                new_s_load_new = new_s_load_old + tload
+                new_cur_load = old_cur_load - tload
+
+                mu_s = server_info[s][0]
+                if new_s_load_new >= 0.985 * mu_s:
+                    continue
+
+                cand_source_cost = source_cost_if_assigned(src, s, new_s_load_new)
+                if cand_source_cost == float("inf"):
+                    continue
+
+                new_energy_total = (
+                    server_energy_cost(cur_server, new_cur_load)
+                    + 0.20 * server_queue_penalty(cur_server, new_cur_load)
+                    + server_energy_cost(s, new_s_load_new)
+                    + 0.20 * server_queue_penalty(s, new_s_load_new)
+                )
+                old_energy_two = (
+                    server_energy_cost(cur_server, old_cur_load)
+                    + 0.20 * server_queue_penalty(cur_server, old_cur_load)
+                    + server_energy_cost(s, new_s_load_old)
+                    + 0.20 * server_queue_penalty(s, new_s_load_old)
+                )
+
+                delta = (cand_source_cost - cur_source_cost) + 0.22 * (new_energy_total - old_energy_two)
+                if delta < best_delta - 1e-6:
+                    best_delta = delta
+                    best_new_server = s
+
+            if best_new_server != cur_server:
+                load[cur_server] -= tload
+                load[best_new_server] += tload
+                new_path_data = get_path_data(src, best_new_server)
+                new_path = new_path_data[0] if new_path_data is not None else ([src] if src == best_new_server else [])
+                plan[src] = {"server": best_new_server, "path": new_path}
+                
+                server_util_map[cur_server] = load[cur_server] / server_info[cur_server][0]
+                server_util_map[best_new_server] = load[best_new_server] / server_info[best_new_server][0]
+                moved_any = True
+                
+        if not moved_any:
+            # Bounded pairwise swap phase for the hottest servers
+            server_utils = [(s, load[s] / server_info[s][0]) for s in server_nodes]
+            server_utils.sort(key=lambda x: x[1], reverse=True)
+            hottest_servers = [s for s, u in server_utils[:2] if u > 0.6]
+            
+            swap_moved = False
+            for s1 in hottest_servers:
+                sources_s1 = [src for src in ranked_sources if plan[src]["server"] == s1]
+                for src1 in sources_s1[:30]:  # Limit to top 30 sources to keep it fast
+                    arr1, pay1, comp1 = task_info[src1]
+                    tload1 = arr1 * comp1
+                    
+                    best_swap_delta = 0.0
+                    best_swap_src2 = None
+                    best_swap_s2 = None
+                    
+                    for s2 in server_nodes:
+                        if s1 == s2: continue
+                        sources_s2 = [src for src in ranked_sources if plan[src]["server"] == s2]
+                        for src2 in sources_s2[:30]:
+                            arr2, pay2, comp2 = task_info[src2]
+                            tload2 = arr2 * comp2
+                            
+                            new_l1 = load[s1] - tload1 + tload2
+                            new_l2 = load[s2] - tload2 + tload1
+                            
+                            if new_l1 >= 0.985 * server_info[s1][0]: continue
+                            if new_l2 >= 0.985 * server_info[s2][0]: continue
+                            
+                            pdata1_new = get_path_data(src1, s2)
+                            pdata2_new = get_path_data(src2, s1)
+                            if pdata1_new is None or pdata2_new is None: continue
+                            
+                            cost1_old = source_cost_if_assigned(src1, s1, load[s1])
+                            cost2_old = source_cost_if_assigned(src2, s2, load[s2])
+                            
+                            cost1_new = source_cost_if_assigned(src1, s2, new_l2)
+                            cost2_new = source_cost_if_assigned(src2, s1, new_l1)
+                            
+                            if cost1_new == float('inf') or cost2_new == float('inf'): continue
+                            
+                            old_energy = (
+                                server_energy_cost(s1, load[s1]) + 0.20 * server_queue_penalty(s1, load[s1]) +
+                                server_energy_cost(s2, load[s2]) + 0.20 * server_queue_penalty(s2, load[s2])
+                            )
+                            new_energy = (
+                                server_energy_cost(s1, new_l1) + 0.20 * server_queue_penalty(s1, new_l1) +
+                                server_energy_cost(s2, new_l2) + 0.20 * server_queue_penalty(s2, new_l2)
+                            )
+                            
+                            delta = (cost1_new + cost2_new - cost1_old - cost2_old) + 0.22 * (new_energy - old_energy)
+                            
+                            if delta < best_swap_delta - 1e-6:
+                                best_swap_delta = delta
+                                best_swap_src2 = src2
+                                best_swap_s2 = s2
+                                
+                    if best_swap_src2 is not None:
+                        s2 = best_swap_s2
+                        src2 = best_swap_src2
+                        
+                        arr2, pay2, comp2 = task_info[src2]
+                        tload2 = arr2 * comp2
+                        
+                        load[s1] = load[s1] - tload1 + tload2
+                        load[s2] = load[s2] - tload2 + tload1
+                        
+                        plan[src1]["server"] = s2
+                        plan[src1]["path"] = get_path_data(src1, s2)[0]
+                        
+                        plan[src2]["server"] = s1
+                        plan[src2]["path"] = get_path_data(src2, s1)[0]
+                        
+                        swap_moved = True
+                        break
+                if swap_moved:
+                    break
+            if swap_moved:
+                moved_any = True
+            else:
+                break
+
+    return plan
+# EVOLVE-BLOCK-END

@@ -1,0 +1,14 @@
+{
+  "generation": 34,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 3,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "marginal_cost_routing",
+  "patch_description": "The previous routing logic used a heuristic scoring function that didn't fully capture the marginal impact of adding a task to the system's total latency and energy. This update:\n1.  Re-orders the precomputation to calculate `avg_payload` first, allowing it to be used for more accurate edge selection and Dijkstra weights.\n2.  Updates the edge selection and Dijkstra weights to use the objective's weight (Latency + 0.5 * Energy).\n3.  Replaces the heuristic assignment score with a proper marginal cost calculation. The marginal latency includes both the task's transmission latency and the increase in queueing delay for all tasks at the chosen server. The marginal energy includes routing energy, dynamic compute energy, and idle power (if the server was previously empty).\n4.  Applies this consistent marginal cost logic to both the initial greedy assignment and the local search refinement.",
+  "error_msg": "No changes applied",
+  "timestamp": "2026-03-20T02:49:22.581074",
+  "llm_cost": 0.006536500000000001,
+  "llm_model": null
+}

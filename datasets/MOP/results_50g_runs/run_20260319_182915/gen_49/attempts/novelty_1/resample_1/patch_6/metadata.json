@@ -1,0 +1,14 @@
+{
+  "generation": 49,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 6,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "two_scale_gaussian_basis_and_product_metric",
+  "patch_description": "This edit implements a two-scale Gaussian basis for path generation and switches the surrogate objective to a product-based metric (F1 * F2 * F3) to align with the grader's Multiplier Score.\n1.  **CurveGenerator**: Expanded to include 4 additional broad Gaussian basis functions (sigma ~ 0.4 * span) for better global shaping of the path, particularly to minimize signal loss (F3).\n2.  **SurrogateEvaluator**: The `score` function now calculates the product of the three objectives, which more accurately reflects the combined score used in the evaluation. A small smoothness penalty is retained to ensure path stability.\n3.  **LocalSearchOptimizer**: Updated to handle the new 10-dimensional parameter space (6 original + 4 broad amplitudes). Seeds and step sizes are adjusted to accommodate the expanded parameterization.",
+  "error_msg": "No changes applied",
+  "timestamp": "2026-03-20T02:55:58.364784",
+  "llm_cost": 0.0068059999999999996,
+  "llm_model": null
+}

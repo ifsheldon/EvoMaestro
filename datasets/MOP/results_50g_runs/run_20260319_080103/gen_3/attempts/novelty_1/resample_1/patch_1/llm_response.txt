@@ -1,0 +1,50 @@
+<NAME>
+dual_gaussian_envelope_bending
+</NAME>
+
+<DESCRIPTION>
+This algorithm implements a dual-influence model using Gaussian kernels modulated by a sinusoidal envelope. 
+
+Key insights:
+1. **Multi-Objective Balance**: The three objectives (Distance, Noise, Signal) are balanced by treating the school as a repulsive force and the base station as an attractive force.
+2. **Gaussian Influence**: Two Gaussian kernels are centered at the X-coordinates of the school and base station. The school kernel pushes the path vertically away from the school's Y-coordinate to minimize noise (F2), while the base station kernel pulls the path toward its Y-coordinate to maximize signal strength (F3).
+3. **Sinusoidal Envelope**: To maintain the fixed start and end points (ensuring the path remains valid), the combined Gaussian offsets are multiplied by a sine-based envelope `sin(pi * t)`. This ensures the deviation is zero at the boundaries and smooth throughout the trajectory.
+4. **Robustness**: The repulsion direction is determined by the path's general position relative to the school, preventing "kinks" and ensuring a smooth, differentiable curve that minimizes the distance penalty (F1).
+</DESCRIPTION>
+
+<CODE>
+```python
+# EVOLVE-BLOCK-START
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    【无人机连续空间多目标折线优化】
+    Uses a dual-Gaussian influence model with a sinusoidal envelope to balance 
+    distance, school noise avoidance, and base station signal strength.
+    """
+    import math
+    
+    x_s, y_s = start
+    x_e, y_e = end
+    sch_x, sch_y = school
+    bs_x, bs_y = base
+    
+    y_coords = []
+    
+    # Calculate step sizes for uniform X distribution
+    dx = (x_e - x_s) / (num_points + 1)
+    dy = (y_e - y_s) / (num_points + 1)
+    
+    # Determine a consistent push direction to avoid kinks in the path.
+    # If the linear path is generally below the school, we push further down.
+    mid_y_lin = (y_s + y_e) / 2.0
+    push_dir = -1.0 if mid_y_lin < sch_y else 1.0
+    
+    for i in range(num_points):
+        # Normalized progress along the path (from 0 to 1)
+        t = (i + 1) / (num_points + 1.0)
+        
+        # Current linear position
+        x = x_s + (i + 1) * dx
+        y_lin = y_s + (i + 1) * dy
+        
+        # Sinusoidal envelope ensures the path starts and ends exactly at (x_s, y_

@@ -1,0 +1,14 @@
+{
+  "generation": 10,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "cem_smooth_field_path",
+  "patch_description": "This version uses a cross-entropy method (CEM) over a compact smooth-basis representation of the path, instead of the old direct straight-line or coarse parameter sweep approach.\n\nThe path is modeled as a linear baseline plus several endpoint-safe smooth basis functions: global bend, school-avoid bump, base-attraction bump, and asymmetric shape terms. A proxy multi-objective score is then minimized, balancing path length, school avoidance, base proximity, and curvature smoothness. CEM samples many candidate coefficient vectors, keeps the best elite set, and updates the search distribution iteratively. This gives a more global and flexible search than hand-tuned local rules, while still staying fast and deterministic.\n\nBecause the path is restricted to smooth basis functions and then lightly post-smoothed, it naturally produces a smooth line that bends away from the school region and toward the base station region.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:32:39.360648",
+  "llm_cost": 0.058755,
+  "llm_model": null
+}

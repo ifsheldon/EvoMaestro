@@ -1,0 +1,58 @@
+REPLACE
+```
+Wait, my REPLACE 2 was cut off in the thought process. Let's provide the full blocks.
+
+One final check on the first SEARCH block. I should ensure the indentation matches the provided code.
+
+```python
+    # Conservative but effective search ranges.
+    school_sigmas = [max(6.0, 0.10 * span_x), max(9.0, 0.15 * span_x)]
+...
+```
+Yes, it matches.
+
+Wait, I see a small issue in my `build_candidate` replacement. I added `step = dx_total / (num_points + 1)`. This is already calculated in the outer scope as `dx_total / (num_points + 1)` but not stored in a variable named `step`. Oh wait, it is used in `xs` calculation.
+
+Actually, let's keep it simple and use the same logic as the outer scope for consistency.
+
+```python
+        # Stage 2: Adaptive school repulsion
+        idx_f = (sx - x_start) / (dx_total / (num_points + 1)) - 1
+        idx = int(round(idx_f))
+        y_at_sx = y_s1[max(0, min(num_points - 1, idx))]
+```
+This is fine.
+
+One more thing: `max_dev` is used inside `build_candidate`. It's defined in the outer scope of `evolve_drone_path`. That's correct.
+
+Let's refine the surrogate score weights one last time.
+Current: F1: 1.17, F2: 1.00, F3: 33.48. Combined: 39.13.
+If I want to reduce F3, increasing the weight of `base_pen` is key.
+
+```python
+        # Rebalanced weights to focus on reducing F3 (base_pen) while keeping F1/F2 low.
+        return 4.0 * f1 + 25.0 * school_pen + 0.11 * base_pen + 0.15 * smooth_pen
+```
+This looks reasonable.
+
+Final check on the `build_candidate` call in the loop.
+```python
+                        ys = build_candidate(
+                            sigma_school=sigma_school,
+                            base_pull=base_pull,
+                            sigma_base=sigma_base,
+                            tail_gain=tail_gain,
+                            smooth_alpha=smooth_alpha,
+                        )
+```
+The arguments are correct.
+
+Wait, I should make sure the SEARCH block for the second part is exactly as in the file.
+
+```python
+<<<<<<< SEARCH
+    def surrogate_score(ys):
+        total_len = 0.0
+        px, py = x_start, y_start
+        for x, y in zip(xs, ys):
+            total_len +=

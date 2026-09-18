@@ -1,0 +1,120 @@
+# EVOLVE-BLOCK-START
+import math
+
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    【无人机连续空间多目标折线优化】
+    Optimizes the drone path to minimize the combined objective F1 * F2 * F3.
+    Uses Nadam (Nesterov-accelerated Adam) with Cosine Annealing.
+    Highly optimized to compute exact gradients of log(F1*F2*F3) efficiently.
+    """
+    x_start, y_start = start
+    x_end, y_end = end
+    sx, sy = school
+    bx, by = base
+    
+    dx = (x_end - x_start) / (num_points + 1)
+    xs = [x_start + (i + 1) * dx for i in range(num_points)]
+    ys = [y_start + (y_end - y_start) * (i + 1) / (num_points + 1) for i in range(num_points)]
+    
+    # Nadam optimizer parameters
+    m = [0.0] * num_points
+    v = [0.0] * num_points
+    beta1 = 0.9
+    beta2 = 0.999
+    epsilon = 1e-8
+    
+    total_steps = 4000
+    
+    # Pre-allocate arrays to avoid overhead
+    grad_f2_arr = [0.0] * num_points
+    grad_f3_arr = [0.0] * num_points
+    seg_lengths = [0.0] * (num_points + 1)
+    
+    for step in range(1, total_steps + 1):
+        # Cosine annealing learning rate from 1.0 down to 0.0
+        lr = 0.5 * (1.0 + math.cos(math.pi * step / total_steps))
+        
+        # Precompute beta exponentiations for the step
+        beta1_t = 1.0 - beta1 ** step
+        beta2_t = 1.0 - beta2 ** step
+        
+        # 1. Evaluate F1 (Path Length) and cache segment lengths
+        seg_lengths[0] = math.hypot(xs[0] - x_start, ys[0] - y_start)
+        f1 = seg_lengths[0]
+        for i in range(num_points - 1):
+            l = math.hypot(xs[i+1] - xs[i], ys[i+1] - ys[i])
+            seg_lengths[i+1] = l
+            f1 += l
+        seg_lengths[num_points] = math.hypot(x_end - xs[-1], y_end - ys[-1])
+        f1 += seg_lengths[num_points]
+        
+        # 2. Evaluate F2 and F3
+        f2 = 0.0
+        f3 = 0.0
+        for i in range(num_points):
+            x = xs[i]
+            y = ys[i]
+            
+            dy_s = y - sy
+            dist_sq_s_eps = (x - sx)**2 + dy_s**2 + 1e-5
+            f2 += 1.0 / dist_sq_s_eps
+            grad_f2_arr[i] = -2.0 * dy_s / (dist_sq_s_eps**2)
+            
+            dy_b = y - by
+            dist_sq_b_eps = (x - bx)**2 + dy_b**2 + 1e-5
+            f3 += math.sqrt(dist_sq_b_eps)
+            grad_f3_arr[i] = dy_b / math.sqrt(dist_sq_b_eps)
+            
+        # 3. Compute Gradients and Apply Nadam Update
+        for i in range(num_points):
+            y = ys[i]
+            
+            prev_y = ys[i-1] if i > 0 else y_start
+            next_y = ys[i+1] if i < num_points - 1 else y_end
+            
+            # Reuse cached segment lengths
+            d1 = seg_lengths[i]
+            d2 = seg_lengths[i+1]
+            
+            grad_f1 = 0.0
+            if d1 > 1e-5: grad_f1 += (y - prev_y) / d1
+            if d2 > 1e-5: grad_f1 -= (next_y - y) / d2
+            
+            # Relative gradients to minimize log(F1) + log(F2) + log(F3)
+            grad = (grad_f1 / f1) + (grad_f2_arr[i] / f2) + (grad_f3_arr[i] / f3)
+            
+            # Nadam update step
+            m[i] = beta1 * m[i] + (1 - beta1) * grad
+            v[i] = beta2 * v[i] + (1 - beta2) * (grad ** 2)
+            
+            m_hat = m[i] / beta1_t
+            v_hat = v[i] / beta2_t
+            
+            m_nesterov = beta1 * m_hat + (1 - beta1) * grad / beta1_t
+            
+            ys[i] -= lr * m_nesterov / (math.sqrt(v_hat) + epsilon)
+            
+    return ys
+# EVOLVE-BLOCK-END
+
+import sys
+import os
+
+# 将当前目录加入系统路径以便导入同级文件
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from drone_evaluation import DroneGrader
+
+def run_experiment(**kwargs):
+    """供 Shinka 触发的单次实验方法"""
+    grader = DroneGrader()
+    
+    # 捕获异常防止大模型写出死循环炸毁测评机
+    try:
+        avg_f1, avg_f2, avg_f3, final_score = grader.grade_silent(evolve_drone_path, timeout=12)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        avg_f1, avg_f2, avg_f3, final_score = float('inf'), float('inf'), float('inf'), float('inf')
+        
+    return avg_f1, avg_f2, avg_f3, final_score

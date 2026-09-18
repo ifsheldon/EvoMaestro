@@ -1,0 +1,14 @@
+{
+  "generation": 40,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "hierarchical_adam_blur",
+  "patch_description": "The proposed program implements a hierarchical coarse-to-fine optimization strategy using an Adam optimizer with gradient blurring. \n\n1.  **Objective Function**: It minimizes the product of three objectives: path length (F1), school noise proximity (F2), and base station signal drop (F3). This is achieved by minimizing the sum of their logarithms, using the relative gradient: $\\nabla \\ln(F1 \\cdot F2 \\cdot F3) = \\frac{\\nabla F1}{F1} + \\frac{\\nabla F2}{F2} + \\frac{\\nabla F3}{F3}$.\n2.  **Coarse-to-Fine Strategy**: In the early stages of optimization, a box blur is applied to the gradients across the path points. This couples the points together, forcing the optimizer to find a smooth global shape first (coarse search). As optimization progresses, the blur radius is gradually reduced to zero, allowing the optimizer to fine-tune individual points (fine search).\n3.  **Adam Optimizer**: A standard Adam optimizer is used with a decaying learning rate to ensure stable convergence to a local minimum.\n4.  **Efficiency**: The box blur is implemented in $O(N)$ time per step using a sliding window approach, ensuring the program runs efficiently within the time limit even for a large number of points.",
+  "error_msg": "Could not extract code from patch string",
+  "timestamp": "2026-03-20T02:44:02.898136",
+  "llm_cost": 0.0045024999999999996,
+  "llm_model": null
+}

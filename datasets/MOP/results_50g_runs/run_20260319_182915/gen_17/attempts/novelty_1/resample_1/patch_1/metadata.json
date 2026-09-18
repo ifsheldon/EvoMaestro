@@ -1,0 +1,14 @@
+{
+  "generation": 17,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "adaptive_active_contours",
+  "patch_description": "This approach upgrades the physics-based path optimization by introducing an Adam optimizer with a linearly decaying learning rate. This replaces the fixed-step gradient descent, allowing for rapid initial exploration and fine-tuned convergence without overshooting. \n\nKey improvements:\n1. **Exact Arc-Length Gradient**: The smoothness penalty now uses the exact derivative of the path length (`dy / dist`) instead of a simple Laplacian. This makes the smoothness force scale-invariant and much more robust to the number of points.\n2. **Adam Optimizer**: Normalizes the update steps, preventing numerical instability and allowing the path to smoothly converge even when gradients from the base station or school are extremely large.\n3. **Rebalanced Hyperparameters**: `alpha` (smoothness) is increased to 300 to balance the exact arc-length gradients. `gamma` (base attraction) is increased to 40 to pull the path much closer to the base station, significantly reducing F3 (Signal Loss). `beta` (school repulsion) is tuned to 15000 to naturally push the path downwards, synergizing with the base station's location.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:35:52.229073",
+  "llm_cost": 0.026422,
+  "llm_model": null
+}

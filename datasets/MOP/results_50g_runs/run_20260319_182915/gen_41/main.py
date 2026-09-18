@@ -1,0 +1,209 @@
+# EVOLVE-BLOCK-START
+import math
+
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    多目标无人机路径生成（结构化重构版）
+    输入:
+        start, end, school, base: (x, y)
+        num_points: 需要返回的中间点数量
+    输出:
+        长度为 num_points 的 y 坐标列表（对应 x 在 start.x 与 end.x 间匀速分布）
+    """
+    if num_points <= 0:
+        return []
+
+    x0, y0 = start
+    x1, y1 = end
+    sx, sy = school
+    bx, by = base
+
+    # -------- 1) 网格与基础曲线 --------
+    dx = (x1 - x0) / (num_points + 1)
+    xs = [x0 + (i + 1) * dx for i in range(num_points)]
+    t_vals = [(x - x0) / (x1 - x0 + 1e-12) for x in xs]
+    y_linear = [y0 + (y1 - y0) * t for t in t_vals]
+
+    # -------- 2) 灵活控制点参数化 --------
+    num_ctrl = 12
+    ctrl_xs = [x0 + (x1 - x0) * (i + 1) / (num_ctrl + 1) for i in range(num_ctrl)]
+    sigma = abs(x1 - x0) / (num_ctrl + 1) * 1.5
+    x_span = abs(x1 - x0) + 1e-12
+
+    # 预计算带端点包络的基函数，保证路径更平滑地衔接起终点
+    basis = []
+    for x in xs:
+        t = (x - x0) / (x1 - x0 + 1e-12)
+        env = math.sin(math.pi * t)
+        row = []
+        for cx in ctrl_xs:
+            row.append(math.exp(-0.5 * ((x - cx) / sigma) ** 2) * env)
+        basis.append(row)
+
+    def get_path(c_ys):
+        ys = []
+        for k, x in enumerate(xs):
+            dev = 0.0
+            row = basis[k]
+            for i in range(num_ctrl):
+                dev += c_ys[i] * row[i]
+            ys.append(y_linear[k] + dev)
+        return ys
+
+    # -------- 3) 精确代理目标 (F1 * F2 * F3) --------
+    straight_length = math.hypot(x1 - x0, y1 - y0) + 1e-9
+    f2_ends = 1.0 / ((x0 - sx)**2 + (y0 - sy)**2 + 25.0) + 1.0 / ((x1 - sx)**2 + (y1 - sy)**2 + 25.0)
+    f3_ends = math.hypot(x0 - bx, y0 - by) + math.hypot(x1 - bx, y1 - by)
+
+    def proxy_score(c_ys):
+        ys = get_path(c_ys)
+
+        # F1: 归一化路径长度
+        length = 0.0
+        px, py = x0, y0
+        for i, y in enumerate(ys):
+            x = xs[i]
+            length += math.hypot(x - px, y - py)
+            px, py = x, y
+        length += math.hypot(x1 - px, y1 - py)
+        f1 = length / straight_length
+
+        # F2: 学校噪声
+        f2 = f2_ends
+        for i, y in enumerate(ys):
+            d2 = (xs[i] - sx) ** 2 + (y - sy) ** 2
+            f2 += 1.0 / (d2 + 25.0)
+
+        # F3: 基站信号衰减
+        f3 = f3_ends
+        for i, y in enumerate(ys):
+            f3 += math.hypot(xs[i] - bx, y - by)
+
+        return f1 * f2 * f3
+
+    # -------- 4) 启发式初始化：加入非对称、局部事件型种子 --------
+    y_span = abs(y1 - y0) + abs(x1 - x0)
+
+    y_school_on_line = y0 + (y1 - y0) * ((sx - x0) / (x1 - x0 + 1e-12))
+    school_dir = -1.0 if sy >= y_school_on_line else 1.0
+    y_base_on_line = y0 + (y1 - y0) * ((bx - x0) / (x1 - x0 + 1e-12))
+    base_dir = 1.0 if by >= y_base_on_line else -1.0
+
+    def localized_seed(amp_s, amp_b, amp_wave, shift_s=0.0, left_bias=1.0, right_bias=1.0, bridge=0.0):
+        c_ys = [0.0] * num_ctrl
+        bridge_x = 0.5 * (sx + bx)
+        for i, cx in enumerate(ctrl_xs):
+            t = (cx - x0) / (x1 - x0 + 1e-12)
+            side_bias = left_bias if cx <= sx else right_bias
+            g_s = math.exp(-((cx - (sx + shift_s)) / (0.16 * x_span + 1e-9)) ** 2)
+            g_b = math.exp(-((cx - bx) / (0.22 * x_span + 1e-9)) ** 2)
+            g_m = math.exp(-((cx - bridge_x) / (0.18 * x_span + 1e-9)) ** 2)
+            wave = math.sin(math.pi * t)
+            c_ys[i] = (
+                school_dir * amp_s * side_bias * y_span * g_s
+                + base_dir * amp_b * y_span * g_b
+                + 0.5 * (school_dir + base_dir) * amp_wave * y_span * wave
+                + bridge * y_span * g_m
+            )
+        return c_ys
+
+    initial_candidates = [[0.0] * num_ctrl]
+
+    # 原有对称扫掠保留，但幅度更偏向温和解
+    for scale_s in [-0.55, -0.25, 0.0, 0.25, 0.55]:
+        for scale_b in [-0.45, -0.20, 0.0, 0.20, 0.45]:
+            c_ys = [0.0] * num_ctrl
+            for i in range(num_ctrl):
+                cx = ctrl_xs[i]
+                d_s = abs(cx - sx)
+                d_b = abs(cx - bx)
+                c_ys[i] += scale_s * y_span * math.exp(-(d_s / (0.22 * x_span + 1e-9)) ** 2)
+                c_ys[i] += scale_b * y_span * math.exp(-(d_b / (0.24 * x_span + 1e-9)) ** 2)
+            initial_candidates.append(c_ys)
+
+    # 新增：针对学校/基站的非对称局部种子
+    initial_candidates.append(localized_seed(0.32, 0.18, 0.08, shift_s=-0.10 * x_span, left_bias=1.2, right_bias=0.8, bridge=0.04 * school_dir))
+    initial_candidates.append(localized_seed(0.32, 0.18, 0.08, shift_s=0.10 * x_span, left_bias=0.8, right_bias=1.2, bridge=0.04 * school_dir))
+    initial_candidates.append(localized_seed(0.42, 0.22, 0.10, shift_s=-0.06 * x_span, left_bias=1.35, right_bias=0.70, bridge=0.06 * school_dir))
+    initial_candidates.append(localized_seed(0.42, 0.22, 0.10, shift_s=0.06 * x_span, left_bias=0.70, right_bias=1.35, bridge=0.06 * school_dir))
+    initial_candidates.append(localized_seed(0.28, 0.34, 0.05, shift_s=0.0, left_bias=1.0, right_bias=1.0, bridge=0.10 * base_dir))
+    initial_candidates.append(localized_seed(0.36, 0.30, -0.08, shift_s=0.0, left_bias=1.1, right_bias=0.9, bridge=0.08 * (school_dir + base_dir) * 0.5))
+    initial_candidates.append(localized_seed(0.36, 0.30, -0.08, shift_s=0.0, left_bias=0.9, right_bias=1.1, bridge=0.08 * (school_dir + base_dir) * 0.5))
+
+    scored = []
+    for cand in initial_candidates:
+        scored.append((proxy_score(cand), cand))
+    scored.sort(key=lambda item: item[0])
+    top_candidates = [cand[:] for _, cand in scored[:5]]
+
+    # -------- 5) 多起点坐标下降优化 --------
+    best_c_ys = top_candidates[0][:]
+    best_score = proxy_score(best_c_ys)
+
+    for seed in top_candidates:
+        curr = seed[:]
+        curr_score = proxy_score(curr)
+        step_size = y_span * 0.22
+
+        for _ in range(32):
+            improved = False
+            for i in range(num_ctrl):
+                base_val = curr[i]
+                local_best_val = base_val
+                local_best_score = curr_score
+
+                for step in [-step_size, -0.6 * step_size, -0.25 * step_size, 0.25 * step_size, 0.6 * step_size, step_size]:
+                    curr[i] = base_val + step
+                    sc = proxy_score(curr)
+                    if sc < local_best_score:
+                        local_best_score = sc
+                        local_best_val = curr[i]
+
+                curr[i] = local_best_val
+                if local_best_score < curr_score:
+                    curr_score = local_best_score
+                    improved = True
+                else:
+                    curr[i] = base_val
+
+            if improved:
+                step_size *= 0.90
+            else:
+                step_size *= 0.58
+            if step_size < 0.03:
+                break
+
+        if curr_score < best_score:
+            best_score = curr_score
+            best_c_ys = curr[:]
+
+    # -------- 6) 生成最终路径 --------
+    ys = get_path(best_c_ys)
+    if num_points >= 3:
+        smooth = ys[:]
+        for i in range(1, num_points - 1):
+            smooth[i] = 0.18 * ys[i - 1] + 0.64 * ys[i] + 0.18 * ys[i + 1]
+        ys = smooth
+    return [float(v) for v in ys]
+# EVOLVE-BLOCK-END
+
+import sys
+import os
+
+# 将当前目录加入系统路径以便导入同级文件
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from drone_evaluation import DroneGrader
+
+def run_experiment(**kwargs):
+    """供 Shinka 触发的单次实验方法"""
+    grader = DroneGrader()
+
+    # 捕获异常防止大模型写出死循环炸毁测评机
+    try:
+        avg_f1, avg_f2, avg_f3, final_score = grader.grade_silent(evolve_drone_path, timeout=12)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        avg_f1, avg_f2, avg_f3, final_score = float('inf'), float('inf'), float('inf'), float('inf')
+
+    return avg_f1, avg_f2, avg_f3, final_score

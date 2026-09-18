@@ -1,0 +1,11 @@
+{
+  "role": "mock-guide",
+  "program_count": 38,
+  "example_summary_generation": 33,
+  "summary_provenance": "Handwritten illustrative mock summary; not generated research findings",
+  "summary_fixture_sha256": "67d265b78a4542bb4df3a5aabf66f43a3fb75c7f93bb3604399c395d8e2bbc0c",
+  "anchors": {
+    "island_root": "95b67d4e-0a25-4ec3-b670-f26b332d8866",
+    "crossover": "0eb5b89b-e064-4f39-a9a0-e48b7a5a1e6e"
+  }
+}

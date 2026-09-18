@@ -1,0 +1,151 @@
+<NAME>
+activation_aware_scoring_and_tree_diversity
+</NAME>
+
+<DESCRIPTION>
+This edit makes two targeted improvements:
+
+1) **Increase path candidate diversity per server** by adding a 4th server-rooted shortest-path tree with a stronger capacity/congestion-aware blend. This preserves the fast precompute pattern while giving the assignment stage more robust alternatives in graphs where hop latency and edge energy trade off differently under capacity constraints.
+
+2) **Make idle-power scoring activation-aware instead of per-task additive**. The previous scoring charged idle cost for every assigned source, which can distort energy optimization. Idle power is a server-level fixed cost, so this update charges it mainly when a server is newly activated (and mirrors this in local search), improving both latency-energy balance and assignment stability.
+
+Additionally, a small tie-break fix in regret ordering prioritizes harder-to-place sources when regrets are equal.
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+    def dijkstra_from_server(server, mode):
+        # Different edge preferences produce a small candidate frontier.
+        # mode 0: latency focused
+        # mode 1: balanced
+        # mode 2: energy focused
+        dist = [float("inf")] * num_nodes
+        parent = [-1] * num_nodes
+        dist[server] = 0.0
+        pq = [(0.0, server)]
+
+        while pq:
+            curd, u = heapq.heappop(pq)
+            if curd != dist[u]:
+                continue
+            for v, base_latency, edge_energy, capacity in graph[u]:
+                cap = capacity if capacity and capacity > 1e-9 else 1e-9
+                congestion_proxy = 1.0 / math.sqrt(cap)
+                if mode == 0:
+                    w = 1.35 * base_latency + 0.10 * edge_energy + 0.25 * congestion_proxy
+                elif mode == 1:
+                    w = 1.00 * base_latency + 0.55 * edge_energy + 0.22 * congestion_proxy
+                else:
+                    w = 0.60 * base_latency + 1.05 * edge_energy + 0.18 * congestion_proxy
+                nd = curd + w
+                if nd < dist[v]:
+                    dist[v] = nd
+                    parent[v] = u
+                    heapq.heappush(pq, (nd, v))
+        return parent
+=======
+    def dijkstra_from_server(server, mode):
+        # Different edge preferences produce a small candidate frontier.
+        # mode 0: latency focused
+        # mode 1: balanced
+        # mode 2: energy focused
+        # mode 3: capacity-aware balanced
+        dist = [float("inf")] * num_nodes
+        parent = [-1] * num_nodes
+        dist[server] = 0.0
+        pq = [(0.0, server)]
+
+        while pq:
+            curd, u = heapq.heappop(pq)
+            if curd != dist[u]:
+                continue
+            for v, base_latency, edge_energy, capacity in graph[u]:
+                cap = capacity if capacity and capacity > 1e-9 else 1e-9
+                congestion_proxy = 1.0 / math.sqrt(cap)
+                strong_cap_penalty = 1.0 / cap
+                if mode == 0:
+                    w = 1.30 * base_latency + 0.12 * edge_energy + 0.22 * congestion_proxy
+                elif mode == 1:
+                    w = 1.00 * base_latency + 0.55 * edge_energy + 0.20 * congestion_proxy
+                elif mode == 2:
+                    w = 0.62 * base_latency + 1.02 * edge_energy + 0.16 * congestion_proxy
+                else:
+                    w = 1.08 * base_latency + 0.42 * edge_energy + 0.16 * congestion_proxy + 0.08 * strong_cap_penalty
+                nd = curd + w
+                if nd < dist[v]:
+                    dist[v] = nd
+                    parent[v] = u
+                    heapq.heappush(pq, (nd, v))
+        return parent
+>>>>>>> REPLACE
+
+<<<<<<< SEARCH
+        parent_sets = [dijkstra_from_server(server, mode) for mode in (0, 1, 2)]
+=======
+        parent_sets = [dijkstra_from_server(server, mode) for mode in (0, 1, 2, 3)]
+>>>>>>> REPLACE
+
+<<<<<<< SEARCH
+        # Small shared idle component to discourage activating weak choices.
+        idle_term = 0.004 * cand["idle_power"]
+
+        return (
+            1.00 * cand["route_latency"]
+            + 0.92 * cand["route_energy"]
+            + 1.80 * queue_delta
+            + 0.22 * energy_delta
+            + idle_term
+            + overload_penalty
+        )
+=======
+        # Idle is primarily a server activation cost, not per-task cost.
+        idle_term = (0.020 * cand["idle_power"]) if current_load <= 1e-12 else 0.0008 * cand["idle_power"]
+
+        return (
+            1.00 * cand["route_latency"]
+            + 0.92 * cand["route_energy"]
+            + 1.80 * queue_delta
+            + 0.22 * energy_delta
+            + idle_term
+            + overload_penalty
+        )
+>>>>>>> REPLACE
+
+<<<<<<< SEARCH
+            # Prefer large regret; break ties by worse primary score first.
+            if regret > best_regret or (regret == best_regret and primary < best_primary):
+                best_regret = regret
+                best_primary = primary
+                chosen_src = src
+                chosen_opts = opts
+=======
+            # Prefer large regret; break ties by worse primary score first.
+            if regret > best_regret or (regret == best_regret and primary > best_primary):
+                best_regret = regret
+                best_primary = primary
+                chosen_src = src
+                chosen_opts = opts
+>>>>>>> REPLACE
+
+<<<<<<< SEARCH
+        return (
+            1.00 * cand["route_latency"]
+            + 0.92 * cand["route_energy"]
+            + 1.80 * queue_delta
+            + 0.22 * energy_delta
+            + 0.004 * cand["idle_power"]
+            + overload_penalty
+        )
+=======
+        idle_term = (0.020 * cand["idle_power"]) if load_without_src <= 1e-12 else 0.0008 * cand["idle_power"]
+
+        return (
+            1.00 * cand["route_latency"]
+            + 0.92 * cand["route_energy"]
+            + 1.80 * queue_delta
+            + 0.22 * energy_delta
+            + idle_term
+            + overload_penalty
+        )
+>>>>>>> REPLACE
+</DIFF>

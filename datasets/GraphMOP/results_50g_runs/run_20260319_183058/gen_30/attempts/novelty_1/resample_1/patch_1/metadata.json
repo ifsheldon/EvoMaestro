@@ -1,0 +1,14 @@
+{
+  "generation": 30,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "marginal_cost_balanced_routing",
+  "patch_description": "This implementation optimizes task routing using a marginal cost approach. It precomputes shortest path trees from each server to all potential source nodes using a balanced weight of latency and routing energy. Task sources are then assigned by calculating the marginal increase in total system latency (including queueing externalities for existing tasks) and system energy. This combined crossover balances the greedy packing of the first implementation with the precise marginal cost analysis of the second, adding a quadratic utilization penalty to prevent server saturation near the capacity limit.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:44:11.834372",
+  "llm_cost": 0.008167,
+  "llm_model": null
+}

@@ -1,0 +1,14 @@
+{
+  "generation": 19,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "piecewise_rbf_schedule",
+  "patch_description": "The previous sinusoidal arc hardcoded a bend that completely ignored randomized school and base coordinates across different geometry scenarios, unintentionally penalizing the base station signal drop metric (F3) by moving to regions with higher line-of-sight loss when the base wasn't precisely at the anticipated coordinates. \n\nThis implementation replaces the fixed arc with a **Sequential Adaptive Radial Basis Function (RBF)** strategy. It establishes a multi-stage deflection algorithm:\n1. **Base Approaching:** A wider, attractive Gaussian kernel pulls the drone functionally towards the base station `(y_base)`. The amplitude and standard deviation (`sigma_base`) of this pull adapt based on the relative X-axis separation of the base and school.\n2. **School Avoidance:** Overlapping the base approaching stage, we construct a sequential dynamic `school_clearance` logic. Since pulling towards a base could inadvertently drag the drone too close to the school, we compute the required Y-clearance *after* testing the base-pull trajectory. A narrower repulsion kernel corrects the path out of the interference zone.\n3. **Endpoint Ramping:** To prevent huge gradient explosions (Distance penalty F1 jumps) near the stationary `start` and `end` points, a seamless linear edge ramp limits all lateral RBF deflections from starting with massive Y jumps, allowing mathematically continuous trajectories.",
+  "error_msg": null,
+  "timestamp": "2026-03-19T16:08:54.067518",
+  "llm_cost": 0.054854,
+  "llm_model": null
+}

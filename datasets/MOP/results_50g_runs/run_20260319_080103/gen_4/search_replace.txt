@@ -1,0 +1,93 @@
+<NAME>
+potential_field_smooth_curve
+</NAME>
+
+<DESCRIPTION>
+将原本“纯直线”替换为一个轻量级连续势场启发式：
+1) 以起终点直线为基础，保证 F1 不会大幅恶化；
+2) 在学校 x 邻域加入高斯“斥力”使轨迹远离 school（降低 F2）；
+3) 在基站 x 邻域加入高斯“引力”将轨迹朝 base 的 y 方向拉近（降低 F3）；
+4) 末尾做两轮局部平滑，形成更平滑折线并抑制不必要绕行。
+
+该方案是多目标折中：保持总体长度可控的同时，在关键区域定向偏转，符合“远离 (40,20)、靠近 (70,-30)”的要求。
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    【无人机连续空间多目标折线优化】
+    LLMs 将被要求在这里编写代码（可以使用启发式寻找策略，或者单纯使用规则拟合）。
+    你需要返回一个长度为 num_points 的列表，包含从起点到终点按 X 匀速布置对应的 Y 轴偏移量。
+    """
+    x_start, y_start = start
+    x_end, y_end = end
+
+    # 【初始方案：最无脑的纯直线】
+    y_coords = []
+    dy = (y_end - y_start) / (num_points + 1)
+
+    for i in range(num_points):
+        y_coords.append(float(y_start + (i + 1) * dy))
+
+    return y_coords
+=======
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    多目标启发式：
+    - 以直线为基底（控制距离）
+    - 远离 school（降低噪声风险）
+    - 靠近 base（降低信号损失）
+    - 局部平滑，得到连续自然弯曲路径
+    """
+    import math
+
+    x_start, y_start = start
+    x_end, y_end = end
+    sx, sy = school
+    bx, by = base
+
+    if num_points <= 0:
+        return []
+
+    # 均匀 x 采样
+    dx = (x_end - x_start) / (num_points + 1)
+
+    # 势场参数（偏保守，优先保持较短路径）
+    school_sigma = max(8.0, abs(x_end - x_start) * 0.16)
+    base_sigma = max(10.0, abs(x_end - x_start) * 0.22)
+    school_amp = 18.0
+    base_pull = 0.55
+
+    y_coords = []
+    for i in range(num_points):
+        t = (i + 1) / (num_points + 1)
+        x = x_start + (i + 1) * dx
+
+        # 直线基底
+        y_line = y_start + t * (y_end - y_start)
+
+        # 学校斥力：沿 y 方向远离 school
+        away_sign = -1.0 if y_line <= sy else 1.0
+        repel = away_sign * school_amp * math.exp(-((x - sx) ** 2) / (2.0 * school_sigma ** 2))
+
+        # 基站引力：在 base 的 x 邻域，向 base.y 靠拢
+        attract_w = math.exp(-((x - bx) ** 2) / (2.0 * base_sigma ** 2))
+        attract = base_pull * attract_w * (by - y_line)
+
+        y_coords.append(float(y_line + repel + attract))
+
+    # 轻量平滑，减少折线抖动与额外路程
+    smooth_alpha = 0.35
+    for _ in range(2):
+        smoothed = []
+        for i in range(num_points):
+            left = y_start if i == 0 else y_coords[i - 1]
+            right = y_end if i == num_points - 1 else y_coords[i + 1]
+            smoothed.append((1.0 - smooth_alpha) * y_coords[i] + smooth_alpha * 0.5 * (left + right))
+        y_coords = smoothed
+
+    return [float(y) for y in y_coords]
+>>>>>>> REPLACE
+
+</DIFF>

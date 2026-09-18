@@ -1,0 +1,14 @@
+{
+  "generation": 23,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "exact_marginal_cost_routing",
+  "patch_description": "Combines diverse server-rooted tree path generation with an exact marginal cost evaluation for queueing delay and energy. Uses regret-based ordering for the initial greedy assignment and performs multiple passes of local search refinement to monotonically minimize the global objective.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:43:46.782161",
+  "llm_cost": 0.030802,
+  "llm_model": null
+}

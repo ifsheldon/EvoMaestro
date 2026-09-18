@@ -1,0 +1,317 @@
+An elegant and highly optimized approach to this multi-objective routing problem is to use an exact O(1) delta-cost evaluation for local search, combined with a multi-start strategy over different trade-off weights (`alpha`). 
+
+<NAME>
+exact_delta_multistart_search
+</NAME>
+
+<DESCRIPTION>
+This algorithm improves upon the previous approaches by introducing an exact O(1) delta-cost evaluation for moving a task between servers. Instead of recomputing the entire system cost (which is O(N)), we mathematically isolate the change in total system latency and energy caused by a single task reassignment. This allows the local search to be orders of magnitude faster, enabling us to search over the entire Pareto front of paths for *all* servers.
+
+Key insights:
+1. **Exact Delta Evaluation**: The change in total system latency and energy when moving a task can be computed in O(1) time by only looking at the old and new servers' load and user counts.
+2. **Continuous Penalty Function**: We replace hard capacity cutoffs with a smooth, differentiable Taylor expansion penalty for queue delay near the server's capacity limit. This prevents the local search from getting stuck in disconnected feasible regions.
+3. **Multi-Start Trade-off Search**: Because the local search is now extremely fast, we run it multiple times from the initial greedy assignment using different scalarization weights (`alpha` ranging from 0.0 to 5.0). This generates a Pareto front of complete routing plans, from which we select the one that minimizes the balanced overall score.
+</DESCRIPTION>
+
+<CODE>
+```python
+# EVOLVE-BLOCK-START
+def evolve_task_routing(
+    num_nodes,
+    edges,
+    server_nodes,
+    task_sources,
+    task_info,
+    server_info,
+):
+    """
+    Graph multi-objective routing problem.
+
+    Return:
+    {
+        source_node: {
+            "server": server_node,
+            "path": [source_node, ..., server_node],
+        },
+        ...
+    }
+    """
+    import heapq
+    import math
+
+    # ----------------------------
+    # Graph build (undirected)
+    # ----------------------------
+    graph = [[] for _ in range(num_nodes)]
+    for u, v, base_latency, energy_cost, capacity in edges:
+        graph[u].append((v, float(base_latency), float(energy_cost), float(capacity)))
+        graph[v].append((u, float(base_latency), float(energy_cost), float(capacity)))
+
+    # ----------------------------
+    # Helpers
+    # ----------------------------
+    def dijkstra(source, payload, lam):
+        dist = [float("inf")] * num_nodes
+        parent = [-1] * num_nodes
+        dist[source] = 0.0
+        hq = [(0.0, source)]
+
+        while hq:
+            cd, u = heapq.heappop(hq)
+            if cd > dist[u]:
+                continue
+            for v, base_lat, e_cost, cap in graph[u]:
+                tx_lat = base_lat + (payload / max(cap, 1e-9))
+                tx_en = e_cost * payload
+                w = tx_lat + lam * tx_en
+                nd = cd + w
+                if nd < dist[v]:
+                    dist[v] = nd
+                    parent[v] = u
+                    heapq.heappush(hq, (nd, v))
+        return dist, parent
+
+    def reconstruct_path(parent, s, t):
+        if s == t:
+            return [s]
+        if t < 0 or t >= num_nodes or parent[t] == -1:
+            return []
+        path = [t]
+        cur = t
+        seen = {t}
+        while cur != s:
+            cur = parent[cur]
+            if cur == -1 or cur in seen:
+                return []
+            path.append(cur)
+            seen.add(cur)
+        path.reverse()
+        return path
+
+    def path_metrics(path, payload):
+        if not path or len(path) == 1:
+            return 0.0, 0.0
+        total_lat = 0.0
+        total_en = 0.0
+        for i in range(len(path) - 1):
+            u = path[i]
+            v = path[i + 1]
+            best_edge_lat = float('inf')
+            best_edge_en = float('inf')
+            best_val = float('inf')
+            for nv, base_lat, e_cost, cap in graph[u]:
+                if nv == v:
+                    lat = base_lat + (payload / max(cap, 1e-9))
+                    en = e_cost * payload
+                    val = lat + en
+                    if val < best_val:
+                        best_val = val
+                        best_edge_lat = lat
+                        best_edge_en = en
+            if math.isinf(best_val):
+                return float("inf"), float("inf")
+            total_lat += best_edge_lat
+            total_en += best_edge_en
+        return total_lat, total_en
+
+    def pareto_prune(paths):
+        uniq = {}
+        for p, rlat, ren in paths:
+            tp = tuple(p)
+            if tp not in uniq or (rlat + ren) < (uniq[tp][1] + uniq[tp][2]):
+                uniq[tp] = (p, rlat, ren)
+        
+        raw_list = list(uniq.values())
+        nondom = []
+        for i, (pi, li, ei) in enumerate(raw_list):
+            dominated = False
+            for j, (pj, lj, ej) in enumerate(raw_list):
+                if i == j: continue
+                if lj <= li + 1e-9 and ej <= ei + 1e-9 and (lj < li - 1e-9 or ej < ei - 1e-9):
+                    dominated = True
+                    break
+            if not dominated:
+                nondom.append((pi, li, ei))
+        return nondom
+
+    def get_server_lat_en(srv, l, u):
+        """
+        Exact server latency and energy calculation.
+        Uses a smooth Taylor expansion penalty near capacity to guide local search.
+        """
+        if u == 0 or l <= 1e-9:
+            return 0.0, 0.0
+        mu, idle_p, dyn_p = server_info[srv]
+        mu = max(mu, 1e-9)
+        
+        if l < 0.90 * mu:
+            qd = 1.0 / (mu - l)
+        else:
+            diff = l - 0.90 * mu
+            qd = (10.0 / mu) + (100.0 / (mu * mu)) * diff + (1000.0 / (mu * mu * mu)) * diff * diff
+            if l >= mu:
+                qd += 1e4 + 1e4 * (l - mu)
+                
+        lat = u * qd
+        en = idle_p + dyn_p * (l / mu)
+        return lat, en
+
+    # ----------------------------
+    # Candidate generation
+    # ----------------------------
+    lambdas = [0.0, 0.2, 1.0, 3.0]
+    candidates = {s: [] for s in task_sources}
+    
+    for s in task_sources:
+        arr, payload, comp = task_info[s]
+        raw = []
+        for lam in lambdas:
+            _, parent = dijkstra(s, payload, lam)
+            for srv in server_nodes:
+                p = reconstruct_path(parent, s, srv)
+                if p:
+                    rlat, ren = path_metrics(p, payload)
+                    if not math.isinf(rlat):
+                        raw.append((srv, p, rlat, ren))
+                        
+        srv_cands = {srv: [] for srv in server_nodes}
+        for srv, p, rlat, ren in raw:
+            srv_cands[srv].append((p, rlat, ren))
+            
+        for srv in server_nodes:
+            if not srv_cands[srv]:
+                continue
+            nondom = pareto_prune(srv_cands[srv])
+            for p, rlat, ren in nondom:
+                candidates[s].append((srv, p, rlat, ren))
+                
+        if not candidates[s]:
+            # Fallback for pathological disconnected cases
+            _, parent = dijkstra(s, payload, 0.0)
+            best_srv = server_nodes[0]
+            p = reconstruct_path(parent, s, best_srv)
+            if not p:
+                p = [s, best_srv] if s != best_srv else [s]
+            rlat, ren = path_metrics(p, payload) if len(p) > 1 else (0.0, 0.0)
+            candidates[s].append((best_srv, p, rlat, ren))
+
+    # ----------------------------
+    # Initial assignment
+    # ----------------------------
+    work = {s: task_info[s][0] * task_info[s][2] for s in task_sources}
+    ordered_sources = sorted(task_sources, key=lambda s: work[s], reverse=True)
+    
+    init_assign = {}
+    init_load = {srv: 0.0 for srv in server_nodes}
+    init_users = {srv: 0 for srv in server_nodes}
+    
+    for s in ordered_sources:
+        best_i = 0
+        best_cost = float('inf')
+        w = work[s]
+        
+        for i, (srv, p, rlat, ren) in enumerate(candidates[s]):
+            lat_before, en_before = get_server_lat_en(srv, init_load[srv], init_users[srv])
+            lat_after, en_after = get_server_lat_en(srv, init_load[srv] + w, init_users[srv] + 1)
+            
+            delta_lat = rlat + (lat_after - lat_before)
+            delta_en = ren + (en_after - en_before)
+            
+            cost = delta_lat + 1.0 * delta_en
+            if cost < best_cost:
+                best_cost = cost
+                best_i = i
+                
+        init_assign[s] = best_i
+        srv = candidates[s][best_i][0]
+        init_load[srv] += w
+        init_users[srv] += 1
+
+    # ----------------------------
+    # Multi-start Local Search
+    # ----------------------------
+    best_overall_plan = None
+    best_overall_score = float('inf')
+    
+    def evaluate_plan(assign_dict, load_dict, users_dict):
+        total_lat = 0.0
+        total_en = 0.0
+        for s in task_sources:
+            i = assign_dict[s]
+            srv, p, rlat, ren = candidates[s][i]
+            total_lat += rlat
+            total_en += ren
+        for srv in server_nodes:
+            lat, en = get_server_lat_en(srv, load_dict[srv], users_dict[srv])
+            total_lat += lat
+            total_en += en
+        return total_lat + 1.0 * total_en
+
+    best_overall_score = evaluate_plan(init_assign, init_load, init_users)
+    best_overall_plan = init_assign.copy()
+    
+    # Explore different trade-offs between latency and energy
+    alphas = [0.0, 0.2, 0.5, 1.0, 2.0, 5.0]
+    
+    for alpha in alphas:
+        curr_assign = init_assign.copy()
+        curr_load = init_load.copy()
+        curr_users = init_users.copy()
+        
+        for _ in range(10):
+            improved = False
+            for s in ordered_sources:
+                old_i = curr_assign[s]
+                old_srv = candidates[s][old_i][0]
+                w = work[s]
+                
+                # Remove task from current server
+                curr_load[old_srv] -= w
+                curr_users[old_srv] -= 1
+                
+                best_i = old_i
+                best_cost = float('inf')
+                
+                for i, (new_srv, p, rlat, ren) in enumerate(candidates[s]):
+                    # O(1) exact delta evaluation
+                    new_lat_before, new_en_before = get_server_lat_en(new_srv, curr_load[new_srv], curr_users[new_srv])
+                    new_lat_after, new_en_after = get_server_lat_en(new_srv, curr_load[new_srv] + w, curr_users[new_srv] + 1)
+                    
+                    delta_lat = rlat + (new_lat_after - new_lat_before)
+                    delta_en = ren + (new_en_after - new_en_before)
+                    
+                    cost = delta_lat + alpha * delta_en
+                    if cost < best_cost:
+                        best_cost = cost
+                        best_i = i
+                        
+                # Commit task to best server
+                best_srv = candidates[s][best_i][0]
+                curr_load[best_srv] += w
+                curr_users[best_srv] += 1
+                curr_assign[s] = best_i
+                
+                if best_i != old_i:
+                    improved = True
+                    
+            if not improved:
+                break
+                
+        score = evaluate_plan(curr_assign, curr_load, curr_users)
+        if score < best_overall_score:
+            best_overall_score = score
+            best_overall_plan = curr_assign.copy()
+
+    # ----------------------------
+    # Build final plan
+    # ----------------------------
+    plan = {}
+    for s in task_sources:
+        i = best_overall_plan[s]
+        srv, p, _, _ = candidates[s][i]
+        plan[s] = {"server": srv, "path": p}
+
+    return plan
+# EVOLVE-BLOCK-END
+```
+</CODE>

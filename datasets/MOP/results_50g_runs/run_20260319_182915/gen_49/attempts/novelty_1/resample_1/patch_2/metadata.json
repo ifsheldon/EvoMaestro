@@ -1,0 +1,14 @@
+{
+  "generation": 49,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 2,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "two_scale_gaussian_basis_and_product_proxy",
+  "patch_description": "This edit implements a two-scale Gaussian basis for the drone path generation and updates the surrogate objective to use a product-based score (F1 * F2 * F3), which more accurately reflects the MOP Multiplier Score used in the evaluation. \n\n1.  **CurveGenerator**: Expanded to include 6 additional broad Gaussians spread across the path span. This provides better global shaping to minimize signal loss (F3) while maintaining the ability to avoid school noise (F2).\n2.  **SurrogateEvaluator**: Switched from a weighted sum to a product-based objective `(f1 * w1) * (f2 * w2) * (f3 * w3)` with a smoothness regularizer. This aligns the internal optimization with the external grading metric.\n3.  **LocalSearchOptimizer**: Updated to handle the expanded 12-parameter space (6 original + 6 broad amplitudes). The coordinate-wise descent now optimizes all 12 parameters, and seeds are expanded to initialize the new broad components.",
+  "error_msg": "No changes applied",
+  "timestamp": "2026-03-20T02:50:37.096939",
+  "llm_cost": 0.00546,
+  "llm_model": null
+}

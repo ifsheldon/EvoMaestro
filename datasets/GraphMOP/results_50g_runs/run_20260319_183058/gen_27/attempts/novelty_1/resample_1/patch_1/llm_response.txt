@@ -1,0 +1,80 @@
+An excellent approach to lower latencies significantly and break out of locally suboptimal traps is to concentrate our optimization efforts on heavily loaded servers. Since end-to-end latency grows very fast (asymptotically) with the server utilization due to queueing delays, local refinements should be aggressively focused on moving tasks away from the most heavily utilized ("hot") servers rather than trying a broad and uniform reassignment pass across the entire graph. We can identify the top utilized servers and do a restricted repair pass multiple times.
+
+<NAME>
+restricted_server_focused_repair
+</NAME>
+
+<DESCRIPTION>
+Replaces the uniform one-pass local improvement loop with a multi-pass restricted local search. By sorting the servers by utilization and only considering tasks assigned to the top 3 "hot" servers for reassignment, the algorithm aggressively tackles the structural bottlenecks of high queueing delay (and its corresponding dynamic energy penalties limit).
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+    # ---------- One-pass local improvement ----------
+    # Try reassigning each source with current loads fixed around temporary removal.
+    for src in ranked_sources:
+        cur_server = plan[src]["server"]
+        arr, payload, comp = task_info[src]
+        demand = arr * comp
+
+        projected_load[cur_server] -= demand
+        best = best_assignment_for_source(src, current_server=cur_server)
+
+        if best is None:
+            projected_load[cur_server] += demand
+            continue
+
+        _, new_server, new_path = best
+        # Accept if server/path changed and valid
+        if new_server != cur_server or new_path != plan[src]["path"]:
+            plan[src] = {"server": new_server, "path": new_path}
+            projected_load[new_server] += demand
+        else:
+            projected_load[cur_server] += demand
+
+    return plan
+=======
+    # ---------- Restricted server-focused repair pass ----------
+    # Instead of broad local search, identify heavily utilized servers and
+    # try to offload tasks from them. This focuses refinement on the fragile parts.
+    for _pass in range(3):
+        server_utils = []
+        for s in server_nodes:
+            service_rate, _, _ = server_info[s]
+            util = projected_load[s] / service_rate
+            server_utils.append((util, s))
+        server_utils.sort(reverse=True)
+        
+        # Identify the most utilized servers (up to 3)
+        hot_servers = set(s for u, s in server_utils[:3])
+        
+        moved_any = False
+        for src in ranked_sources:
+            cur_server = plan[src]["server"]
+            if cur_server not in hot_servers:
+                continue
+                
+            arr, payload, comp = task_info[src]
+            demand = arr * comp
+
+            projected_load[cur_server] -= demand
+            best = best_assignment_for_source(src, current_server=cur_server)
+
+            if best is None:
+                projected_load[cur_server] += demand
+                continue
+
+            _, new_server, new_path = best
+            if new_server != cur_server or new_path != plan[src]["path"]:
+                plan[src] = {"server": new_server, "path": new_path}
+                projected_load[new_server] += demand
+                moved_any = True
+            else:
+                projected_load[cur_server] += demand
+                
+        if not moved_any:
+            break
+
+    return plan
+>>>>>>> REPLACE
+</DIFF>

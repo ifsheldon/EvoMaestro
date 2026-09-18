@@ -1,0 +1,471 @@
+<NAME>
+hybrid_regret_queue_router
+</NAME>
+
+<DESCRIPTION>
+This version cross-breeds the stronger parts of both implementations:
+
+- **Server-rooted multi-mode Dijkstra candidate generation** (efficient for few servers, many sources).
+- Uses **5 path modes** (latency, balanced, energy, strong-energy, capacity-aware) to improve path diversity and avoid poor-capacity links.
+- Keeps only the **best candidate per (source, server)** using a baseline that includes routing + light compute proxy.
+- Uses a **marginal queue-aware scoring** (M/M/1-inspired delta) for assignment, with:
+  - overload protection near a utilization limit,
+  - routing latency/energy terms,
+  - dynamic compute energy term,
+  - activation-aware idle cost (higher first-use penalty).
+- Uses **regret-based construction** (assign hard-to-place sources first).
+- Adds **local relocation refinement** passes to reduce objective further after initial assignment.
+- Preserves I/O contract: returns `{source: {"server": ..., "path": [...]}}` with valid simple paths when reachable.
+
+I also reduced repeated lookup overhead with lightweight precomputed source/server parameter maps and kept robust fallback behavior for validity.
+</DESCRIPTION>
+
+<CODE>
+```python
+# EVOLVE-BLOCK-START
+def evolve_task_routing(
+    num_nodes,
+    edges,
+    server_nodes,
+    task_sources,
+    task_info,
+    server_info,
+):
+    """
+    Graph multi-objective routing problem.
+
+    Returns:
+    {
+        source_node: {
+            "server": server_node,
+            "path": [source_node, ..., server_node],
+        },
+        ...
+    }
+    """
+    import heapq
+    import math
+
+    # ------------------------------------------------------------
+    # Tunable parameters (hybrid crossover)
+    # ------------------------------------------------------------
+    PATH_MODES = (
+        (1.40, 0.10, 0.24, 0.00),  # latency focused
+        (1.05, 0.42, 0.20, 0.00),  # balanced
+        (0.78, 0.78, 0.16, 0.00),  # energy aware
+        (0.58, 1.06, 0.14, 0.00),  # strongly energy focused
+        (1.08, 0.42, 0.16, 0.08),  # cap-aware balanced
+    )
+
+    LAT_W = 1.00
+    EN_W = 0.91
+    QUEUE_W = 1.75
+    DYN_W = 0.22
+
+    UTIL_LIMIT = 0.93
+    HARD_UTIL = 0.985
+    LOCAL_PASSES = 3
+
+    # ------------------------------------------------------------
+    # Graph construction
+    # ------------------------------------------------------------
+    graph = [[] for _ in range(num_nodes)]
+    edge_map = {}
+    for u, v, base_latency, energy_cost, capacity in edges:
+        graph[u].append((v, base_latency, energy_cost, capacity))
+        graph[v].append((u, base_latency, energy_cost, capacity))
+        edge_map[(u, v)] = (base_latency, energy_cost, capacity)
+        edge_map[(v, u)] = (base_latency, energy_cost, capacity)
+
+    servers = list(server_nodes)
+    sources = list(task_sources)
+
+    # Precompute source/server attributes
+    source_payload = {}
+    source_demand = {}
+    for src in sources:
+        arr, payload, comp = task_info[src]
+        source_payload[src] = payload
+        source_demand[src] = arr * comp
+
+    srv_mu = {}
+    srv_idle = {}
+    srv_dyn = {}
+    for s in servers:
+        mu, idle, dyn = server_info[s]
+        srv_mu[s] = max(mu, 1e-9)
+        srv_idle[s] = idle
+        srv_dyn[s] = dyn
+
+    # ------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------
+    def reconstruct_path(parent, source, target):
+        if source == target:
+            return [source]
+        if target < 0 or target >= len(parent) or parent[target] == -1:
+            return []
+        path = [target]
+        cur = target
+        while cur != source:
+            cur = parent[cur]
+            if cur == -1:
+                return []
+            path.append(cur)
+        path.reverse()
+        return path
+
+    def path_metrics(path, payload):
+        if not path or len(path) <= 1:
+            return 0.0, 0.0
+        lat = 0.0
+        en = 0.0
+        for a, b in zip(path, path[1:]):
+            base_latency, edge_energy, capacity = edge_map[(a, b)]
+            cap = capacity if capacity and capacity > 1e-9 else 1e-9
+            inv_cap = 1.0 / cap
+            lat += base_latency + payload * inv_cap
+            en += edge_energy * (1.0 + 0.08 * payload * inv_cap)
+        return lat, en
+
+    def dijkstra_from_server(server, mode):
+        lat_w, en_w, cong_w, invcap_w = mode
+        dist = [float("inf")] * num_nodes
+        parent = [-1] * num_nodes
+        dist[server] = 0.0
+        pq = [(0.0, server)]
+
+        while pq:
+            curd, u = heapq.heappop(pq)
+            if curd != dist[u]:
+                continue
+            for v, base_latency, edge_energy, capacity in graph[u]:
+                cap = capacity if capacity and capacity > 1e-9 else 1e-9
+                inv_cap = 1.0 / cap
+                cong = 1.0 / math.sqrt(cap)
+                w = lat_w * base_latency + en_w * edge_energy + cong_w * cong + invcap_w * inv_cap
+                nd = curd + w
+                if nd < dist[v]:
+                    dist[v] = nd
+                    parent[v] = u
+                    heapq.heappush(pq, (nd, v))
+        return parent
+
+    def bfs_path(src, dst):
+        if src == dst:
+            return [src]
+        parent = [-1] * num_nodes
+        seen = [False] * num_nodes
+        q = [src]
+        seen[src] = True
+        qi = 0
+        while qi < len(q):
+            u = q[qi]
+            qi += 1
+            if u == dst:
+                break
+            for v, _, _, _ in graph[u]:
+                if not seen[v]:
+                    seen[v] = True
+                    parent[v] = u
+                    q.append(v)
+        return reconstruct_path(parent, src, dst)
+
+    # ------------------------------------------------------------
+    # Candidate generation
+    # ------------------------------------------------------------
+    candidates = {src: {} for src in sources}
+
+    for server in servers:
+        parent_sets = [dijkstra_from_server(server, mode) for mode in PATH_MODES]
+        mu = srv_mu[server]
+        idle = srv_idle[server]
+        dyn = srv_dyn[server]
+
+        for src in sources:
+            payload = source_payload[src]
+            demand = source_demand[src]
+            seen = set()
+            best = None
+
+            for parent in parent_sets:
+                path_srv_to_src = reconstruct_path(parent, server, src)
+                if not path_srv_to_src:
+                    continue
+                path = list(reversed(path_srv_to_src))
+                tp = tuple(path)
+                if tp in seen:
+                    continue
+                seen.add(tp)
+
+                route_latency, route_energy = path_metrics(path, payload)
+
+                baseline = (
+                    1.00 * route_latency
+                    + 0.86 * route_energy
+                    + 0.03 * dyn * (demand / mu)
+                    + 0.002 * idle
+                )
+
+                cand = {
+                    "server": server,
+                    "path": path,
+                    "route_latency": route_latency,
+                    "route_energy": route_energy,
+                    "demand": demand,
+                    "service_rate": mu,
+                    "idle_power": idle,
+                    "dynamic_power": dyn,
+                    "base_score": baseline,
+                }
+                if best is None or cand["base_score"] < best["base_score"]:
+                    best = cand
+
+            if best is not None:
+                candidates[src][server] = best
+
+    # Reachability fallback
+    for src in sources:
+        if candidates[src]:
+            continue
+        payload = source_payload[src]
+        demand = source_demand[src]
+        best = None
+        for server in servers:
+            path = bfs_path(src, server)
+            if not path:
+                continue
+            route_latency, route_energy = path_metrics(path, payload)
+            cand = {
+                "server": server,
+                "path": path,
+                "route_latency": route_latency,
+                "route_energy": route_energy,
+                "demand": demand,
+                "service_rate": srv_mu[server],
+                "idle_power": srv_idle[server],
+                "dynamic_power": srv_dyn[server],
+                "base_score": route_latency + route_energy,
+            }
+            if best is None or cand["base_score"] < best["base_score"]:
+                best = cand
+        if best is not None:
+            candidates[src][best["server"]] = best
+
+    # ------------------------------------------------------------
+    # Scoring
+    # ------------------------------------------------------------
+    def marginal_score(cand, current_load):
+        mu = cand["service_rate"]
+        lam0 = current_load
+        lam1 = current_load + cand["demand"]
+
+        util1 = lam1 / mu
+        overload_penalty = 0.0
+        if util1 >= UTIL_LIMIT:
+            overload_penalty = 5000.0 * (util1 - UTIL_LIMIT + 1e-6)
+
+        slack0 = max(mu - lam0, 1e-6)
+        slack1 = max(mu - lam1, 1e-6)
+        queue_delta = (1.0 / slack1) - (1.0 / slack0)
+
+        energy_delta = cand["dynamic_power"] * (cand["demand"] / mu)
+        idle_term = 0.020 * cand["idle_power"] if current_load <= 1e-12 else 0.0008 * cand["idle_power"]
+
+        return (
+            LAT_W * cand["route_latency"]
+            + EN_W * cand["route_energy"]
+            + QUEUE_W * queue_delta
+            + DYN_W * energy_delta
+            + idle_term
+            + overload_penalty
+        )
+
+    # ------------------------------------------------------------
+    # Regret-aware construction
+    # ------------------------------------------------------------
+    plan = {}
+    server_load = {s: 0.0 for s in servers}
+    unassigned = set(sources)
+
+    max_dem = max([source_demand[s] for s in sources] + [1.0])
+
+    def ranked_options(src):
+        opts = []
+        for server, cand in candidates[src].items():
+            sc = marginal_score(cand, server_load[server])
+            opts.append((sc, server, cand))
+        opts.sort(key=lambda x: (x[0], len(x[2]["path"])))
+        return opts
+
+    while unassigned:
+        chosen_src = None
+        chosen_opts = None
+        best_priority = -float("inf")
+
+        for src in list(unassigned):
+            opts = ranked_options(src)
+            if not opts:
+                continue
+            primary = opts[0][0]
+            secondary = opts[1][0] if len(opts) > 1 else primary + 8.0
+            regret = secondary - primary
+            dnorm = source_demand[src] / max_dem
+            priority = regret * (1.0 + 0.5 * dnorm) - 0.04 * primary
+            if priority > best_priority:
+                best_priority = priority
+                chosen_src = src
+                chosen_opts = opts
+
+        if chosen_src is None:
+            break
+
+        picked = chosen_opts[0]
+        for opt in chosen_opts:
+            _, s, c = opt
+            if (server_load[s] + c["demand"]) / c["service_rate"] < HARD_UTIL:
+                picked = opt
+                break
+
+        _, s, c = picked
+        plan[chosen_src] = {"server": s, "path": c["path"]}
+        server_load[s] += c["demand"]
+        unassigned.remove(chosen_src)
+
+    # fallback assignment
+    for src in list(unassigned):
+        best = None
+        for s, c in candidates[src].items():
+            sc = marginal_score(c, server_load[s])
+            if best is None or sc < best[0]:
+                best = (sc, s, c)
+        if best is not None:
+            _, s, c = best
+            plan[src] = {"server": s, "path": c["path"]}
+            server_load[s] += c["demand"]
+            unassigned.remove(src)
+
+    # ------------------------------------------------------------
+    # Local relocation improvement
+    # ------------------------------------------------------------
+    def assignment_cost(src, server, load_before, load_after):
+        cand = candidates[src][server]
+        mu = cand["service_rate"]
+
+        util = load_after / mu
+        overload_penalty = 0.0
+        if util >= UTIL_LIMIT:
+            overload_penalty = 5000.0 * (util - UTIL_LIMIT + 1e-6)
+
+        slack0 = max(mu - load_before, 1e-6)
+        slack1 = max(mu - load_after, 1e-6)
+        queue_delta = (1.0 / slack1) - (1.0 / slack0)
+        energy_delta = cand["dynamic_power"] * (cand["demand"] / mu)
+        idle_term = 0.020 * cand["idle_power"] if load_before <= 1e-12 else 0.0008 * cand["idle_power"]
+
+        return (
+            LAT_W * cand["route_latency"]
+            + EN_W * cand["route_energy"]
+            + QUEUE_W * queue_delta
+            + DYN_W * energy_delta
+            + idle_term
+            + overload_penalty
+        )
+
+    for _ in range(LOCAL_PASSES):
+        improved = False
+        ordered = sorted(plan.keys(), key=lambda x: source_demand.get(x, 0.0), reverse=True)
+
+        for src in ordered:
+            cur_server = plan[src]["server"]
+            cur_cand = candidates[src].get(cur_server)
+            if cur_cand is None:
+                continue
+
+            d = cur_cand["demand"]
+            cur_after = server_load[cur_server]
+            cur_before = cur_after - d
+            cur_cost = assignment_cost(src, cur_server, cur_before, cur_after)
+
+            best_gain = 0.0
+            best_move = None
+
+            for new_server, new_cand in candidates[src].items():
+                if new_server == cur_server:
+                    continue
+
+                new_before = server_load[new_server]
+                new_after = new_before + new_cand["demand"]
+                new_cost = assignment_cost(src, new_server, new_before, new_after)
+
+                mu_cur = cur_cand["service_rate"]
+                slack_b = max(mu_cur - cur_before, 1e-6)
+                slack_a = max(mu_cur - cur_after, 1e-6)
+                relief = 1.45 * ((1.0 / slack_a) - (1.0 / slack_b))
+
+                gain = cur_cost - new_cost + relief
+                if gain > best_gain + 1e-12:
+                    best_gain = gain
+                    best_move = (new_server, new_cand)
+
+            if best_move is not None:
+                ns, nc = best_move
+                server_load[cur_server] -= d
+                server_load[ns] += nc["demand"]
+                plan[src] = {"server": ns, "path": nc["path"]}
+                improved = True
+
+        if not improved:
+            break
+
+    # ------------------------------------------------------------
+    # Final validity fallback
+    # ------------------------------------------------------------
+    for src in sources:
+        if src in plan and plan[src]["path"]:
+            continue
+
+        chosen = None
+        for server, cand in candidates[src].items():
+            p = cand["path"]
+            if p and p[0] == src and p[-1] == server:
+                chosen = {"server": server, "path": p}
+                break
+
+        if chosen is None:
+            for server in servers:
+                p = bfs_path(src, server)
+                if p:
+                    chosen = {"server": server, "path": p}
+                    break
+
+        if chosen is None:
+            fallback_server = servers[0] if servers else src
+            chosen = {"server": fallback_server, "path": [src] if src == fallback_server else []}
+
+        plan[src] = chosen
+
+    return plan
+# EVOLVE-BLOCK-END
+
+import os
+import sys
+
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from graph_evaluation import GraphRoutingGrader
+
+
+def run_experiment(**kwargs):
+    del kwargs
+    grader = GraphRoutingGrader()
+    try:
+        avg_latency, avg_energy, final_score = grader.grade_silent(evolve_task_routing, timeout=12)
+    except Exception:
+        import traceback
+
+        traceback.print_exc()
+        avg_latency, avg_energy, final_score = float("inf"), float("inf"), float("inf")
+
+    return avg_latency, avg_energy, final_score
+```
+</CODE>

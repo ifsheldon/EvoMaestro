@@ -1,0 +1,14 @@
+{
+  "generation": 5,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "marginal_cost_routing",
+  "patch_description": "The current approach uses a simple heuristic and a fixed-weight Dijkstra that doesn't account for task-specific payload sizes or the non-linear nature of queueing delays. \n\nMy new algorithm improves this by:\n1.  **Accurate Objective Modeling**: It uses a marginal cost function derived from the system's total latency and energy. This includes a more realistic M/M/1 queueing delay model ($V / (\\mu - V)$) and compute energy ($P_{dyn} \\cdot V / \\mu$).\n2.  **Task-Specific Path Optimization**: It precomputes shortest paths from each server using a combined weight ($latency + energy\\_cost \\times avg\\_payload$) to balance the two objectives during routing.\n3.  **Dynamic Load Balancing**: Instead of a fixed utilization cap, it uses the marginal increase in total system latency (including the impact on all tasks already at a server) to make assignment decisions.\n4.  **Efficiency**: By running Dijkstra from the few server nodes instead of many task sources, it significantly reduces computational overhead while maintaining high accuracy.",
+  "error_msg": "Could not extract code from patch string",
+  "timestamp": "2026-03-20T02:32:32.540982",
+  "llm_cost": 0.0027815,
+  "llm_model": null
+}

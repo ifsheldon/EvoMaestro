@@ -1,0 +1,48 @@
+```python
+<NAME>
+add_post_recovery_pull_and_tune_surrogate
+</NAME>
+
+<DESCRIPTION>
+Add a small, localized post-recovery pull near the base station. By applying an additional, narrow Gaussian attraction directly towards `by` after the main delta calculation, we can specifically trim signal loss (F3) near the base without affecting the overall trajectory too much. 
+
+Simultaneously, the last iteration drastically increased the baseline amplitude search limits, which caused the code to over-optimize F3 at extreme cost to F1 (distance penalty increased from 1.17 to 1.24). We correct this by strongly increasing the penalty weight for `f1` in the `surrogate_score` function to gently force the parameter search back to shorter, more optimal geometries.
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+            delta = school_term + base_term + global_tail
+
+            # 限制偏离，兼顾路径长度
+            max_dev = 30.0 if away_dir == toward_dir else 24.0
+            delta = clamp(delta, -max_dev, max_dev)
+            ys.append(y0 + delta)
+=======
+            delta = school_term + base_term + global_tail
+
+            # 限制偏离，兼顾路径长度
+            max_dev = 30.0 if away_dir == toward_dir else 24.0
+            delta = clamp(delta, -max_dev, max_dev)
+            
+            y_curr = y0 + delta
+            
+            # 小范围的基站后置修正吸引，改善局部信噪且不引起宏观路径大幅拉长
+            sigma_post = max(2.0, sigma_base * 0.35)
+            w_post = gaussian(x, bx, sigma_post)
+            y_curr += 0.20 * (by - y_curr) * w_post
+
+            ys.append(y_curr)
+>>>>>>> REPLACE
+</DIFF>
+
+<DIFF>
+<<<<<<< SEARCH
+        # 更偏向同时压低 F2/F3，但保持 F1 不恶化过多
+        return 1.6 * f1 + 22.0 * school_pen + 0.12 * base_pen + 0.10 * smooth_pen
+=======
+        # 更偏向同时压低 F2/F3，但保持 F1 不恶化过多
+        # 明显加大对 f1 的惩罚比重，抑制过度偏离基线的解
+        return 3.5 * f1 + 20.0 * school_pen + 0.09 * base_pen + 0.15 * smooth_pen
+>>>>>>> REPLACE
+</DIFF>
+```

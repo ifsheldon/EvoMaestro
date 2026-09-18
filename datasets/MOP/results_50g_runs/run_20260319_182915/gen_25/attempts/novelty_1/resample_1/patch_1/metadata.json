@@ -1,0 +1,14 @@
+{
+  "generation": 25,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "hybrid_envelope_adam_path",
+  "patch_description": "This rewrite performs a crossover between the two styles:\n\n1. **Heuristic envelope initialization** (from the smooth sinusoidal/gaussian script):  \n   - Starts from the straight line.\n   - Adds a smooth offset that **pushes away from school Y** near school X and **pulls toward base Y** near base X.\n   - Uses a sine envelope so deformation is naturally zero at both ends.\n\n2. **Physics-based refinement with Adam** (from the active-contour optimizer):  \n   - Refines the initialized path using multi-objective gradients:\n     - distance/smoothness term (arc-length style),\n     - school repulsion term,\n     - base attraction term.\n   - Uses stable Adam updates with learning-rate decay and gradient clipping for convergence speed and robustness.\n\nThis keeps the same function signature and output type (`List[float]` of y-coordinates), while combining fast good initialization + robust optimization for better joint minimization of F1/F2/F3 and a smooth curve that bends away from school influence and toward base influence.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:37:23.253714",
+  "llm_cost": 0.038290000000000005,
+  "llm_model": null
+}

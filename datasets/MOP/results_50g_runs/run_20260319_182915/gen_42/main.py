@@ -1,0 +1,249 @@
+# EVOLVE-BLOCK-START
+import math
+
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    Return a list of Y coordinates for uniformly spaced X locations between start and end.
+
+    Multi-objective heuristic with adaptive control points:
+      - Parameterizes the path using K movable control points (cx, cy).
+      - Optimizes both cy and cx using Adam to dynamically allocate capacity.
+      - Backpropagates exact analytical gradients through linear interpolation.
+      - Uses a Laplacian spring force to maintain monotonic ordering of cx.
+    """
+    x0, y0 = start
+    x1, y1 = end
+    xs, ys = school
+    xb, yb = base
+
+    if num_points <= 0:
+        return []
+
+    # ---------------- helpers ----------------
+    def clamp(v, lo, hi):
+        return lo if v < lo else hi if v > hi else v
+
+    def smooth_inplace(y, weight=0.12, passes=1):
+        n = len(y)
+        if n <= 1:
+            return
+        for _ in range(passes):
+            prev = y[:]
+            for i in range(n):
+                left = y0 if i == 0 else prev[i - 1]
+                right = y1 if i == n - 1 else prev[i + 1]
+                y[i] = (1.0 - weight) * prev[i] + 0.5 * weight * (left + right)
+
+    def smooth_grad_inplace(g, weight=0.12, passes=1):
+        n = len(g)
+        if n <= 1:
+            return
+        for _ in range(passes):
+            prev = g[:]
+            for i in range(n):
+                left = 0.0 if i == 0 else prev[i - 1]
+                right = 0.0 if i == n - 1 else prev[i + 1]
+                g[i] = (1.0 - weight) * prev[i] + 0.5 * weight * (left + right)
+
+    # ---------------- geometry ----------------
+    span_x = abs(x1 - x0) + 1e-9
+    span_y = abs(y1 - y0) + 1e-9
+    span = math.hypot(span_x, span_y) + 1e-9
+    dx_total = (x1 - x0) / (num_points + 1)
+    x_positions = [x0 + (i + 1) * dx_total for i in range(num_points)]
+
+    # ---------------- control points initialization ----------------
+    K = 32
+    cx = [x0 + j * (x1 - x0) / (K - 1) for j in range(K)]
+    cy = [y0 + j * (y1 - y0) / (K - 1) for j in range(K)]
+
+    school_sig = max(7.0, 0.13 * span_x)
+    base_sig = max(9.0, 0.16 * span_x)
+    trans_sig = max(4.0, 0.06 * span_x)
+
+    for j in range(1, K - 1):
+        x = cx[j]
+        yref = cy[j]
+        t = j / (K - 1)
+        env = math.sin(math.pi * t) ** 0.92
+
+        away_s = -1.0 if ys >= yref else 1.0
+        to_b = 1.0 if yb >= yref else -1.0
+
+        g_s = math.exp(-((x - xs) / school_sig) ** 2)
+        g_b = math.exp(-((x - xb) / base_sig) ** 2)
+        late = 1.0 / (1.0 + math.exp(-(x - (0.58 * xs + 0.42 * xb)) / trans_sig))
+
+        cy[j] += env * (
+            (0.95 * span * 0.16) * away_s * g_s +
+            (1.05 * span * 0.18) * to_b * g_b +
+            (0.70 * span * 0.10) * to_b * (0.30 + 0.70 * late)
+        )
+
+    # ---------------- optimization ----------------
+    iters = 300 if num_points < 90 else 400
+    
+    m_cx = [0.0] * K
+    v_cx = [0.0] * K
+    m_cy = [0.0] * K
+    v_cy = [0.0] * K
+    b1, b2 = 0.90, 0.999
+    eps = 1e-8
+
+    s_sigma_x = max(8.0, 0.14 * span_x)
+    b_sigma_x = max(10.0, 0.17 * span_x)
+
+    for it in range(1, iters + 1):
+        prog = (it - 1) / max(1, iters - 1)
+        
+        lr_y = 0.15 * (1.0 - prog) + 0.05
+        lr_x = 0.02 * (1.0 - prog) + 0.005
+        
+        w1 = 0.80 + 0.40 * prog     # second-order smoothness / distance
+        w2 = 1.55 - 0.35 * prog     # school risk
+        w3 = 1.45 + 0.50 * prog     # base distance
+        ws = 0.40 + 0.40 * prog     # fourth-order smoothness
+        w_spring = 0.1 + 0.4 * prog # spring for cx
+        
+        # 1. Interpolate dense_y from control points
+        dense_y = [0.0] * num_points
+        idx = 0
+        for i, x in enumerate(x_positions):
+            while idx < K - 2 and x > cx[idx + 1]:
+                idx += 1
+            h = cx[idx + 1] - cx[idx] + 1e-9
+            t = (x - cx[idx]) / h
+            dense_y[i] = cy[idx] * (1 - t) + cy[idx + 1] * t
+            
+        # 2. Smooth dense_y to stabilize gradients
+        smooth_inplace(dense_y, weight=0.12, passes=1)
+        
+        # 3. Compute gradients on dense_y
+        grad_y = [0.0] * num_points
+        for i, x in enumerate(x_positions):
+            y = dense_y[i]
+            
+            yl = y0 if i == 0 else dense_y[i - 1]
+            yr = y1 if i == num_points - 1 else dense_y[i + 1]
+            ym2 = y0 if i - 2 < 0 else dense_y[i - 2]
+            yp2 = y1 if i + 2 >= num_points else dense_y[i + 2]
+            
+            # F1 / Smoothness
+            grad_y[i] += w1 * (2.0 * y - yl - yr)
+            
+            # Fourth-order smoothness
+            grad_y[i] += ws * (ym2 - 4.0 * yl + 6.0 * y - 4.0 * yr + yp2)
+            
+            # F2: School noise
+            dy_s = y - ys
+            dxs = x - xs
+            r2s = dxs * dxs + dy_s * dy_s + 25.0
+            gate_s = 0.55 + 2.40 * math.exp(-((x - xs) / s_sigma_x) ** 2)
+            grad_y[i] += w2 * gate_s * (-dy_s / (r2s ** 1.12))
+            
+            # F3: Base signal drop
+            dy_b = y - yb
+            dxb = x - xb
+            r2b = dxb * dxb + dy_b * dy_b + 36.0
+            gate_b = 0.70 + 2.15 * math.exp(-((x - xb) / b_sigma_x) ** 2)
+            grad_y[i] += w3 * gate_b * (dy_b / (r2b ** 1.02))
+            
+        # 4. Backprop through smoothing
+        smooth_grad_inplace(grad_y, weight=0.12, passes=1)
+        
+        # 5. Backprop to cx and cy
+        grad_cx = [0.0] * K
+        grad_cy = [0.0] * K
+        
+        idx = 0
+        for i, x in enumerate(x_positions):
+            while idx < K - 2 and x > cx[idx + 1]:
+                idx += 1
+            h = cx[idx + 1] - cx[idx] + 1e-9
+            t = (x - cx[idx]) / h
+            g = grad_y[i]
+            
+            grad_cy[idx] += g * (1 - t)
+            grad_cy[idx + 1] += g * t
+            
+            dy_dx = (cy[idx + 1] - cy[idx]) / h
+            grad_cx[idx] += g * dy_dx * (t - 1)
+            grad_cx[idx + 1] += g * dy_dx * (-t)
+            
+        # Scale gradients and add spring force to cx
+        scale = K / max(1, num_points)
+        for j in range(K):
+            grad_cy[j] *= scale
+            grad_cx[j] *= scale
+            
+        for j in range(1, K - 1):
+            grad_cx[j] += w_spring * (2 * cx[j] - cx[j-1] - cx[j+1])
+            
+        # 6. Adam update
+        for j in range(1, K - 1):
+            # cy update
+            gy = grad_cy[j]
+            m_cy[j] = b1 * m_cy[j] + (1 - b1) * gy
+            v_cy[j] = b2 * v_cy[j] + (1 - b2) * (gy * gy)
+            mhy = m_cy[j] / (1 - b1 ** it)
+            vhy = v_cy[j] / (1 - b2 ** it)
+            cy[j] -= lr_y * mhy / (math.sqrt(vhy) + eps)
+            
+            # cx update
+            gx = grad_cx[j]
+            m_cx[j] = b1 * m_cx[j] + (1 - b1) * gx
+            v_cx[j] = b2 * v_cx[j] + (1 - b2) * (gx * gx)
+            mhx = m_cx[j] / (1 - b1 ** it)
+            vhx = v_cx[j] / (1 - b2 ** it)
+            cx[j] -= lr_x * mhx / (math.sqrt(vhx) + eps)
+            
+        # 7. Enforce monotonicity of cx
+        min_dx = span_x / (3.0 * K)
+        for j in range(1, K - 1):
+            if cx[j] < cx[j-1] + min_dx:
+                cx[j] = cx[j-1] + min_dx
+        for j in range(K - 2, 0, -1):
+            if cx[j] > cx[j+1] - min_dx:
+                cx[j] = cx[j+1] - min_dx
+
+    # ---------------- final interpolation and polish ----------------
+    dense_y = [0.0] * num_points
+    idx = 0
+    for i, x in enumerate(x_positions):
+        while idx < K - 2 and x > cx[idx + 1]:
+            idx += 1
+        h = cx[idx + 1] - cx[idx] + 1e-9
+        t = (x - cx[idx]) / h
+        dense_y[i] = cy[idx] * (1 - t) + cy[idx + 1] * t
+        
+    smooth_inplace(dense_y, weight=0.15, passes=3)
+    
+    lo_ref = min(y0, y1, ys, yb)
+    hi_ref = max(y0, y1, ys, yb)
+    margin = max(24.0, 0.30 * span)
+    lo, hi = lo_ref - margin, hi_ref + margin
+    y_coords = [float(clamp(v, lo, hi)) for v in dense_y]
+    
+    return y_coords
+# EVOLVE-BLOCK-END
+
+import sys
+import os
+
+# 将当前目录加入系统路径以便导入同级文件
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from drone_evaluation import DroneGrader
+
+def run_experiment(**kwargs):
+    """供 Shinka 触发的单次实验方法"""
+    grader = DroneGrader()
+    
+    # 捕获异常防止大模型写出死循环炸毁测评机
+    try:
+        avg_f1, avg_f2, avg_f3, final_score = grader.grade_silent(evolve_drone_path, timeout=12)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        avg_f1, avg_f2, avg_f3, final_score = float('inf'), float('inf'), float('inf'), float('inf')
+        
+    return avg_f1, avg_f2, avg_f3, final_score

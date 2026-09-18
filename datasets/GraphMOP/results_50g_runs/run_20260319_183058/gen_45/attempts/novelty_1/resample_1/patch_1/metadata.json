@@ -1,0 +1,14 @@
+{
+  "generation": 45,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 2,
+  "patch_name": "dynamic_regret_active_pool",
+  "patch_description": "Introduce a dynamic regret active-pool constructor for assignment order.  \nInstead of committing directly to the single highest-priority source each step, we now:\n\n1. Recompute regret with current server loads (still fully dynamic).\n2. Build a small active pool of highest-regret sources.\n3. Choose the source within that pool whose best feasible assignment has the lowest immediate marginal delta.\n4. Keep a regret-aware fallback if feasibility is tight.\n\nThis keeps the beneficial regret signal (protecting constrained tasks) while reducing greedy over-commitment that can hurt latency/energy later due to queue buildup. I also slightly adjust the priority formula to avoid favoring high primary cost too aggressively.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:49:28.455451",
+  "llm_cost": 0.0419055,
+  "llm_model": null
+}

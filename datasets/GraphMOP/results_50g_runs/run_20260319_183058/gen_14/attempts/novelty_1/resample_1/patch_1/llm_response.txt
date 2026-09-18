@@ -1,0 +1,61 @@
+<NAME>
+regret_marginal_routing
+</NAME>
+
+<DESCRIPTION>
+The algorithm implements a regret-based task ordering policy combined with a marginal-cost greedy assignment and iterative local search. 
+
+Key insights:
+1.  **Regret-Based Ordering**: Tasks are prioritized based on their "regret"—the difference in cost between their best and second-best server options. This ensures that tasks with limited high-quality options are assigned before servers become congested.
+2.  **Marginal Cost Function**: Instead of simple per-task metrics, the assignment and local search use a global marginal cost that accounts for the impact of a task on *all* other tasks sharing the same server (specifically, the change in total queueing delay $N/(\mu - L)$).
+3.  **Multi-Objective Dijkstra**: A scalarized weight $(latency + 0.5 \cdot energy)$ is used during pathfinding to find paths that naturally balance both objectives.
+4.  **Iterative Refinement**: A best-response local search iteratively reassigns tasks to servers that minimize the total system cost, effectively handling the non-linear queueing delay and discrete idle power costs.
+</DESCRIPTION>
+
+<CODE>
+```python
+import heapq
+
+def evolve_task_routing(
+    num_nodes,
+    edges,
+    server_nodes,
+    task_sources,
+    task_info,
+    server_info,
+):
+    # 1. Build Graph
+    adj = [[] for _ in range(num_nodes)]
+    for u, v, lat, en, cap in edges:
+        adj[u].append((v, float(lat), float(en), float(cap)))
+        adj[v].append((u, float(lat), float(en), float(cap)))
+
+    # 2. Precompute Paths for each Source
+    # We run Dijkstra once per source to find the best path to all servers.
+    # Weight = (base_lat + payload/cap) + 0.5 * (energy_cost * payload)
+    source_candidates = {}
+    
+    def get_path(parent, target):
+        path = []
+        curr = target
+        while curr != -1:
+            path.append(curr)
+            curr = parent[curr]
+        return path[::-1]
+
+    for s in task_sources:
+        arr, payload, comp = task_info[s]
+        work = arr * comp
+        
+        # Dijkstra
+        dists = [float('inf')] * num_nodes
+        parent = [-1] * num_nodes
+        # Store rlat and ren along the path
+        path_lat = [0.0] * num_nodes
+        path_en = [0.0] * num_nodes
+        
+        dists[s] = 0.0
+        pq = [(0.0, s)]
+        
+        while pq:
+            d, u = heapq.heappop(pq)

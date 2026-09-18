@@ -1,0 +1,14 @@
+{
+  "generation": 5,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 6,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "marginal_cost_routing",
+  "patch_description": "The previous implementation performed an expensive Dijkstra search for every source-server pair and used a simplified server score that ignored the non-linear impact of queueing. \n\nMy new algorithm, `marginal_cost_routing`, introduces these optimizations:\n1. **O(S) Path Precomputation**: Instead of $O(T \\times S)$ path searches, it runs Dijkstra from each server node once ($O(S \\times E \\log N)$). Because the graph is undirected, $dist(server, source) = dist(source, server)$, drastically reducing computation time.\n2. **Marginal Total Cost Analysis**: For server assignment, it calculates the marginal increase in total system latency and energy. It uses an M/M/1 queueing model derivative ($\\rho/(1-\\rho)$) to account for how a new task affects the latency of all other tasks already assigned to that server.\n3. **Task-Load Ranking**: Heavy tasks (high arrival rate $\\times$ high compute) are prioritized in the greedy assignment phase to ensures efficient resource utilization.\n4. **Energy-Aware Metrics**: It defines path weights and server scores using a weighted combination of transmission energy (payload-dependent) and dynamic compute power.",
+  "error_msg": "Could not extract code from patch string",
+  "timestamp": "2026-03-20T02:39:31.044165",
+  "llm_cost": 0.0066795000000000005,
+  "llm_model": null
+}

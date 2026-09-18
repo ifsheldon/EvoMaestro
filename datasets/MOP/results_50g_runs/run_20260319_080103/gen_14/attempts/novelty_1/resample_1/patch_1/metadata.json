@@ -1,0 +1,14 @@
+{
+  "generation": 14,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "post_smoothing_base_pull",
+  "patch_description": "Add a mild base-focused correction pass after the smoothing rounds. Smoothing tends to pull the path away from the base station (which was carefully targeted in the first pass), increasing the signal loss (F3). By applying a lightweight update `y += post_base_pull * gaussian(x around bx) * (by - y)` with a small coefficient, the path regains some base alignment lost during smoothing, shaving down F3 without materially increasing the flying distance (F1).",
+  "error_msg": null,
+  "timestamp": "2026-03-19T16:04:02.992832",
+  "llm_cost": 0.014544,
+  "llm_model": null
+}

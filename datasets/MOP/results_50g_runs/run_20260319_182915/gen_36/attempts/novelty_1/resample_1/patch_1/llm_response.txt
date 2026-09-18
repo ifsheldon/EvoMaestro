@@ -1,0 +1,41 @@
+```python
+# EVOLVE-BLOCK-START
+import math
+
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    【无人机连续空间多目标折线优化】
+    """
+    x_start, y_start = start
+    x_end, y_end = end
+    x_s, y_s = school
+    x_b, y_b = base
+
+    xs = [x_start + (i + 1) * (x_end - x_start) / (num_points + 1) for i in range(num_points)]
+    lx = (x_end - x_start) if x_end != x_start else 1.0
+    L = abs(lx) or 1.0
+    line_ys = [y_start + (x - x_start) * (y_end - y_start) / lx for x in xs]
+
+    # Precompute sine window to maintain smooth entry/exit at endpoints
+    wins = [math.sin(math.pi * (x - x_start) / lx) for x in xs]
+
+    def safe_exp(v):
+        return math.exp(v) if v > -700 else 0.0
+
+    # Generate a rich library of basis profiles for school and base
+    # We remove hardcoded directions (ds, db) and use symmetric amplitudes 
+    # to allow the search to discover optimal topological routing (e.g. going above or below).
+    school_profiles = [[0.0] * num_points]
+    
+    s_centers = [x_s, x_s - 0.05*L, x_s + 0.05*L, x_s - 0.1*L, x_s + 0.1*L, x_s - 0.2*L, x_s + 0.2*L]
+    s_widths = [0.01*L**2, 0.03*L**2, 0.08*L**2, 0.15*L**2, 0.3*L**2]
+    s_amps = [-180, -120, -70, -35, -15, 15, 35, 70, 120, 180]
+    
+    for c in s_centers:
+        for w in s_widths:
+            shape = [safe_exp(-((x - c)**2) / w) for x in xs]
+            for a in s_amps:
+                school_profiles.append([a * shape[i] * wins[i] for i in range(num_points)])
+                
+    # School double bumps
+    double_amps = [-150, -80, -30, 3

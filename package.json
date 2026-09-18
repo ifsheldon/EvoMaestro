@@ -1,0 +1,23 @@
+{
+  "name": "evomaestro",
+  "private": true,
+  "packageManager": "bun@1.4.0",
+  "engines": {
+    "bun": ">=1.4.0",
+    "node": ">=22.22.1"
+  },
+  "workspaces": [
+    "evomaestro-interface",
+    "project-page"
+  ],
+  "scripts": {
+    "prepare": "husky evomaestro-interface/.husky"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7"
+  },
+  "trustedDependencies": [
+    "sharp",
+    "unrs-resolver"
+  ]
+}

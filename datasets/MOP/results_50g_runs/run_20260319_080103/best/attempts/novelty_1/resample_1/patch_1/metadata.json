@@ -1,0 +1,14 @@
+{
+  "generation": 34,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "remove_envelope_and_reorder_objectives",
+  "patch_description": "1. **Remove the `env` smooth scaling**: The previous introduction of the sine envelope function strictly bounded modifications near the endpoints to 0. This dramatically harmed the base signal metrics (F3) and school noise metrics (F2) when these POIs were nearer to the course's start/end.\n2. **Reorder Operations**: Instead of dodging the school first and then drawing towards the base (which could re-steer the path right back into the school thereby hurting F2), we now pull the trajectory toward the base *first*. Afterwards, we firmly repulse it away from the school so avoidance takes correct priority and ensures minimum F2 noise penalization.\n3. **Consistent Dodge Direction**: To guarantee a clean dodge and prevent mid-point switching or jitter if the path hugs the school's noise zone, we calculate `global_push_dir` right at the `sx` mark based on where the base attraction *would* naturally drift the drone. This ensures the curve bulges smoothly to one valid side.\n4. **Broadened Signal Capture**: Tuning `sigma_b2` wider enables the drone to hold a strong signal over a broader region and tuning `w_s` push value slightly higher directly protects against noise overlaps.",
+  "error_msg": null,
+  "timestamp": "2026-03-19T16:12:01.705871",
+  "llm_cost": 0.01651,
+  "llm_model": null
+}

@@ -1,0 +1,38 @@
+{
+  "catalog": [
+    {
+      "api_model_name": "mock-llm",
+      "input_price": 0.0,
+      "input_price_tier2": null,
+      "is_reasoning": false,
+      "kind": "llm",
+      "model_name": "mock-llm",
+      "output_price": 0.0,
+      "output_price_tier2": null,
+      "provider": "mock",
+      "requires_reasoning": false,
+      "think_temp_fixed": false,
+      "tier_threshold": null
+    },
+    {
+      "api_model_name": "mock-embedding",
+      "input_price": 0.0,
+      "input_price_tier2": null,
+      "is_reasoning": false,
+      "kind": "embedding",
+      "model_name": "mock-embedding",
+      "output_price": null,
+      "output_price_tier2": null,
+      "provider": "mock",
+      "requires_reasoning": false,
+      "think_temp_fixed": false,
+      "tier_threshold": null
+    }
+  ],
+  "catalog_sha256": "a42015c1c0cf95b25ceb604346f0cc13d94b4e13d5d1363b9ee48ac64bd1c4fc",
+  "etag": null,
+  "fetched_at": null,
+  "sha256": "a42015c1c0cf95b25ceb604346f0cc13d94b4e13d5d1363b9ee48ac64bd1c4fc",
+  "source": "bundled",
+  "stale": false
+}

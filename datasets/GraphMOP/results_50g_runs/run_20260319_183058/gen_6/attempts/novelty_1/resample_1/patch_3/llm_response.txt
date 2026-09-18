@@ -1,0 +1,51 @@
+An elegant and highly effective approach to this multi-objective routing problem is to use a **Candidate Path Precomputation combined with Local Search (Hill Climbing)**. 
+
+### Method Explanation
+
+1. **Candidate Path Precomputation**: 
+   Instead of running a shortest-path algorithm for every `(source, server)` pair on the fly, we reverse the perspective and run Dijkstra's algorithm from each *server* to all other nodes. Furthermore, we run it multiple times using 7 varying linear combinations of latency and energy weights. This quickly mines and precomputes a large set of highly diverse, Pareto-optimal candidate routes between all sources and edge servers—effortlessly avoiding future bottlenecks.
+
+2. **Surrogate Cost and Soft Constraints Function**:
+   We model a continuous evaluation function mirroring the actual criteria:
+   - **Server Queueing Delay**: Modeled using the M/M/1 queue limit sum formulation $delay = load / (\mu - load)$.
+   - **Server Power Model**: Modeled exactly as $Idle + Dynamic \times Load/\mu$.
+   - **Path Sums**: Exact aggregation of expected arrival rates multiplied by path base latency and routing energy.
+   - **Soft Penalties**: We implement a steeply sloped linear penalty when network components surpass 95% of maximum capacity instead of hard walls, providing a continuous gradient slope downwards to guide the search out of invalid states.
+
+3. **Greedy Start & High-Throughput Hill Climbing**:
+   Initialization greedily assigns tasks to one of those candidate paths minimizing the marginal variance. Then, because we solely track and subtract array deltas dynamically in $O(1)$ time, we enter a massive stochastic Hill Climbing block. This attempts thousands of alternative candidate edge/server path shifts, seamlessly shedding away congestion across edges and dropping latency limits asymptotically to optimal bounds right until the 11.0 seconds evaluation loop times out. 
+
+<NAME>
+precompute_local_search
+</NAME>
+
+<DESCRIPTION>
+Precomputes multiple Pareto candidate paths from servers using several weight structures, evaluates the true network physics bounds continuously (queueing delays and energy draw), and executes highly targeted simulated hill climbing to slide variables uniformly away from bottlenecks.
+</DESCRIPTION>
+
+<CODE>
+```python
+# EVOLVE-BLOCK-START
+def evolve_task_routing(
+    num_nodes,
+    edges,
+    server_nodes,
+    task_sources,
+    task_info,
+    server_info,
+):
+    import heapq
+    import time
+    import random
+
+    start_time = time.time()
+    
+    graph = [[] for _ in range(num_nodes)]
+    edge_dict = {}
+    edge_capacity = {}
+    for u, v, L, E, C in edges:
+        graph[u].append((v, L, E, C))
+        graph[v].append((u, L, E, C))
+        e = tuple(sorted((u, v)))
+        edge_dict[e] = (L, E, C)
+        edge_capacity[

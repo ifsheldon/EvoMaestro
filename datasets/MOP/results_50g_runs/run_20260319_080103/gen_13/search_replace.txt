@@ -1,0 +1,69 @@
+An excellent way to improve the score is to target the dominant weakness, which is `F3` (Signal Loss). Currently, the attraction to the base station is too weak and too broad, resulting in insufficient signal improvement while still adding to the flying distance.
+
+We can strengthen the base station's pull (increase the amplitude multiplier to `0.80`) while simultaneously narrowing its area of effect (`sigma_base` reduced from `0.18` to `0.14`). This creates a more decisive, localized curve towards the base station without bending the entire path, significantly improving `F3` while keeping `F1` (Distance) and `F2` (School Noise) low. We also need to increase the `max_dev` clamp to allow this stronger localized pull.
+
+Here are the proposed changes:
+
+<NAME>
+strengthen_localized_base_pull
+</NAME>
+
+<DESCRIPTION>
+Increase the `amp_base` multiplier to 0.80 to pull the drone closer to the base station (improving F3), while reducing `sigma_base` to 0.14 to make the pull more localized, preventing the entire path from bending and keeping F1 low.
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+    # 横向作用范围：学校影响更局部，基站吸引更宽一些以保证平滑过渡
+    span = abs(dx_total)
+    sigma_school = max(span * 0.12, 6.0)
+    sigma_base = max(span * 0.18, 8.0)
+
+    # 纵向幅值：控制在适中范围，避免过大导致路径显著变长
+    school_gap = abs(sy - school_line_y)
+    base_gap = abs(by - base_line_y)
+
+    # 学校排斥更积极，基站吸引更温和；同时设置上限防止极端输入失控
+    amp_school = min(18.0, 0.40 * school_gap + 6.0)
+    amp_base = min(20.0, 0.30 * base_gap + 5.0)
+=======
+    # 横向作用范围：学校影响更局部，基站吸引也更局部以防止路径过长
+    span = abs(dx_total)
+    sigma_school = max(span * 0.12, 6.0)
+    sigma_base = max(span * 0.14, 7.0)
+
+    # 纵向幅值：控制在适中范围，避免过大导致路径显著变长
+    school_gap = abs(sy - school_line_y)
+    base_gap = abs(by - base_line_y)
+
+    # 学校排斥更积极，基站吸引增强但更局部；同时设置上限防止极端输入失控
+    amp_school = min(18.0, 0.40 * school_gap + 6.0)
+    amp_base = min(35.0, 0.80 * base_gap + 5.0)
+>>>>>>> REPLACE
+</DIFF>
+
+<NAME>
+increase_max_deviation_limit
+</NAME>
+
+<DESCRIPTION>
+Increase the `max_dev` limit from 24.0 to 35.0 to accommodate the stronger base station attraction amplitude, allowing the drone to get close enough to the base station to effectively reduce F3.
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+        # 轻微距离约束：限制相对基线偏离，兼顾 F1
+        max_dev = 24.0
+        if delta > max_dev:
+            delta = max_dev
+        elif delta < -max_dev:
+            delta = -max_dev
+=======
+        # 轻微距离约束：限制相对基线偏离，兼顾 F1
+        max_dev = 35.0
+        if delta > max_dev:
+            delta = max_dev
+        elif delta < -max_dev:
+            delta = -max_dev
+>>>>>>> REPLACE
+</DIFF>

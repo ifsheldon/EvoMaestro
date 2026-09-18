@@ -1,0 +1,14 @@
+{
+  "generation": 39,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "hybrid_gaussian_path",
+  "patch_description": "This rewrite crossovers the stronger parts of the prior programs:\n\n- keeps the efficient straight-line baseline from both versions,\n- keeps deterministic candidate search from the richer version,\n- reintroduces the more effective direct attraction-to-base term from the better-scoring simpler version,\n- preserves local school avoidance with smooth Gaussian shaping,\n- adds a mild end-of-path bias toward the base side so the curve naturally bends away from roughly `(40, 20)` and toward `(70, -30)` when those are the supplied landmarks,\n- precomputes Gaussian weights to reduce repeated work.\n\nCompared with the current program, this version is more conservative on unnecessary detours, but more direct in pulling the route toward the base\u2019s actual Y-value. That usually improves the F2/F3 tradeoff without inflating F1 too much. It also keeps smoothing and soft clamping so the returned Y array stays smooth and natural.",
+  "error_msg": null,
+  "timestamp": "2026-03-19T16:12:02.960275",
+  "llm_cost": 0.06237500000000001,
+  "llm_model": null
+}

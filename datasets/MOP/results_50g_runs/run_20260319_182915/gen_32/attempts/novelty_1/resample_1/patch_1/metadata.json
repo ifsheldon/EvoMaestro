@@ -1,0 +1,14 @@
+{
+  "generation": 32,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "gaussian_warmstart_adam_path",
+  "patch_description": "This version performs a crossover between the two styles:\n\n- **From RouteArchitect pipeline**: it uses a **Gaussian warm start** to immediately bend the trajectory away from the school and toward the base station (smooth global shape prior).\n- **From the optimizer-based version**: it keeps a **multi-objective Adam refinement** with relative gradients for F1/F2/F3, but adds:\n  - a **light smoothness (curvature) regularizer** to control path length growth,\n  - **phase-based weighting** so early steps enforce school clearance and later steps improve base proximity/signal,\n  - mild learning-rate decay for stable convergence.\n\nThis keeps the same function signature and output (Y-coordinate list), while improving internal optimization behavior and runtime stability.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:39:30.463889",
+  "llm_cost": 0.043799000000000005,
+  "llm_model": null
+}

@@ -1,0 +1,14 @@
+{
+  "generation": 42,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 2,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "multi_objective_pareto_router",
+  "patch_description": "The new algorithm uses a multi-objective optimization approach with the following key features:\n1. **Multi-Tree Preprocessing**: For each server, it computes three different Dijkstra trees using distinct weight functions: one focused on latency (including capacity constraints), one on energy, and one balanced. This provides a diverse set of candidate paths for each source-server pair.\n2. **Global Objective Function**: It defines a system-wide cost function that combines total network latency, total server queueing delay (using an M/M/1 model), and total energy consumption (routing + server dynamic energy).\n3. **Marginal Cost Greedy Assignment**: Sources are assigned to the (server, path) combination that minimizes the marginal increase in the global objective function, ensuring a locally optimal starting point.\n4. **Iterative Local Search**: A refinement phase iterates through the assignments and attempts to move tasks to different servers or paths if it reduces the total system cost, effectively climbing the objective landscape.\n5. **Adaptive Scaling**: The algorithm adaptively scales the energy-to-latency weight (beta) based on the graph's specific edge and task statistics, ensuring robust performance across different scenarios.",
+  "error_msg": "Could not extract code from patch string",
+  "timestamp": "2026-03-20T02:51:12.596983",
+  "llm_cost": 0.0045315,
+  "llm_model": null
+}

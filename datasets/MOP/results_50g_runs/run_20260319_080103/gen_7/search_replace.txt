@@ -1,0 +1,47 @@
+<NAME>
+smooth_curve_optimization
+</NAME>
+
+<DESCRIPTION>
+Replaces the straight line with a smooth curve that bends away from the school to minimize noise (F2) and bends towards the base station to minimize signal drop (F3). We use Gaussian functions to smoothly apply these deviations based on the X-coordinate proximity to the school and base station. This directly addresses the prompt's suggestion to bend away from (40, 20) and towards (70, -30).
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+    # 【初始方案：最无脑的纯直线】
+    y_coords = []
+    dy = (y_end - y_start) / (num_points + 1)
+
+    for i in range(num_points):
+        y_coords.append(float(y_start + (i + 1) * dy))
+
+    return y_coords
+=======
+    import math
+    y_coords = []
+    dx = (x_end - x_start) / (num_points + 1)
+
+    x_s, y_s = school
+    x_b, y_b = base
+
+    for i in range(num_points):
+        x = x_start + (i + 1) * dx
+
+        # Base straight line
+        y_line = y_start + (x - x_start) * (y_end - y_start) / (x_end - x_start)
+        y = y_line
+
+        # Bend away from school
+        w_s = math.exp(-((x - x_s) ** 2) / 400.0)
+        push_dir = -1 if y_s > y_line else 1
+        y += push_dir * 35.0 * w_s
+
+        # Bend towards base
+        w_b = math.exp(-((x - x_b) ** 2) / 400.0)
+        y += (y_b - y) * w_b
+
+        y_coords.append(float(y))
+
+    return y_coords
+>>>>>>> REPLACE
+</DIFF>

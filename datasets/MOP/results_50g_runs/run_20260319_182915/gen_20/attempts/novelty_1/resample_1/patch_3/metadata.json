@@ -1,0 +1,14 @@
+{
+  "generation": 20,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 3,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "grid_search_multi_objective_path",
+  "patch_description": "This edit replaces the fixed Gaussian displacement with a dynamic grid search optimizer. The strategy uses a sine-windowed Gaussian basis to perturb the straight-line path. It searches across a range of amplitudes and widths to find the specific trajectory that minimizes the product of distance (F1), school noise (F2), and base station signal loss (F3). This effectively balances the three competing objectives by choosing the best parameter combination for each specific school and base layout.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:38:06.615809",
+  "llm_cost": 0.0076945,
+  "llm_model": null
+}

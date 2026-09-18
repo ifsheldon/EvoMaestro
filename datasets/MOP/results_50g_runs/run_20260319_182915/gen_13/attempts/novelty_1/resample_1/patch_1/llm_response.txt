@@ -1,0 +1,242 @@
+<NAME>
+adaptive_contour_bend
+</NAME>
+
+<DESCRIPTION>
+The current approach has essentially no tunable optimization components: it uses a straight-line initialization only, with implicit fixed parameters of zero curvature control, zero obstacle avoidance, zero base attraction, and zero iterative refinement. That keeps F1 optimal, but leaves F2 and especially F3 weak.
+
+The new algorithm keeps the same input/output contract, but introduces a smooth parametric path and a lightweight adaptive optimizer:
+
+- **Initialization**: start from the straight line between endpoints.
+- **Shape terms**:
+  - a **school repulsion bump** centered near the school X-position to push the path away from `(40, 20)`;
+  - a **base attraction bump** centered near the base X-position to pull the path toward `(70, -30)`;
+  - a mild **global sag term** to help the path transition smoothly downward when useful.
+- **Key parameters added/changed**:
+  - `repulse_amp`, `attract_amp`, `sag_amp`: amplitudes of the three shape components;
+  - `sigma_school`, `sigma_base`, `sigma_sag`: spatial widths controlling how local/global each bend is;
+  - `coarse_steps`, `refine_steps`: two-stage search counts;
+  - `smooth_passes`: explicit smoothing strength to keep F1 low while improving F2/F3.
+- **Optimization strategy**:
+  - replaces the nonexistent optimizer with a **scheduled coordinate/local search**:
+    - a coarse search over amplitude candidates,
+    - then a refinement loop with shrinking step sizes.
+  - this is more robust than a fixed-step gradient descent because it avoids unstable updates and works without requiring the grader’s exact differentiable objective.
+- **Selection criterion**:
+  - uses a surrogate objective combining distance, school proximity, base distance, and roughness, with stronger emphasis on avoiding the school and improving base coverage while preserving smoothness.
+
+This should outperform the straight line by bending smoothly away from the school region and toward the base station region, reducing F2 and F3 without overly increasing F1.
+</DESCRIPTION>
+
+<CODE>
+```python
+# EVOLVE-BLOCK-START
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    Multi-objective smooth path heuristic:
+    - minimize path length increase
+    - bend away from school
+    - bend toward base
+    Returns Y values at uniformly spaced X locations between start and end.
+    """
+    import math
+
+    x_start, y_start = start
+    x_end, y_end = end
+    sx, sy = school
+    bx, by = base
+
+    if num_points <= 0:
+        return []
+
+    # Uniform X positions for the interior points.
+    dx = (x_end - x_start) / (num_points + 1)
+    xs = [x_start + (i + 1) * dx for i in range(num_points)]
+
+    # Straight-line baseline.
+    def baseline_y(x):
+        if x_end == x_start:
+            return float((y_start + y_end) * 0.5)
+        t = (x - x_start) / (x_end - x_start)
+        return y_start + t * (y_end - y_start)
+
+    base_line = [baseline_y(x) for x in xs]
+
+    # Smooth local bump.
+    def gauss(x, mu, sigma):
+        z = (x - mu) / max(sigma, 1e-6)
+        return math.exp(-0.5 * z * z)
+
+    # Smoothstep-like envelope, zero at endpoints, strongest in the middle/right.
+    def arch(t, power=1.0):
+        v = max(0.0, 1.0 - (2.0 * t - 1.0) ** 2)
+        return v ** power
+
+    # Build path from amplitudes.
+    def build_path(repulse_amp, attract_amp, sag_amp,
+                   sigma_school, sigma_base, sigma_sag):
+        ys = []
+        span_x = abs(x_end - x_start) + 1e-6
+        school_sign = -1.0 if sy >= baseline_y(sx) else 1.0
+        base_sign = 1.0 if by >= baseline_y(bx) else -1.0
+
+        for i, x in enumerate(xs):
+            t = (i + 1) / (num_points + 1.0)
+            y0 = base_line[i]
+
+            # Localized school avoidance and base attraction.
+            school_term = school_sign * repulse_amp * gauss(x, sx, sigma_school)
+            base_term = base_sign * attract_amp * gauss(x, bx, sigma_base)
+
+            # Global downward/upward sag toward the side where the base sits.
+            # Weighted more to the right half so the path can lean toward the base.
+            right_bias = t * t
+            sag_sign = 1.0 if by >= y0 else -1.0
+            sag_term = sag_sign * sag_amp * arch(t, power=0.9) * right_bias * gauss(x, 0.65 * x_start + 0.35 * x_end + 0.30 * (bx - x_start), sigma_sag)
+
+            ys.append(float(y0 + school_term + base_term + sag_term))
+
+        return smooth_path(ys, passes=3)
+
+    # Simple smoothing to control F1 and keep the line natural.
+    def smooth_path(ys, passes=2):
+        ys = list(ys)
+        n = len(ys)
+        if n <= 2:
+            return ys
+        for _ in range(passes):
+            new_ys = ys[:]
+            for i in range(n):
+                if i == 0:
+                    left = y_start
+                else:
+                    left = ys[i - 1]
+                if i == n - 1:
+                    right = y_end
+                else:
+                    right = ys[i + 1]
+                new_ys[i] = 0.2 * ys[i] + 0.4 * (left + right) * 0.5
+            ys = new_ys
+        return ys
+
+    # Surrogate score for fast internal search.
+    def surrogate_score(ys):
+        # Full polyline including endpoints.
+        px = [x_start] + xs + [x_end]
+        py = [y_start] + ys + [y_end]
+
+        # F1 proxy: normalized path length ratio.
+        plen = 0.0
+        for i in range(len(px) - 1):
+            ddx = px[i + 1] - px[i]
+            ddy = py[i + 1] - py[i]
+            plen += math.hypot(ddx, ddy)
+        direct = math.hypot(x_end - x_start, y_end - y_start) + 1e-6
+        f1 = plen / direct
+
+        # F2 proxy: stronger penalty near school, especially within moderate radius.
+        f2 = 0.0
+        for x, y in zip(xs, ys):
+            d2 = (x - sx) * (x - sx) + (y - sy) * (y - sy)
+            f2 += 1.0 / (d2 + 25.0)
+        f2 /= max(1, len(xs))
+
+        # F3 proxy: encourage closeness to base.
+        f3 = 0.0
+        for x, y in zip(xs, ys):
+            f3 += math.hypot(x - bx, y - by)
+        f3 /= max(1, len(xs))
+
+        # Roughness penalty to keep the path smooth.
+        rough = 0.0
+        for i in range(1, len(ys) - 1):
+            rough += abs(ys[i - 1] - 2.0 * ys[i] + ys[i + 1])
+        rough /= max(1, len(ys) - 2)
+
+        # Weighted combination: prioritize F2/F3 improvements, but restrain F1.
+        return 10.0 * f1 + 900.0 * f2 + 0.09 * f3 + 0.8 * rough
+
+    span = abs(x_end - x_start) + 1e-6
+
+    # Width parameters differ from the "no-parameter" old solution.
+    sigma_school = max(8.0, 0.14 * span)
+    sigma_base = max(10.0, 0.18 * span)
+    sigma_sag = max(16.0, 0.30 * span)
+
+    # Coarse candidate search over amplitudes.
+    best_ys = base_line[:]
+    best_score = surrogate_score(best_ys)
+    best_params = (0.0, 0.0, 0.0)
+
+    repulse_candidates = [4.0, 7.0, 10.0, 13.0, 16.0]
+    attract_candidates = [6.0, 10.0, 14.0, 18.0, 22.0]
+    sag_candidates = [0.0, 3.0, 6.0, 9.0]
+
+    for ra in repulse_candidates:
+        for aa in attract_candidates:
+            for sa in sag_candidates:
+                ys = build_path(ra, aa, sa, sigma_school, sigma_base, sigma_sag)
+                sc = surrogate_score(ys)
+                if sc < best_score:
+                    best_score = sc
+                    best_ys = ys
+                    best_params = (ra, aa, sa)
+
+    # Refinement with shrinking steps: more adaptive than fixed-step updates.
+    ra, aa, sa = best_params
+    step_r = 3.0
+    step_a = 4.0
+    step_s = 2.0
+
+    for _ in range(10):
+        improved = False
+        neighbors = [
+            (ra + step_r, aa, sa), (max(0.0, ra - step_r), aa, sa),
+            (ra, aa + step_a, sa), (ra, max(0.0, aa - step_a), sa),
+            (ra, aa, sa + step_s), (ra, aa, max(0.0, sa - step_s)),
+            (ra + 0.5 * step_r, aa + 0.5 * step_a, sa),
+            (ra + 0.5 * step_r, aa, sa + 0.5 * step_s),
+            (ra, aa + 0.5 * step_a, sa + 0.5 * step_s),
+        ]
+        for nra, naa, nsa in neighbors:
+            ys = build_path(nra, naa, nsa, sigma_school, sigma_base, sigma_sag)
+            sc = surrogate_score(ys)
+            if sc < best_score:
+                best_score = sc
+                best_ys = ys
+                ra, aa, sa = nra, naa, nsa
+                improved = True
+        if not improved:
+            step_r *= 0.6
+            step_a *= 0.6
+            step_s *= 0.6
+            if step_r < 0.4 and step_a < 0.4 and step_s < 0.3:
+                break
+
+    # Final extra smoothing pass to reduce distance inflation.
+    best_ys = smooth_path(best_ys, passes=2)
+    return [float(y) for y in best_ys]
+# EVOLVE-BLOCK-END
+
+import sys
+import os
+
+# 将当前目录加入系统路径以便导入同级文件
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from drone_evaluation import DroneGrader
+
+def run_experiment(**kwargs):
+    """供 Shinka 触发的单次实验方法"""
+    grader = DroneGrader()
+    
+    # 捕获异常防止大模型写出死循环炸毁测评机
+    try:
+        avg_f1, avg_f2, avg_f3, final_score = grader.grade_silent(evolve_drone_path, timeout=12)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        avg_f1, avg_f2, avg_f3, final_score = float('inf'), float('inf'), float('inf'), float('inf')
+        
+    return avg_f1, avg_f2, avg_f3, final_score
+```
+</CODE>

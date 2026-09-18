@@ -1,0 +1,2 @@
+# Before starting the BFS fallback
+# Check if num_nodes is huge

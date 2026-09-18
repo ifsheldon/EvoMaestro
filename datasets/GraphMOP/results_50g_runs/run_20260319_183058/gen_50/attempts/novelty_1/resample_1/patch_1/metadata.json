@@ -1,0 +1,14 @@
+{
+  "generation": 50,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "dynamic_regret_active_pool",
+  "patch_description": "Replace the one-shot static regret ordering with a tiny dynamic-regret active-pool scheduler.  \nInstead of computing regret only once at zero load, this recomputes best/second-best choices for a small pool of currently unassigned tasks under current server loads, then assigns the highest-regret task next.\n\nWhy this should help:\n- Static regret gets stale quickly as server queues fill.\n- Dynamic regret better protects \u201cfragile\u201d tasks (few feasible low-cost options), reducing late overload and queue spikes.\n- Active-pool limits runtime overhead versus full global recomputation.\n- A mild scarcity term improves feasibility and stabilizes both latency and energy.\n\nThis is a targeted edit in the assignment layer only; path validity and fallback behavior remain robust.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:54:52.998816",
+  "llm_cost": 0.04155725,
+  "llm_model": null
+}

@@ -1,0 +1,310 @@
+--- a/original.py
++++ b/original.py
+@@ -1,132 +1,223 @@
+ # EVOLVE-BLOCK-START
+ import math
+ 
+ def evolve_drone_path(start, end, school, base, num_points):
+     """
+-    连续空间多目标路径优化（新算法）：
+-    - 使用势场 + 平滑正则构造目标函数
+-    - 引入基于几何感知 (geometry-aware) 的高斯初始偏置
+-    - 通过迭代梯度下降同时优化距离/学校噪声/基站信号
++    双阶段离散动态规划多目标路径优化：
++    1) 全局粗网格 DP 搜索
++    2) 沿初始路径建立窄走廊并做细网格 DP 局部精修
++
++    目标同时兼顾：
++    - F1: 飞行距离（边长度）
++    - F2: 远离学校噪声区域
++    - F3: 靠近基站以降低信号损失
++    额外使用二阶差分约束提升平滑性。
+     """
+     x0, y0 = start
+     x1, y1 = end
+     sx, sy = school
+     bx, by = base
+ 
+     if num_points <= 0:
+         return []
+ 
+-    # 全部采样点：含起终点，共 n = num_points + 2
+     n = num_points + 2
+     xs = [x0 + (x1 - x0) * i / (n - 1) for i in range(n)]
+     dx = abs((x1 - x0) / (n - 1)) + 1e-9
++    x_span = abs(x1 - x0) + 1e-9
+ 
+     def line_y(x):
+-        t = 0.0 if abs(x1 - x0) < 1e-12 else (x - x0) / (x1 - x0)
+-        return y0 * (1 - t) + y1 * t
+-
++        if abs(x1 - x0) < 1e-12:
++            return 0.5 * (y0 + y1)
++        t = (x - x0) / (x1 - x0)
++        return y0 * (1.0 - t) + y1 * t
++
++    # 几何先验：在 x≈40 远离学校，在 x≈70 向基站弯折
+     y_school_line = line_y(sx)
+     y_base_line = line_y(bx)
+-
+-    # 基于几何感知的学校排斥幅度：如果直线离学校近才强排斥
+-    dist_school = abs(y_school_line - sy)
+-    dir_school = 1.0 if (y_school_line - sy) >= 0.0 else -1.0
+-    if dist_school < 40.0:
+-        amp_school = (40.0 - dist_school) * 0.7
+-    else:
+-        amp_school = 0.0
+-
+-    # 基于几何感知的基站吸引幅度：如果远离基站才适度拉近
+-    dist_base = abs(y_base_line - by)
+-    dir_base = 1.0 if (by - y_base_line) >= 0.0 else -1.0
+-    amp_base = min(25.0, dist_base * 0.45)
+-
+-    x_span = abs(x1 - x0) + 1e-9
+-    sig_school = max(8.0, 0.12 * x_span)
+-    sig_base = max(10.0, 0.15 * x_span)
+-
+-    ys = []
++    school_dir = 1.0 if (y_school_line - sy) >= 0.0 else -1.0
++    base_dir = 1.0 if (by - y_base_line) >= 0.0 else -1.0
++
++    school_amp = max(0.0, 34.0 - abs(y_school_line - sy)) * 0.95
++    base_amp = min(22.0, abs(y_base_line - by) * 0.55)
++    sig_school = max(7.0, 0.10 * x_span)
++    sig_base = max(9.0, 0.12 * x_span)
++
++    prior = []
+     for x in xs:
+         y_lin = line_y(x)
+-        bump_school = dir_school * amp_school * math.exp(-0.5 * ((x - sx) / sig_school) ** 2)
+-        bump_base = dir_base * amp_base * math.exp(-0.5 * ((x - bx) / sig_base) ** 2)
+-        ys.append(y_lin + bump_school + bump_base)
+-
+-    # 固定端点
+-    ys[0], ys[-1] = y0, y1
+-
+-    # ---------- 多目标能量优化 ----------
+-    w_len = 0.85
+-    w_school = 230.0
+-    w_base = 0.025
+-    w_smooth = 1.35
+-
+-    eps = 1e-6
+-    lr = 0.045
+-    iterations = 180
+-
+-    y_low = min(y0, y1, sy, by) - 120.0
+-    y_high = max(y0, y1, sy, by) + 120.0
+-
+-    for it in range(iterations):
+-        grad = [0.0] * n
+-
+-        # 1) 路径长度项梯度
++        bend_school = school_dir * school_amp * math.exp(-0.5 * ((x - sx) / sig_school) ** 2)
++        bend_base = base_dir * base_amp * math.exp(-0.5 * ((x - bx) / sig_base) ** 2)
++        prior.append(y_lin + bend_school + bend_base)
++    prior[0], prior[-1] = y0, y1
++
++    # ---------- 代价函数 ----------
++    def node_cost(x, y, y_ref):
++        ds2 = (x - sx) * (x - sx) + (y - sy) * (y - sy)
++        db2 = (x - bx) * (x - bx) + (y - by) * (y - by)
++
++        # 学校附近强惩罚：近距离强，远距离快速衰减
++        c_school = 220.0 / (ds2 + 16.0)
++
++        # 基站距离惩罚：促使在其附近适度靠近，降低 F3
++        c_base = 0.020 * db2
++
++        # 对几何先验的小幅跟随，帮助形成“远离(40,20)，趋向(70,-30)”的形状
++        c_prior = 0.030 * (y - y_ref) * (y - y_ref)
++        return c_school + c_base + c_prior
++
++    def edge_cost(y_prev, y_cur):
++        dy = y_cur - y_prev
++        return 0.92 * math.sqrt(dx * dx + dy * dy)
++
++    def curvature_cost(y_prev2, y_prev1, y_cur):
++        c = y_cur - 2.0 * y_prev1 + y_prev2
++        return 0.080 * c * c
++
++    def solve_dp(y_centers, half_width, step):
++        # 为每个 x 建立局部 y 候选集合；端点固定
++        grids = []
++        for i in range(n):
++            if i == 0:
++                grids.append([y0])
++            elif i == n - 1:
++                grids.append([y1])
++            else:
++                lo = y_centers[i] - half_width
++                hi = y_centers[i] + half_width
++                m = max(3, int((hi - lo) / step) + 1)
++                grids.append([lo + (hi - lo) * j / (m - 1) for j in range(m)])
++
++        # 初始到第一个内部点
++        dp_prev = []
++        parent_pairs = [None] * n
++        first_idx = 1
++        vals = grids[first_idx]
++        row = []
++        for j, y in enumerate(vals):
++            cost = node_cost(xs[first_idx], y, prior[first_idx]) + edge_cost(y0, y)
++            row.append(cost)
++        dp_prev.append(row)
++
++        # 第二层开始使用二阶状态 DP
++        # state at layer i: pair(prev_idx, cur_idx)
++        for i in range(2, n):
++            prev_vals = grids[i - 1]
++            cur_vals = grids[i]
++            if i == n - 1:
++                cur_vals = [y1]
++
++            new_dp = [[float('inf')] * len(cur_vals) for _ in range(len(prev_vals))]
++            back = [[-1] * len(cur_vals) for _ in range(len(prev_vals))]
++
++            if i == 2:
++                # dp_prev[0][pj] 表示到 layer=1 的单点状态
++                for pj, y_prev in enumerate(prev_vals):
++                    base_cost = dp_prev[0][pj]
++                    for cj, y_cur in enumerate(cur_vals):
++                        c = base_cost + edge_cost(y_prev, y_cur)
++                        c += node_cost(xs[i], y_cur, prior[i])
++                        c += curvature_cost(y0, y_prev, y_cur)
++                        new_dp[pj][cj] = c
++                        back[pj][cj] = 0
++            else:
++                prev_prev_vals = grids[i - 2]
++                for pj, y_prev in enumerate(prev_vals):
++                    for cj, y_cur in enumerate(cur_vals):
++                        best_cost = float('inf')
++                        best_k = -1
++                        # 限制转移范围，避免过陡折线并加速
++                        for k, y_prev2 in enumerate(prev_prev_vals):
++                            c = dp_prev[k][pj]
++                            if c == float('inf'):
++                                continue
++                            c2 = c + edge_cost(y_prev, y_cur)
++                            c2 += node_cost(xs[i], y_cur, prior[i])
++                            c2 += curvature_cost(y_prev2, y_prev, y_cur)
++                            if c2 < best_cost:
++                                best_cost = c2
++                                best_k = k
++                        new_dp[pj][cj] = best_cost
++                        back[pj][cj] = best_k
++
++            dp_prev = new_dp
++            parent_pairs[i] = back
++
++        # 回溯
++        last_mat = dp_prev
++        best = float('inf')
++        best_pj = 0
++        best_cj = 0
++        for pj in range(len(last_mat)):
++            for cj in range(len(last_mat[pj])):
++                if last_mat[pj][cj] < best:
++                    best = last_mat[pj][cj]
++                    best_pj = pj
++                    best_cj = cj
++
++        ys = [0.0] * n
++        ys[-1] = y1
++
++        if n == 2:
++            return ys
++
++        ys[-2] = grids[-2][best_pj]
++        cur_idx = best_cj
++        prev_idx = best_pj
++
++        for i in range(n - 1, 1, -1):
++            back = parent_pairs[i]
++            k = back[prev_idx][cur_idx]
++            if i - 2 == 0:
++                ys[0] = y0
++            else:
++                ys[i - 2] = grids[i - 2][k]
++            cur_idx, prev_idx = prev_idx, k
++
++        ys[0] = y0
++        ys[-1] = y1
++        return ys
++
++    # ---------- 两阶段 DP ----------
++    y_min = min(y0, y1, sy, by) - 90.0
++    y_max = max(y0, y1, sy, by) + 90.0
++    global_center = [min(max(v, y_min), y_max) for v in prior]
++
++    coarse = solve_dp(global_center, half_width=70.0, step=6.0)
++
++    # 路径中心窄走廊精修
++    refine_center = coarse[:]
++    refined = solve_dp(refine_center, half_width=16.0, step=2.0)
++
++    # 轻量平滑：保留端点，减少离散栅格锯齿，同时不破坏避让/靠近趋势
++    ys = refined[:]
++    for _ in range(2):
++        new_ys = ys[:]
+         for i in range(1, n - 1):
+-            a = ys[i] - ys[i - 1]
+-            b = ys[i] - ys[i + 1]
+-            l_prev = math.sqrt(dx * dx + a * a) + eps
+-            l_next = math.sqrt(dx * dx + b * b) + eps
+-            grad[i] += w_len * (a / l_prev + b / l_next)
+-
+-        # 2) 学校排斥项: 1 / (dist^2 + eps)
+-        for i in range(1, n - 1):
+-            dxs = xs[i] - sx
+-            dys = ys[i] - sy
+-            r2 = dxs * dxs + dys * dys + 4.0
+-            grad[i] += w_school * (-2.0 * dys) / (r2 * r2)
+-
+-        # 3) 基站吸引项: dist^2
+-        for i in range(1, n - 1):
+-            grad[i] += w_base * (2.0 * (ys[i] - by))
+-
+-        # 4) 平滑项
+-        for k in range(1, n - 1):
+-            c = ys[k - 1] - 2.0 * ys[k] + ys[k + 1]
+-            g = 2.0 * w_smooth * c
+-            grad[k - 1] += g
+-            grad[k] += -2.0 * g
+-            grad[k + 1] += g
+-
+-        # 更新
+-        step = lr * (0.985 ** it)
+-        for i in range(1, n - 1):
+-            ys[i] -= step * grad[i]
+-            if ys[i] < y_low:
+-                ys[i] = y_low
+-            elif ys[i] > y_high:
+-                ys[i] = y_high
++            new_ys[i] = 0.20 * ys[i] + 0.40 * ys[i - 1] + 0.40 * ys[i + 1]
++        new_ys[0], new_ys[-1] = y0, y1
++        ys = new_ys
+ 
+     return [float(v) for v in ys[1:-1]]
+ # EVOLVE-BLOCK-END
+ 
+ import sys
+ import os
+ 
+ # 将当前目录加入系统路径以便导入同级文件
+ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+ from drone_evaluation import DroneGrader
+ 
+ def run_experiment(**kwargs):
+     """供 Shinka 触发的单次实验方法"""
+     grader = DroneGrader()
+ 
+     # 捕获异常防止大模型写出死循环炸毁测评机
+     try:
+         avg_f1, avg_f2, avg_f3, final_score = grader.grade_silent(evolve_drone_path, timeout=12)
+     except Exception as e:
+         import traceback
+         traceback.print_exc()
+         avg_f1, avg_f2, avg_f3, final_score = float('inf'), float('inf'), float('inf'), float('inf')
+ 
+     return avg_f1, avg_f2, avg_f3, final_score

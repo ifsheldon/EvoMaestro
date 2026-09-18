@@ -1,0 +1,3 @@
+[submodule "ShinkaEvolve"]
+	path = ShinkaEvolve
+	url = https://github.com/ifsheldon/ShinkaEvolve.git

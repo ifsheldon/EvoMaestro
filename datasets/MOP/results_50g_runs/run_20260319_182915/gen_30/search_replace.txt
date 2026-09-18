@@ -1,0 +1,92 @@
+<NAME>
+adam_trajectory_refinement
+</NAME>
+
+<DESCRIPTION>
+This edit introduces a native Python Adam Optimizer that runs immediately after the grid search. The grid search is excellent at finding a robust global topological initialization (e.g., deciding which side of the school to pass), but it is limited by its rigid Gaussian basis shapes. By analytically differentiating the surrogate objectives (`F1`, `F2`, and `F3`) with respect to every `Y` coordinate, we can treat the path as a completely flexible discrete spline (a rubber-band in an energy field).
+
+The `F1` gradient naturally behaves like a Laplacian smoothing operator, while `F2` repels the path from the school and `F3` attracts it to the base station. Adam fine-tunes the coordinates for 150 steps, perfectly balancing the competing objectives and significantly lowering the final score.
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+                    score = f1 * f2 * f3
+                    if score < best_score:
+                        best_score = score
+                        best_ys = ys
+
+    return best_ys
+=======
+                    score = f1 * f2 * f3
+                    if score < best_score:
+                        best_score = score
+                        best_ys = ys
+
+    # Fine-tune with Adam optimizer
+    ys = list(best_ys)
+    m = [0.0] * num_points
+    v = [0.0] * num_points
+    beta1 = 0.9
+    beta2 = 0.999
+    alpha = 1.0
+    eps = 1e-8
+
+    for step in range(150):
+        dist = 0.0
+        f2 = 0.0
+        f3 = 0.0
+        px, py = x_start, y_start
+
+        for i in range(num_points):
+            cx, cy = xs[i], ys[i]
+            dist += math.hypot(cx - px, cy - py)
+            px, py = cx, cy
+
+            D_sq_school = (cx - school_x)**2 + (cy - school_y)**2
+            f2 += 1.0 / (D_sq_school + 1e-3)
+
+            D_sq_base = (cx - base_x)**2 + (cy - base_y)**2
+            f3 += math.sqrt(D_sq_base)
+
+        dist += math.hypot(x_end - px, y_end - py)
+        f1 = dist / straight_dist
+
+        score = f1 * f2 * f3
+        if score < best_score:
+            best_score = score
+            best_ys = list(ys)
+
+        for i in range(num_points):
+            cy = ys[i]
+            cx = xs[i]
+
+            prev_x = x_start if i == 0 else xs[i-1]
+            prev_y = y_start if i == 0 else ys[i-1]
+            next_x = x_end if i == num_points - 1 else xs[i+1]
+            next_y = y_end if i == num_points - 1 else ys[i+1]
+
+            d1 = math.hypot(cx - prev_x, cy - prev_y)
+            d2 = math.hypot(next_x - cx, next_y - cy)
+
+            df1_dy = (cy - prev_y) / (d1 + 1e-6) + (cy - next_y) / (d2 + 1e-6)
+            df1_dy /= straight_dist
+
+            D_sq_school = (cx - school_x)**2 + (cy - school_y)**2
+            df2_dy = -2.0 * (cy - school_y) / ((D_sq_school + 1e-3)**2)
+
+            D_sq_base = (cx - base_x)**2 + (cy - base_y)**2
+            df3_dy = (cy - base_y) / (math.sqrt(D_sq_base) + 1e-6)
+
+            grad = df1_dy * f2 * f3 + f1 * df2_dy * f3 + f1 * f2 * df3_dy
+
+            m[i] = beta1 * m[i] + (1 - beta1) * grad
+            v[i] = beta2 * v[i] + (1 - beta2) * (grad * grad)
+
+            m_hat = m[i] / (1 - beta1**(step + 1))
+            v_hat = v[i] / (1 - beta2**(step + 1))
+
+            ys[i] -= alpha * m_hat / (math.sqrt(v_hat) + eps)
+
+    return best_ys
+>>>>>>> REPLACE
+</DIFF>

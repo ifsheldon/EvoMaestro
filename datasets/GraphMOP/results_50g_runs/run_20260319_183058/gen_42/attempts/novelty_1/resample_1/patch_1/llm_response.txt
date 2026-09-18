@@ -1,0 +1,92 @@
+<NAME>
+pareto_multi_tree_router
+</NAME>
+
+<DESCRIPTION>
+The new algorithm improves upon the initial implementation by using a more robust three-tree preprocessing strategy and explicit Pareto-style filtering for path candidates. Instead of a single shortest-path tree per server, it computes three distinct Dijkstra trees for each server based on diverse prioritizing weights: latency-focused, energy-focused, and a balanced metric. 
+
+Key improvements:
+1. **Diverse Path Candidates**: For each source-server pair, it generates multiple candidate paths and filters them to retain only those that are non-dominated (Pareto-optimal) in terms of both network latency and energy consumption. This ensures the router explores a material tradeoff between the two primary objectives.
+2. **Total System Objective**: The greedy assignment and local refinement phases are guided by an exact calculation of the change in the total system objective function, which includes both the routing costs of the individual task and the system-wide queueing delay and server energy impacts.
+3. **Queueing Stability Management**: It uses a more accurate queueing latency model ($W_s / (\mu_s - W_s)$) and strictly enforces a server load stability threshold (0.98 utilization).
+4. **Normalized Objective Weights**: It adaptively scales the weight coefficient (gamma) between latency and energy based on the graph's specific edge statistics, balancing the two scales regardless of the units used.
+</DESCRIPTION>
+
+<CODE>
+```{python}
+import heapq
+
+def evolve_task_routing(
+    num_nodes,
+    edges,
+    server_nodes,
+    task_sources,
+    task_info,
+    server_info,
+):
+    # EVOLVE-BLOCK-START
+    # 1. Build an efficient graph representation
+    adj = [[] for _ in range(num_nodes)]
+    edge_map = {}
+    for u, v, lat, eng, cap in edges:
+        u_f, v_f, lat_f, eng_f, cap_f = int(u), int(v), float(lat), float(eng), float(cap)
+        adj[u_f].append((v_f, lat_f, eng_f, cap_f))
+        adj[v_f].append((u_f, lat_f, eng_f, cap_f))
+        edge_map[tuple(sorted((u_f, v_f)))] = (lat_f, eng_f, cap_f)
+
+    # Calculate average task parameters for Dijkstra weighting
+    if task_sources:
+        total_pay = sum(task_info[s][1] for s in task_sources)
+        avg_pay = total_pay / len(task_sources)
+    else:
+        avg_pay = 10.0
+
+    # 2. Pre-calculate candidate paths using three Dijkstra trees per server
+    def run_dijkstra(start_node, weight_func):
+        dists = [float('inf')] * num_nodes
+        parents = [-1] * num_nodes
+        dists[start_node] = 0.0
+        pq = [(0.0, start_node)]
+        while pq:
+            d, u = heapq.heappop(pq)
+            if d > dists[u]:
+                continue
+            for v, lat, eng, cap in adj[u]:
+                w = weight_func(lat, eng, cap)
+                if dists[u] + w < dists[v]:
+                    dists[v] = dists[u] + w
+                    parents[v] = u
+                    heapq.heappush(pq, (dists[v], v))
+        return parents
+
+    # Dijkstra weight functions: Latency-focused, Energy-focused, Balanced
+    metrics = [
+        lambda l, e, c: l + (avg_pay / max(1e-9, c)),
+        lambda l, e, c: e,
+        lambda l, e, c: l + (avg_pay / max(1e-9, c)) + 1.2 * e
+    ]
+
+    # Pre-compute path candidates per (source, server)
+    path_candidates = {}
+    for s_node in server_nodes:
+        trees = [run_dijkstra(s_node, wf) for wf in metrics]
+        for src in task_sources:
+            unique_paths = {}
+            for parents in trees:
+                path = []
+                curr = src
+                while curr != s_node and curr != -1 and len(path) <= num_nodes:
+                    path.append(curr)
+                    curr = parents[curr]
+                if curr == s_node:
+                    path.append(s_node)
+                    p_tuple = tuple(path)
+                    if p_tuple not in unique_paths:
+                        # Calculate static path metrics (Latency, Energy)
+                        l_net, e_net = 0.0, 0.0
+                        _, pay, _ = task_info[src]
+                        for i in range(len(path) - 1):
+                            edge_props = edge_map[tuple(sorted((path[i], path[i+1])))]
+                            l_net += edge_props[0] + (pay / max(1e-9, edge_props[2]))
+                            e_net += edge_props[1] * pay
+                        unique_paths[p_

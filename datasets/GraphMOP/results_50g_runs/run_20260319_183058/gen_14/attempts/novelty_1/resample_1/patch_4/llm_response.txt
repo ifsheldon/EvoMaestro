@@ -1,0 +1,54 @@
+<NAME>
+marginal_regret_routing
+</NAME>
+
+<DESCRIPTION>
+The algorithm implements a regret-based task ordering policy combined with a marginal-cost greedy assignment and iterative local search. 
+
+Key insights:
+1.  **Regret-Based Ordering**: Tasks are prioritized based on their "regret"—the difference in cost between their best and second-best server options. This ensures that tasks with limited high-quality options are assigned before servers become congested.
+2.  **Marginal Cost Function**: Instead of simple per-task metrics, the assignment and local search use a global marginal cost that accounts for the impact of a task on *all* other tasks sharing the same server (specifically, the change in total queueing delay $A/(\mu - L)$).
+3.  **Multi-Objective Dijkstra**: A scalarized weight $(latency + 0.4 \cdot energy)$ is used during pathfinding to find paths that naturally balance both objectives.
+4.  **Iterative Refinement**: A best-response local search iteratively reassigns tasks to servers that minimize the total system cost, effectively handling the non-linear queueing delay and discrete idle power costs.
+</DESCRIPTION>
+
+<CODE>
+```python
+import heapq
+
+def evolve_task_routing(
+    num_nodes,
+    edges,
+    server_nodes,
+    task_sources,
+    task_info,
+    server_info,
+):
+    # 1. Build Graph
+    graph = [[] for _ in range(num_nodes)]
+    for u, v, lat, en, cap in edges:
+        graph[u].append((v, float(lat), float(en), float(cap)))
+        graph[v].append((u, float(lat), float(en), float(cap)))
+
+    beta = 0.4  # Energy weight in the combined objective
+    max_iters = 8
+
+    def get_paths(s, payload, beta_val):
+        dist = [float('inf')] * num_nodes
+        d_lat = [0.0] * num_nodes
+        d_en = [0.0] * num_nodes
+        parent = [-1] * num_nodes
+        dist[s] = 0.0
+        pq = [(0.0, s)]
+        while pq:
+            d, u = heapq.heappop(pq)
+            if d > dist[u]:
+                continue
+            for v, lat, en, cap in graph[u]:
+                this_lat = lat + payload / max(cap, 1e-9)
+                this_en = en * payload
+                w = this_lat + beta_val * this_en
+                if dist[u] + w < dist[v]:
+                    dist[v] = dist[u] + w
+                    d_lat[v] = d_lat[u] + this_lat
+                    d_en[v] = d_en[u

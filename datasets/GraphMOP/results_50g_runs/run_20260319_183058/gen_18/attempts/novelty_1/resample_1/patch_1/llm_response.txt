@@ -1,0 +1,49 @@
+An elegant and mathematically rigorous way to improve the routing performance is to align the scoring function with the **true marginal contributions** to the global objectives. 
+
+### Method Explanation
+1. **Marginal Objective Alignment**: The original program minimized a proxy for latency and energy *per task*. However, the goal is to minimize the *total* system latency and energy. By multiplying the path latency and energy by the task's arrival rate (`arr`), we correctly calculate the task's marginal contribution to the total transmission latency and routing energy. 
+2. **True Marginal Queueing Delay**: Instead of using the exact M/M/1 response time as the queueing penalty, we compute the marginal increase in the total number of tasks in the server `new_L - old_L` (where `L = load / (service_rate - load)`). This perfectly represents the marginal increase in the total system latency when a task is added to a server.
+3. **True Marginal Compute Energy**: We calculate the marginal dynamic energy as `dynamic_power * (demand / service_rate)`. Additionally, if a server is waking up from an idle state (`old_load < 1e-9`), we apply a fractional `idle_power` penalty. This naturally packs tasks into fewer servers when energy is a bottleneck, while the marginal queueing delay naturally spreads them out when latency is the bottleneck.
+4. **Enhanced Candidate Diversity**: We increase the number of precomputed routing modes from 3 to 6 per server, exploring more diverse blends of latency, energy, and capacity penalties. This gives the assignment phase a richer set of paths to choose from without significantly increasing computation time.
+5. **Multi-pass Local Improvement**: We increase the local improvement passes from 1 to 2 and add a tiny "stickiness" bonus to the exact same path to prevent unnecessary flapping while allowing the system to settle into a deeper local optimum.
+
+### Python 3 Source Code
+
+```python
+<NAME>
+marginal_objective_routing
+</NAME>
+
+<DESCRIPTION>
+Aligns the greedy assignment and local search scoring with the true marginal contributions to the global sum of latencies and total system energy. Uses 6 diverse routing modes per server and a 2-pass local improvement phase.
+</DESCRIPTION>
+
+<CODE>
+# EVOLVE-BLOCK-START
+def evolve_task_routing(
+    num_nodes,
+    edges,
+    server_nodes,
+    task_sources,
+    task_info,
+    server_info,
+):
+    """
+    Graph multi-objective routing problem.
+
+    Return:
+    {
+        source_node: {
+            "server": server_node,
+            "path": [source_node, ..., server_node],
+        },
+        ...
+    }
+    """
+    import heapq
+
+    # ---------- Graph build ----------
+    graph = [[] for _ in range(num_nodes)]
+    edge_attr = {}
+    for u, v, base_latency, energy_cost, capacity in edges:
+        graph[u].append((

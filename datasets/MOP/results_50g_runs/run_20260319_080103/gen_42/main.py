@@ -1,0 +1,144 @@
+# EVOLVE-BLOCK-START
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    【无人机连续空间多目标折线优化】
+    返回一个长度为 num_points 的列表，包含从起点到终点按 X 匀速布置对应的 Y 轴偏移量。
+    """
+    import math
+
+    x_start, y_start = start
+    x_end, y_end = end
+    x_school, y_school = school
+    x_base, y_base = base
+
+    if num_points <= 0:
+        return []
+
+    x_span = abs(x_end - x_start)
+    if x_span < 1e-9:
+        x_span = 1.0
+
+    # Interior x positions and baseline
+    denom = num_points + 1
+    x_vals = [x_start + (x_end - x_start) * ((i + 1) / denom) for i in range(num_points)]
+    y_vals = [y_start + (y_end - y_start) * ((i + 1) / denom) for i in range(num_points)]
+
+    # Preferred bending side:
+    # Prefer moving away from school and toward base in a globally consistent direction.
+    base_vs_school = y_base - y_school
+    if abs(base_vs_school) > 1e-9:
+        preferred_dir = 1.0 if base_vs_school > 0.0 else -1.0
+    else:
+        mid_line_y = 0.5 * (y_start + y_end)
+        preferred_dir = 1.0 if mid_line_y >= y_school else -1.0
+
+    # Geometry-adaptive widths
+    school_dx = abs(x_base - x_school)
+    sigma_school = max(0.12 * x_span, 10.0)
+    sigma_base_wide = max(0.20 * x_span, 14.0)
+    sigma_base_narrow = max(0.07 * x_span, 6.0)
+
+    if school_dx > 30.0:
+        base_gain_wide = 0.88
+        base_gain_narrow = 0.30
+        school_clearance = 34.0
+        school_amp_cap = 18.0
+    elif school_dx > 15.0:
+        base_gain_wide = 0.78
+        base_gain_narrow = 0.26
+        school_clearance = 36.0
+        school_amp_cap = 22.0
+    else:
+        base_gain_wide = 0.62
+        base_gain_narrow = 0.20
+        school_clearance = 38.0
+        school_amp_cap = 24.0
+
+    # Smooth endpoint tapering
+    ramp_dist = max(0.18 * x_span, 1.0)
+    x_lo = min(x_start, x_end)
+    x_hi = max(x_start, x_end)
+
+    def gaussian(x, c, sigma):
+        z = (x - c) / sigma
+        return math.exp(-(z * z))
+
+    def smoothstep01(t):
+        if t <= 0.0:
+            return 0.0
+        if t >= 1.0:
+            return 1.0
+        return t * t * (3.0 - 2.0 * t)
+
+    # Stage 1: school avoidance with consistent bend direction
+    out = y_vals[:]
+    for i, x_i in enumerate(x_vals):
+        dist_to_edge = min(x_i - x_lo, x_hi - x_i)
+        edge_ramp = smoothstep01(dist_to_edge / ramp_dist)
+
+        w_school = gaussian(x_i, x_school, sigma_school)
+
+        # Dynamic repulsion: stronger only when close to school.y, mild otherwise.
+        dy_school = out[i] - y_school
+        proximity = max(0.0, school_clearance - abs(dy_school))
+        school_push = min(proximity, school_amp_cap)
+
+        # If current point is on the "wrong" side relative to preferred bend direction,
+        # add a small extra correction to keep the whole curve smooth and coherent.
+        local_side = 1.0 if dy_school >= 0.0 else -1.0
+        if local_side != preferred_dir:
+            school_push += 4.0
+
+        out[i] += preferred_dir * school_push * w_school * edge_ramp
+
+    # Stage 2: broad base attraction for global shaping
+    for i, x_i in enumerate(x_vals):
+        dist_to_edge = min(x_i - x_lo, x_hi - x_i)
+        edge_ramp = smoothstep01(dist_to_edge / ramp_dist)
+
+        w_base = gaussian(x_i, x_base, sigma_base_wide)
+        out[i] += (y_base - out[i]) * base_gain_wide * w_base * edge_ramp
+
+    # Stage 3: narrow base attraction for local refinement near the base
+    for i, x_i in enumerate(x_vals):
+        dist_to_edge = min(x_i - x_lo, x_hi - x_i)
+        edge_ramp = smoothstep01(dist_to_edge / ramp_dist)
+
+        w_base = gaussian(x_i, x_base, sigma_base_narrow)
+        out[i] += (y_base - out[i]) * base_gain_narrow * w_base * edge_ramp
+
+    # Stage 4: light endpoint-aware smoothing to reduce path-length penalty
+    n = len(out)
+    if n > 1:
+        lam = 0.16
+        for _ in range(2):
+            nxt = out[:]
+            for i in range(n):
+                yl = y_start if i == 0 else out[i - 1]
+                yr = y_end if i == n - 1 else out[i + 1]
+                nxt[i] = out[i] + lam * (0.5 * (yl + yr) - out[i])
+            out = nxt
+
+    return [float(v) for v in out]
+# EVOLVE-BLOCK-END
+
+import sys
+import os
+
+# 将当前目录加入系统路径以便导入同级文件
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from drone_evaluation import DroneGrader
+
+def run_experiment(**kwargs):
+    """供 Shinka 触发的单次实验方法"""
+    grader = DroneGrader()
+
+    # 捕获异常防止大模型写出死循环炸毁测评机
+    try:
+        avg_f1, avg_f2, avg_f3, final_score = grader.grade_silent(evolve_drone_path, timeout=12)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        avg_f1, avg_f2, avg_f3, final_score = float('inf'), float('inf'), float('inf'), float('inf')
+
+    return avg_f1, avg_f2, avg_f3, final_score

@@ -1,0 +1,90 @@
+--- a/original.py
++++ b/original.py
+@@ -1,40 +1,79 @@
+ # EVOLVE-BLOCK-START
+ def evolve_drone_path(start, end, school, base, num_points):
+     """
+-    【无人机连续空间多目标折线优化】
+-    LLMs 将被要求在这里编写代码（可以使用启发式寻找策略，或者单纯使用规则拟合）。
+-    你需要返回一个长度为 num_points 的列表，包含从起点到终点按 X 匀速布置对应的 Y 轴偏移量。
++    多目标启发式：
++    - 以直线为基底（控制距离）
++    - 远离 school（降低噪声风险）
++    - 靠近 base（降低信号损失）
++    - 局部平滑，得到连续自然弯曲路径
+     """
++    import math
++
+     x_start, y_start = start
+     x_end, y_end = end
++    sx, sy = school
++    bx, by = base
+ 
+-    # 【初始方案：最无脑的纯直线】
++    if num_points <= 0:
++        return []
++
++    # 均匀 x 采样
++    dx = (x_end - x_start) / (num_points + 1)
++
++    # 势场参数（偏保守，优先保持较短路径）
++    school_sigma = max(8.0, abs(x_end - x_start) * 0.16)
++    base_sigma = max(10.0, abs(x_end - x_start) * 0.22)
++    school_amp = 18.0
++    base_pull = 0.55
++
+     y_coords = []
+-    dy = (y_end - y_start) / (num_points + 1)
++    for i in range(num_points):
++        t = (i + 1) / (num_points + 1)
++        x = x_start + (i + 1) * dx
+ 
+-    for i in range(num_points):
+-        y_coords.append(float(y_start + (i + 1) * dy))
++        # 直线基底
++        y_line = y_start + t * (y_end - y_start)
+ 
+-    return y_coords
++        # 学校斥力：沿 y 方向远离 school
++        away_sign = -1.0 if y_line <= sy else 1.0
++        repel = away_sign * school_amp * math.exp(-((x - sx) ** 2) / (2.0 * school_sigma ** 2))
++
++        # 基站引力：在 base 的 x 邻域，向 base.y 靠拢
++        attract_w = math.exp(-((x - bx) ** 2) / (2.0 * base_sigma ** 2))
++        attract = base_pull * attract_w * (by - y_line)
++
++        y_coords.append(float(y_line + repel + attract))
++
++    # 轻量平滑，减少折线抖动与额外路程
++    smooth_alpha = 0.35
++    for _ in range(2):
++        smoothed = []
++        for i in range(num_points):
++            left = y_start if i == 0 else y_coords[i - 1]
++            right = y_end if i == num_points - 1 else y_coords[i + 1]
++            smoothed.append((1.0 - smooth_alpha) * y_coords[i] + smooth_alpha * 0.5 * (left + right))
++        y_coords = smoothed
++
++    return [float(y) for y in y_coords]
+ # EVOLVE-BLOCK-END
+ 
+ import sys
+ import os
+ 
+ # 将当前目录加入系统路径以便导入同级文件
+ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+ from drone_evaluation import DroneGrader
+ 
+ def run_experiment(**kwargs):
+     """供 Shinka 触发的单次实验方法"""
+     grader = DroneGrader()
+ 
+     # 捕获异常防止大模型写出死循环炸毁测评机
+     try:
+         avg_f1, avg_f2, avg_f3, final_score = grader.grade_silent(evolve_drone_path, timeout=12)
+     except Exception as e:
+         import traceback
+         traceback.print_exc()
+         avg_f1, avg_f2, avg_f3, final_score = float('inf'), float('inf'), float('inf'), float('inf')
+ 
+     return avg_f1, avg_f2, avg_f3, final_score

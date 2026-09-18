@@ -1,0 +1,164 @@
+# EVOLVE-BLOCK-START
+def evolve_task_routing(
+    num_nodes,
+    edges,
+    server_nodes,
+    task_sources,
+    task_info,
+    server_info,
+):
+    import heapq
+
+    # 1. Graph Setup
+    adj = [[] for _ in range(num_nodes)]
+    total_l, total_e, total_c = 0.0, 0.0, 0.0
+    for u, v, l, e, c in edges:
+        adj[u].append((v, float(l), float(e), float(c)))
+        adj[v].append((u, float(l), float(e), float(c)))
+        total_l += l
+        total_e += e
+        total_c += 1.0 / max(1e-9, c)
+    
+    n_edges = len(edges) if edges else 1
+    avg_l, avg_e, avg_inv_c = total_l/n_edges, total_e/n_edges, total_c/n_edges
+    
+    # Heuristic weights for path finding
+    # Weight per edge: Latency + EnergyWeight * Energy
+    eng_scaling = 0.4 * (avg_l / max(1e-9, avg_e)) 
+
+    # 2. Multi-Candidate Dijkstra (Min Latency & Min Energy)
+    def get_dijkstra(roots, weight_fn):
+        res = {} # root -> (parents, edge_info)
+        for r in roots:
+            dist = [float('inf')] * num_nodes
+            par = [-1] * num_nodes
+            p_edge = [None] * num_nodes
+            dist[r] = 0.0
+            pq = [(0.0, r)]
+            while pq:
+                d, u = heapq.heappop(pq)
+                if d > dist[u]: continue
+                for v, l, e, c in adj[u]:
+                    w = weight_fn(l, e, c)
+                    if dist[u] + w < dist[v]:
+                        dist[v] = dist[u] + w
+                        par[v] = u
+                        p_edge[v] = (l, e, c)
+                        heapq.heappush(pq, (dist[v], v))
+            res[r] = (par, p_edge)
+        return res
+
+    # Two strategies: focused on raw Latency vs balanced Energy
+    trees_lat = get_dijkstra(server_nodes, lambda l, e, c: l + avg_inv_c * 10.0)
+    trees_eng = get_dijkstra(server_nodes, lambda l, e, c: eng_scaling * e + l)
+
+    def reconstruct(src, srv, tree_dict):
+        par, p_edge = tree_dict[srv]
+        if par[src] == -1 and src != srv: return None
+        path, cur = [src], src
+        l_sum, e_sum, inv_c_sum = 0.0, 0.0, 0.0
+        while cur != srv:
+            pe = p_edge[cur]
+            if not pe: break
+            l_sum += pe[0]
+            e_sum += pe[1]
+            inv_c_sum += 1.0 / max(1e-9, pe[2])
+            cur = par[cur]
+            path.append(cur)
+        return path, l_sum, e_sum, inv_c_sum
+
+    # 3. Task Assignment Logic
+    server_load = {s: 0.0 for s in server_nodes}
+    plan = {}
+    
+    # Priority: High total compute load tasks first
+    sorted_srcs = sorted(task_sources, key=lambda s: task_info[s][0] * task_info[s][2], reverse=True)
+
+    for src in sorted_srcs:
+        arr, py, cp = task_info[src]
+        t_load = arr * cp
+        best_sc, best_srv, best_path = float('inf'), None, []
+        
+        for srv in server_nodes:
+            # Check both candidate paths from the two Dijkstra trees
+            for tree_set in [trees_lat, trees_eng]:
+                res = reconstruct(src, srv, tree_set)
+                if not res: continue
+                path, l_net, e_net, inv_c_net = res
+                
+                mu, idle, dyn = server_info[srv]
+                new_load = server_load[srv] + t_load
+                if new_load >= 0.96 * mu: continue # Capacity safety
+                
+                # Marginal Cost components
+                # 1. Network Latency: base hops + payload transmission
+                lat_val = l_net + py * inv_c_net
+                # 2. Server Latency: M/M/1 queuing proxy
+                serv_val = cp / max(1e-7, mu - new_load)
+                # 3. Energy: routing + server dynamic increment
+                util_old = server_load[srv] / mu
+                util_new = new_load / mu
+                # Dynamic energy model: Power scales with util^1.5 or 1.7
+                delta_e_serv = dyn * (util_new**1.6 - util_old**1.6)
+                route_e = py * e_net
+                
+                # Combined metric: Latency + weight * Energy + stability penalty
+                total_lat = lat_val + serv_val
+                total_eng = route_e + delta_e_serv
+                penalty = 0.5 * (util_new**2 / (1.0001 - util_new))
+                
+                score = total_lat + 0.45 * (avg_l / max(1e-9, avg_e)) * total_eng + penalty
+                
+                if score < best_sc:
+                    best_sc, best_srv, best_path = score, srv, path
+        
+        if best_srv is None: # Fallback to node itself if possible
+            best_srv = server_nodes[0]
+            best_path = [src] if src == best_srv else []
+            
+        plan[src] = {"server": best_srv, "path": best_path}
+        server_load[best_srv] += t_load
+
+    # 4. Optional Local Refinement
+    for src in sorted_srcs:
+        old_srv = plan[src]["server"]
+        arr, py, cp = task_info[src]
+        t_load = arr * cp
+        current_p = plan[src]["path"]
+        
+        # Simpler check: see if swapping to another server's min-lat path is strictly better
+        for srv in server_nodes:
+            if srv == old_srv: continue
+            res = reconstruct(src, srv, trees_lat)
+            if not res: continue
+            new_p, l_net, e_net, inv_c_net = res
+            mu, _, _ = server_info[srv]
+            if server_load[srv] + t_load < 0.9 * mu:
+                # Basic swap check
+                server_load[old_srv] -= t_load
+                server_load[srv] += t_load
+                plan[src] = {"server": srv, "path": new_p}
+                break
+
+    return plan
+# EVOLVE-BLOCK-END
+
+import os
+import sys
+
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from graph_evaluation import GraphRoutingGrader
+
+
+def run_experiment(**kwargs):
+    del kwargs
+    grader = GraphRoutingGrader()
+    try:
+        avg_latency, avg_energy, final_score = grader.grade_silent(evolve_task_routing, timeout=12)
+    except Exception:
+        import traceback
+
+        traceback.print_exc()
+        avg_latency, avg_energy, final_score = float("inf"), float("inf"), float("inf")
+
+    return avg_latency, avg_energy, final_score

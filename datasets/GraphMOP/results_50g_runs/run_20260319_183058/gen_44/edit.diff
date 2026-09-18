@@ -1,0 +1,571 @@
+--- a/original.py
++++ b/original.py
+@@ -1,190 +1,412 @@
+ # EVOLVE-BLOCK-START
+ def evolve_task_routing(
+     num_nodes,
+     edges,
+     server_nodes,
+     task_sources,
+     task_info,
+     server_info,
+ ):
+     import heapq
+-    import math
+-
+-    # 1. Build Graph
+-    adj = [[] for _ in range(num_nodes)]
++
++    # -----------------------------
++    # Parameters
++    # -----------------------------
++    path_profiles = [
++        # (lat_w, en_w, cap_w)
++        (1.00, 0.15, 0.00),
++        (1.00, 0.35, 0.00),
++        (1.00, 0.60, 0.06),
++        (1.00, 0.95, 0.10),
++    ]
++    energy_w = 0.43
++    util_penalty_w = 0.10
++    idle_activation_w = 0.22
++    assign_saturation = 0.992
++    refine_saturation = 0.994
++    refresh_every = 4
++    max_refine_passes = 6
++    per_source_cap = 10
++
++    # -----------------------------
++    # Graph build
++    # -----------------------------
++    graph = [[] for _ in range(num_nodes)]
++    edge_best = {}
+     for u, v, lat, en, cap in edges:
+-        adj[u].append((v, float(lat), float(en), float(cap)))
+-        adj[v].append((u, float(lat), float(en), float(cap)))
+-
+-    # 2. Candidate Path Generation
+-    # We run Dijkstra from servers to all nodes to find paths efficiently.
+-    # We use two lambdas to capture latency-optimized and energy-optimized paths.
+-    def get_paths(lambd):
+-        # dists[server_idx][node] = (cost, parent)
+-        all_dists = []
++        lat = float(lat)
++        en = float(en)
++        cap = float(cap)
++        graph[u].append((v, lat, en, cap))
++        graph[v].append((u, lat, en, cap))
++
++        # store a canonical edge metric for path validation / metrics
++        key1 = (u, v)
++        key2 = (v, u)
++        prev = edge_best.get(key1)
++        score = lat + 0.25 * en + 1e-9 / max(cap, 1e-9)
++        if prev is None or score < prev[0]:
++            edge_best[key1] = (score, lat, en, cap)
++            edge_best[key2] = (score, lat, en, cap)
++
++    # -----------------------------
++    # Basic stats
++    # -----------------------------
++    if not task_sources:
++        return {}
++
++    payloads = [float(task_info[s][1]) for s in task_sources]
++    avg_payload = sum(payloads) / max(len(payloads), 1)
++    min_payload = min(payloads) if payloads else avg_payload
++    max_payload = max(payloads) if payloads else avg_payload
++    rep_payloads = [
++        max(0.5 * (min_payload + avg_payload), 1e-6),
++        max(avg_payload, 1e-6),
++        max(0.5 * (avg_payload + max_payload), 1e-6),
++    ]
++
++    work = {s: float(task_info[s][0]) * float(task_info[s][2]) for s in task_sources}
++    arrivals = {s: float(task_info[s][0]) for s in task_sources}
++
++    # -----------------------------
++    # Helpers
++    # -----------------------------
++    def dijkstra_from_server(server, rep_payload, lat_w, en_w, cap_w):
++        dist = [float("inf")] * num_nodes
++        parent = [-1] * num_nodes
++        dist[server] = 0.0
++        pq = [(0.0, server)]
++
++        while pq:
++            cd, u = heapq.heappop(pq)
++            if cd != dist[u]:
++                continue
++            for v, base_lat, e_cost, cap in graph[u]:
++                tx_term = rep_payload / max(cap, 1e-9)
++                w = lat_w * (base_lat + tx_term) + en_w * (e_cost * rep_payload) + cap_w * tx_term
++                nd = cd + w
++                if nd < dist[v]:
++                    dist[v] = nd
++                    parent[v] = u
++                    heapq.heappush(pq, (nd, v))
++        return parent
++
++    def reconstruct_path(src, srv, parent):
++        if src == srv:
++            return [src]
++        cur = src
++        seen = {src}
++        path = [src]
++        while cur != srv:
++            nxt = parent[cur]
++            if nxt == -1 or nxt in seen:
++                return None
++            path.append(nxt)
++            seen.add(nxt)
++            cur = nxt
++        return path
++
++    def path_metrics(path, payload):
++        if path is None:
++            return float("inf"), float("inf")
++        if len(path) <= 1:
++            return 0.0, 0.0
++        lat = 0.0
++        en = 0.0
++        for i in range(len(path) - 1):
++            u, v = path[i], path[i + 1]
++            rec = edge_best.get((u, v))
++            if rec is None:
++                return float("inf"), float("inf")
++            _, base_lat, e_cost, cap = rec
++            lat += base_lat + payload / max(cap, 1e-9)
++            en += e_cost * payload
++        return lat, en
++
++    def fallback_path(src, dst, payload):
++        dist = [float("inf")] * num_nodes
++        parent = [-1] * num_nodes
++        dist[src] = 0.0
++        pq = [(0.0, src)]
++        while pq:
++            cd, u = heapq.heappop(pq)
++            if cd != dist[u]:
++                continue
++            if u == dst:
++                break
++            for v, base_lat, e_cost, cap in graph[u]:
++                tx = payload / max(cap, 1e-9)
++                w = (base_lat + tx) + 0.55 * (e_cost * payload)
++                nd = cd + w
++                if nd < dist[v]:
++                    dist[v] = nd
++                    parent[v] = u
++                    heapq.heappush(pq, (nd, v))
++        if src == dst:
++            return [src]
++        if parent[dst] == -1:
++            return None
++        rev = [dst]
++        cur = dst
++        seen = {dst}
++        while cur != src:
++            cur = parent[cur]
++            if cur == -1 or cur in seen:
++                return None
++            seen.add(cur)
++            rev.append(cur)
++        rev.reverse()
++        return rev
++
++    # -----------------------------
++    # Candidate path generation
++    # -----------------------------
++    trees = {srv: [] for srv in server_nodes}
++    for srv in server_nodes:
++        for rep_payload in rep_payloads:
++            for lat_w, en_w, cap_w in path_profiles:
++                trees[srv].append(
++                    dijkstra_from_server(srv, rep_payload, lat_w, en_w, cap_w)
++                )
++
++    candidates = {}
++    for src in task_sources:
++        payload = float(task_info[src][1])
++        uniq = {}
++
+         for srv in server_nodes:
+-            dists = [float('inf')] * num_nodes
+-            parents = [-1] * num_nodes
+-            dists[srv] = 0.0
+-            pq = [(0.0, srv)]
+-            while pq:
+-                d, u = heapq.heappop(pq)
+-                if d > dists[u]: continue
+-                for v, lat, en, cap in adj[u]:
+-                    # Weight = Latency + lambd * Energy
+-                    # We use a nominal payload of 100 for path discovery
+-                    w = (lat + 100.0 / max(cap, 1e-6)) + lambd * (en * 100.0)
+-                    if dists[u] + w < dists[v]:
+-                        dists[v] = dists[u] + w
+-                        parents[v] = u
+-                        heapq.heappush(pq, (dists[v], v))
+-            all_dists.append(parents)
+-        return all_dists
+-
+-    # Generate candidate paths using different trade-offs
+-    path_sets = [get_paths(0.1), get_paths(2.0)]
+-    
+-    candidates = {src: [] for src in task_sources}
++            for parent in trees[srv]:
++                p = reconstruct_path(src, srv, parent)
++                if not p:
++                    continue
++                rlat, ren = path_metrics(p, payload)
++                if rlat == float("inf"):
++                    continue
++                key = (srv, tuple(p))
++                score = rlat + 0.35 * ren
++                prev = uniq.get(key)
++                if prev is None or score < prev[0]:
++                    uniq[key] = (score, srv, p, rlat, ren)
++
++            # make sure every server has at least one direct fallback candidate
++            fp = fallback_path(src, srv, payload)
++            if fp:
++                rlat, ren = path_metrics(fp, payload)
++                if rlat != float("inf"):
++                    key = (srv, tuple(fp))
++                    score = rlat + 0.35 * ren
++                    prev = uniq.get(key)
++                    if prev is None or score < prev[0]:
++                        uniq[key] = (score, srv, fp, rlat, ren)
++
++        cand_list = [(srv, p, rlat, ren) for (_, srv, p, rlat, ren) in uniq.values()]
++        cand_list.sort(key=lambda x: (x[2] + 0.38 * x[3], x[2], x[3], len(x[1])))
++
++        # keep diverse candidates, but not too many
++        kept = []
++        used_servers = set()
++        for item in cand_list:
++            srv = item[0]
++            if len(kept) < per_source_cap:
++                kept.append(item)
++                used_servers.add(srv)
++
++        if not kept:
++            # emergency fallback
++            srv = server_nodes[0]
++            p = [src] if src == srv else fallback_path(src, srv, payload)
++            if not p:
++                p = [src] if src == srv else [src, srv]
++            rlat, ren = path_metrics(p, payload)
++            if rlat == float("inf"):
++                rlat, ren = 1e6, 1e6
++            kept = [(srv, p, rlat, ren)]
++
++        candidates[src] = kept
++
++    # -----------------------------
++    # Server-state-aware scoring
++    # -----------------------------
++    srv_load = {srv: 0.0 for srv in server_nodes}
++    srv_arr = {srv: 0.0 for srv in server_nodes}
++    srv_count = {srv: 0 for srv in server_nodes}
++
++    def marginal_cost(src, cand, cur_load, cur_arr, cur_count, sat_thr):
++        srv, path, route_lat, route_en = cand
++        arr, payload, comp = task_info[src]
++        arr = float(arr)
++        comp = float(comp)
++        l_i = arr * comp
++
++        mu, idle, dyn = server_info[srv]
++        mu = float(mu)
++        idle = float(idle)
++        dyn = float(dyn)
++
++        old_load = cur_load[srv]
++        new_load = old_load + l_i
++        if new_load >= sat_thr * mu:
++            return float("inf")
++
++        old_arr = cur_arr[srv]
++        new_arr = old_arr + arr
++
++        old_q = old_arr / max(mu - old_load, 1e-9)
++        new_q = new_arr / max(mu - new_load, 1e-9)
++        q_delta = new_q - old_q
++
++        compute_en = dyn * (l_i / max(mu, 1e-9))
++        if cur_count[srv] == 0:
++            compute_en += idle_activation_w * idle
++
++        util = new_load / max(mu, 1e-9)
++
++        return (
++            route_lat
++            + q_delta
++            + energy_w * (route_en + compute_en)
++            + util_penalty_w * util
++        )
++
++    # -----------------------------
++    # Dynamic-regret greedy assignment
++    # -----------------------------
++    unassigned = set(task_sources)
++    assignments = {}
++
++    def best_and_second(src, sat_thr):
++        best = (float("inf"), None)
++        second = (float("inf"), None)
++        for cand in candidates[src]:
++            val = marginal_cost(src, cand, srv_load, srv_arr, srv_count, sat_thr)
++            if val < best[0]:
++                second = best
++                best = (val, cand)
++            elif val < second[0]:
++                second = (val, cand)
++        if best[1] is None:
++            # very defensive fallback
++            fallback = candidates[src][0]
++            return float("inf"), 0.0, fallback
++        regret = second[0] - best[0] if second[1] is not None else 1e3
++        return best[0], regret, best[1]
++
++    # initial seed order: high work and low server flexibility first
++    seed_priority = sorted(
++        task_sources,
++        key=lambda s: (
++            work[s],
++            -(min((c[2] + 0.3 * c[3]) for c in candidates[s]) if candidates[s] else 1e9),
++        ),
++        reverse=True,
++    )
++
++    steps = 0
++    while unassigned:
++        if steps == 0:
++            pick_src = seed_priority[0]
++            seed_priority = seed_priority[1:]
++            if pick_src not in unassigned:
++                continue
++            _, _, best_cand = best_and_second(pick_src, assign_saturation)
++        else:
++            pool = sorted(
++                list(unassigned),
++                key=lambda s: work[s],
++                reverse=True,
++            )[: min(len(unassigned), max(10, refresh_every * 2))]
++            scored = []
++            for s in pool:
++                best_score, regret, best_cand = best_and_second(s, assign_saturation)
++                # Dynamic regret emphasis, but still favor heavy tasks
++                priority = regret + 0.18 * work[s] - 0.05 * best_score
++                scored.append((priority, s, best_cand))
++            scored.sort(reverse=True, key=lambda x: x[0])
++            pick_src = scored[0][1]
++            best_cand = scored[0][2]
++
++        assignments[pick_src] = best_cand
++        srv = best_cand[0]
++        srv_load[srv] += work[pick_src]
++        srv_arr[srv] += arrivals[pick_src]
++        srv_count[srv] += 1
++        unassigned.remove(pick_src)
++        steps += 1
++
++        # periodically refresh using current loads automatically by loop design
++        if steps % refresh_every == 0:
++            pass
++
++    # -----------------------------
++    # Local improvement
++    # -----------------------------
++    refine_order = sorted(task_sources, key=lambda s: work[s], reverse=True)
++
++    for _ in range(max_refine_passes):
++        changed = False
++        for src in refine_order:
++            old_cand = assignments[src]
++            old_srv = old_cand[0]
++
++            srv_load[old_srv] -= work[src]
++            srv_arr[old_srv] -= arrivals[src]
++            srv_count[old_srv] -= 1
++
++            best_cand = old_cand
++            best_val = marginal_cost(src, old_cand, srv_load, srv_arr, srv_count, refine_saturation)
++
++            for cand in candidates[src]:
++                if cand == old_cand:
++                    continue
++                val = marginal_cost(src, cand, srv_load, srv_arr, srv_count, refine_saturation)
++                if val < best_val:
++                    best_val = val
++                    best_cand = cand
++
++            assignments[src] = best_cand
++            new_srv = best_cand[0]
++            srv_load[new_srv] += work[src]
++            srv_arr[new_srv] += arrivals[src]
++            srv_count[new_srv] += 1
++
++            if best_cand != old_cand:
++                changed = True
++
++        if not changed:
++            break
++
++    # -----------------------------
++    # Output formatting
++    # -----------------------------
++    result = {}
+     for src in task_sources:
+-        arr, payload, comp = task_info[src]
+-        seen_paths = set()
+-        for p_set in path_sets:
+-            for srv_idx, parents in enumerate(p_set):
+-                srv = server_nodes[srv_idx]
+-                # Reconstruct path from server to source (then reverse)
+-                path = []
+-                curr = src
+-                while curr != -1:
+-                    path.append(curr)
+-                    if curr == srv: break
+-                    curr = parents[curr]
+-                else: continue # No path
+-                
+-                path_tuple = tuple(path)
+-                if path_tuple not in seen_paths:
+-                    # Calculate path metrics
+-                    p_lat, p_en = 0.0, 0.0
+-                    valid = True
+-                    for i in range(len(path)-1):
+-                        u, v = path[i], path[i+1]
+-                        found = False
+-                        for neighbor, lat, en, cap in adj[u]:
+-                            if neighbor == v:
+-                                p_lat += lat + payload / max(cap, 1e-6)
+-                                p_en += en * payload
+-                                found = True
+-                                break
+-                        if not found: 
+-                            valid = False
+-                            break
+-                    if valid:
+-                        candidates[src].append({
+-                            "server": srv,
+-                            "path": path,
+-                            "lat": p_lat,
+-                            "en": p_en
+-                        })
+-                        seen_paths.add(path_tuple)
+-
+-    # 3. Marginal Cost and Regret Assignment
+-    # Global objective: Minimize Sum(Latency) + 0.5 * Sum(Energy)
+-    # Marginal Latency of adding load 'l' to server with capacity 'mu' and current load 'L':
+-    # Total Delay = L / (mu - L). Marginal = mu / (mu - L)^2
+-    def get_marginal_score(cand, src, current_loads):
+-        srv = cand['server']
+-        arr, payload, comp = task_info[src]
+-        mu, idle, dyn = server_info[srv]
+-        l = arr * comp
+-        L = current_loads[srv]
+-        
+-        if L + l >= 0.99 * mu: return float('inf')
+-        
+-        # Marginal Queueing Delay impact on the whole system
+-        # d/dL (L / (mu - L)) = mu / (mu - L)^2
+-        marginal_q = mu / ((mu - L) ** 2)
+-        
+-        # Energy: Path Energy + Dynamic Compute Energy
+-        # Compute Energy approx: dyn * (l / mu)
+-        e_score = cand['en'] + dyn * (l / mu)
+-        
+-        return cand['lat'] + l * marginal_q + 0.5 * e_score
+-
+-    # Calculate Regret for ordering
+-    source_priorities = []
+-    for src in task_sources:
+-        arr, payload, comp = task_info[src]
+-        load = arr * comp
+-        scores = sorted([c['lat'] + 0.5 * c['en'] for c in candidates[src]])
+-        regret = (scores[1] - scores[0]) if len(scores) > 1 else 1000.0
+-        # Priority: High load and high regret first
+-        source_priorities.append((src, load * 0.5 + regret))
+-    
+-    source_priorities.sort(key=lambda x: x[1], reverse=True)
+-
+-    # Initial Greedy Assignment
+-    current_loads = {srv: 0.0 for srv in server_nodes}
+-    assignments = {}
+-    for src, _ in source_priorities:
+-        best_cand = None
+-        best_s = float('inf')
+-        for cand in candidates[src]:
+-            s = get_marginal_score(cand, src, current_loads)
+-            if s < best_s:
+-                best_s = s
+-                best_cand = cand
+-        
+-        if not best_cand: # Fallback
+-            best_cand = candidates[src][0]
+-        
+-        assignments[src] = best_cand
+-        current_loads[best_cand['server']] += task_info[src][0] * task_info[src][2]
+-
+-    # 4. Local Search Refinement
+-    for _ in range(3):
+-        improved = False
+-        for src in task_sources:
+-            old_cand = assignments[src]
+-            old_srv = old_cand['server']
+-            load = task_info[src][0] * task_info[src][2]
+-            
+-            # Tentatively remove
+-            current_loads[old_srv] -= load
+-            
+-            best_cand = old_cand
+-            best_s = get_marginal_score(old_cand, src, current_loads)
+-            
+-            for cand in candidates[src]:
+-                if cand == old_cand: continue
+-                s = get_marginal_score(cand, src, current_loads)
+-                if s < best_s:
+-                    best_s = s
+-                    best_cand = cand
+-                    improved = True
+-            
+-            assignments[src] = best_cand
+-            current_loads[best_cand['server']] += load
+-        if not improved: break
+-
+-    # 5. Format Output
+-    return {src: {"server": assignments[src]["server"], "path": assignments[src]["path"]} for src in task_sources}
++        srv, path, _, _ = assignments[src]
++        if not path:
++            payload = float(task_info[src][1])
++            path = [src] if src == srv else fallback_path(src, srv, payload)
++            if not path:
++                path = [src] if src == srv else [src, srv]
++        result[src] = {"server": srv, "path": path}
++
++    return result
+ # EVOLVE-BLOCK-END
+ 
+ import os
+ import sys
+ 
+ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+ from graph_evaluation import GraphRoutingGrader
+ 
+ 
+ def run_experiment(**kwargs):
+     del kwargs
+     grader = GraphRoutingGrader()
+     try:
+         avg_latency, avg_energy, final_score = grader.grade_silent(evolve_task_routing, timeout=12)
+     except Exception:
+         import traceback
+ 
+         traceback.print_exc()
+         avg_latency, avg_energy, final_score = float("inf"), float("inf"), float("inf")
+ 
+     return avg_latency, avg_energy, final_score

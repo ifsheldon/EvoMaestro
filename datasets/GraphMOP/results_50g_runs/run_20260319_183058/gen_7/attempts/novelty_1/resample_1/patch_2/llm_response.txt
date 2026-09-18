@@ -1,0 +1,58 @@
+An elegant and highly optimized approach to this problem is to invert the pathfinding direction and use a fast Simulated Annealing metaheuristic to globally optimize the assignments.
+
+<NAME>
+server_centric_sa_routing
+</NAME>
+
+<DESCRIPTION>
+Instead of running Dijkstra from every task source (which is slow and scales poorly with the number of sources), this algorithm runs a few "Reverse Dijkstras" from each of the few servers. By varying the edge weights (focusing on latency, energy, or hop count), it quickly builds a diverse set of Pareto-optimal candidate paths for every source-server pair. 
+
+Once the candidate paths are precomputed, the algorithm uses a highly optimized Simulated Annealing (SA) local search to assign each task source to a server and path. The SA objective function strictly models the system's true latency and energy costs, including a continuous M/M/1 queueing delay penalty that smoothly transitions into a heavy linear penalty if a server exceeds 95% utilization. Because the SA inner loop tracks objective deltas in $O(1)$ time, it can explore millions of neighboring configurations within the time limit, smoothly decaying the temperature to converge on a globally optimal routing plan.
+</DESCRIPTION>
+
+<CODE>
+```python
+# EVOLVE-BLOCK-START
+def evolve_task_routing(
+    num_nodes,
+    edges,
+    server_nodes,
+    task_sources,
+    task_info,
+    server_info,
+):
+    import heapq
+    import time
+    import random
+    import math
+
+    start_time = time.time()
+
+    # Build adjacency list
+    graph = [[] for _ in range(num_nodes)]
+    for u, v, base_latency, energy_cost, capacity in edges:
+        graph[u].append((v, base_latency, energy_cost, capacity))
+        graph[v].append((u, base_latency, energy_cost, capacity))
+
+    candidates = {src: [] for src in task_sources}
+
+    # Reverse Dijkstra from server to all nodes
+    def get_paths(server, w_lat, w_en, w_hop):
+        dist = [float('inf')] * num_nodes
+        parent = [-1] * num_nodes
+        dist[server] = 0.0
+        heap = [(0.0, server)]
+        
+        while heap:
+            d, u = heapq.heappop(heap)
+            if d > dist[u]:
+                continue
+            for v, b_lat, e_cost, cap in graph[u]:
+                w = w_lat * b_lat + w_en * e_cost + w_hop
+                if dist[u] + w < dist[v]:
+                    dist[v] = dist[u] + w
+                    parent[v] = u
+                    heapq.heappush(heap, (dist[v], v))
+        return parent
+
+    # Diverse weight combinations to generate Pareto-optimal

@@ -1,0 +1,14 @@
+{
+  "generation": 47,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 2,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "windowed_gaussian_refiner",
+  "patch_description": "This algorithm uses a non-parametric \"Deformable Path\" approach optimized via Multi-Scale Windowed Coordinate Descent. Instead of relying on a fixed parametric curve (like Gaussians), it optimizes each Y-coordinate directly. To maintain smoothness and ensure global convergence, it applies perturbations using Gaussian-shaped windows of varying scales. \n\n1. **Multi-Scale Optimization**: It starts with large-scale windows (half the path length) to find the optimal global \"bend\" that avoids the school and approaches the base station. It then progressively reduces the window size to fine-tune local details.\n2. **Coordinate Descent**: The algorithm iteratively adjusts the path, accepting only changes that improve a composite score of distance (F1), school proximity (F2), signal loss (F3), and a Laplacian smoothness penalty.\n3. **Efficiency**: By using a truncated Gaussian kernel and a greedy local search, it explores a high-dimensional space (one variable per path point) much more effectively than a low-dimensional parametric model, allowing the path to \"snake\" around obstacles while remaining perfectly smooth.",
+  "error_msg": "Could not extract code from patch string",
+  "timestamp": "2026-03-20T02:50:18.478164",
+  "llm_cost": 0.0053285,
+  "llm_model": null
+}

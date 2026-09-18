@@ -1,0 +1,5 @@
+# The snapshots include recorded logs; live SQLite sidecars remain local.
+!*.log
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite-journal

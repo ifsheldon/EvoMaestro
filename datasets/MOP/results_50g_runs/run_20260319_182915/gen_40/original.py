@@ -1,0 +1,83 @@
+# EVOLVE-BLOCK-START
+import math
+
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    【无人机连续空间多目标折线优化】
+    Uses an Annealed Gauss-Seidel pointwise solver to locally relax the curve 
+    into the optimal shape balancing F1, F2, and F3.
+    """
+    x_start, y_start = start
+    x_end, y_end = end
+    sx, sy = school
+    bx, by = base
+    
+    # Initialize uniform straight line
+    dx = (x_end - x_start) / (num_points + 1)
+    xs = [x_start + (i + 1) * dx for i in range(num_points)]
+    ys = [y_start + (y_end - y_start) * (i + 1) / (num_points + 1) for i in range(num_points)]
+    
+    total_sweeps = 3000
+    
+    for sweep in range(total_sweeps):
+        progress = sweep / float(total_sweeps)
+        
+        # Annealed Schedule
+        # Beta: School repulsion drops down as the baseline shape is established.
+        # Gamma: Base attraction ramps up to pull the path tight in later stages.
+        alpha = 0.5  # Tension factor (pulls to local average for F1 smoothing)
+        beta = 300.0 * (1.0 - progress * 0.85)  # Repulsion factor (F2)
+        gamma = 0.1 + 1.5 * progress            # Attraction factor (F3)
+        
+        for i in range(num_points):
+            x = xs[i]
+            y = ys[i]
+            
+            prev_y = ys[i-1] if i > 0 else y_start
+            next_y = ys[i+1] if i < num_points - 1 else y_end
+            
+            # 1. Tension (F1) - Laplacian smoothing towards neighbors' midpoint
+            y_tension = (prev_y + next_y) / 2.0
+            
+            # 2. School Repulsion (F2) - pushes away from school
+            dist_sq_s = (x - sx)**2 + (y - sy)**2
+            # Force direction: away from school in Y
+            # Magnitude: inverse square of distance
+            f_rep_y = (y - sy) / (dist_sq_s + 1e-5)
+            
+            # 3. Base Attraction (F3) - pulls towards base
+            dist_sq_b = (x - bx)**2 + (y - by)**2
+            dist_b = math.sqrt(dist_sq_b) + 1e-5
+            # Force direction: towards base in Y (normalized)
+            f_att_y = (by - y) / dist_b
+            
+            # Compute total displacement
+            dy = alpha * (y_tension - y) + beta * f_rep_y + gamma * f_att_y
+            
+            # Apply displacement immediately (Gauss-Seidel update)
+            # This updated value is used immediately by the next point i+1
+            ys[i] += dy
+            
+    return ys
+# EVOLVE-BLOCK-END
+
+import sys
+import os
+
+# 将当前目录加入系统路径以便导入同级文件
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from drone_evaluation import DroneGrader
+
+def run_experiment(**kwargs):
+    """供 Shinka 触发的单次实验方法"""
+    grader = DroneGrader()
+    
+    # 捕获异常防止大模型写出死循环炸毁测评机
+    try:
+        avg_f1, avg_f2, avg_f3, final_score = grader.grade_silent(evolve_drone_path, timeout=12)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        avg_f1, avg_f2, avg_f3, final_score = float('inf'), float('inf'), float('inf'), float('inf')
+        
+    return avg_f1, avg_f2, avg_f3, final_score

@@ -1,0 +1,80 @@
+# EVOLVE-BLOCK-START
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    Optimizes the drone path with smooth sequential shaping:
+    bend away from the school, then recover toward the base station.
+    """
+    import math
+
+    x_start, y_start = start
+    x_end, y_end = end
+    x_school, y_school = school
+    x_base, y_base = base
+
+    dx_total = x_end - x_start
+    dy_total = y_end - y_start
+
+    y_coords = []
+
+    # Broader first-stage attraction improves signal quality over more of the route,
+    # while a small localized recovery helps near the base without over-distorting F1.
+    sigma_base = 28.0
+    k_base = 0.92
+
+    sigma_school = 16.0
+    k_school = 12.5
+
+    # Tight post-recovery centered near the base station
+    sigma_base_post = 9.0
+    alpha_base_post = 0.24
+
+    for i in range(1, num_points + 1):
+        t = i / (num_points + 1)
+        curr_x = x_start + t * dx_total
+
+        # Baseline straight-line interpolation
+        y_linear = y_start + t * dy_total
+
+        # Smoothly taper all deformation to zero at the endpoints
+        window = math.sin(math.pi * t)
+
+        # Stage 1: repel from the school
+        dist_x_school = curr_x - x_school
+        influence_school = math.exp(-(dist_x_school ** 2) / (2 * sigma_school ** 2))
+        direction = -1.0 if y_school > y_linear else 1.0
+        y_shaped = y_linear + direction * k_school * influence_school * window
+
+        # Stage 2: attract the already-deflected path toward the base
+        dist_x_base = curr_x - x_base
+        influence_base = math.exp(-(dist_x_base ** 2) / (2 * sigma_base ** 2))
+        y_shaped += (y_base - y_shaped) * k_base * influence_base * window
+
+        # Stage 3: small localized recovery right near the base
+        influence_base_post = math.exp(-(dist_x_base ** 2) / (2 * sigma_base_post ** 2))
+        y_shaped += alpha_base_post * (y_base - y_shaped) * influence_base_post
+
+        y_coords.append(float(y_shaped))
+
+    return y_coords
+# EVOLVE-BLOCK-END
+
+import sys
+import os
+
+# 将当前目录加入系统路径以便导入同级文件
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from drone_evaluation import DroneGrader
+
+def run_experiment(**kwargs):
+    """供 Shinka 触发的单次实验方法"""
+    grader = DroneGrader()
+
+    # 捕获异常防止大模型写出死循环炸毁测评机
+    try:
+        avg_f1, avg_f2, avg_f3, final_score = grader.grade_silent(evolve_drone_path, timeout=12)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        avg_f1, avg_f2, avg_f3, final_score = float('inf'), float('inf'), float('inf'), float('inf')
+
+    return avg_f1, avg_f2, avg_f3, final_score

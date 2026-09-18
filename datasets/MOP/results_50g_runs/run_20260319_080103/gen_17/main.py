@@ -1,0 +1,87 @@
+# EVOLVE-BLOCK-START
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    Optimizes the drone path using a Sequential Potential Field with Sinusoidal Windowing.
+    Bends the path away from the school and towards the base station to minimize F1, F2, and F3.
+    """
+    import math
+
+    x_start, y_start = start
+    x_end, y_end = end
+    x_school, y_school = school
+    x_base, y_base = base
+    
+    dx_total = x_end - x_start
+    dy_total = y_end - y_start
+    
+    y_coords = []
+    
+    # Hyperparameters
+    # Base station attraction (Primary target: F3)
+    sigma_base = 26.0 
+    k_base = 0.95      # High gain pull towards base Y
+    
+    # School repulsion (Primary target: F2)
+    sigma_school = 18.0
+    k_school = 12.0    # Vertical displacement magnitude
+    
+    for i in range(1, num_points + 1):
+        # Progress t from 0 to 1
+        t = i / (num_points + 1)
+        curr_x = x_start + t * dx_total
+        
+        # Baseline linear Y
+        y_linear = y_start + t * dy_total
+        
+        # Sinusoidal window to ensure smooth start/end (shift=0 at t=0 and t=1)
+        window = math.sin(math.pi * t)
+        
+        # 1. School Repulsion
+        # Calculate Gaussian influence based on X distance to school
+        dist_x_school = curr_x - x_school
+        influence_school = math.exp(-(dist_x_school**2) / (2 * sigma_school**2))
+        
+        # Push away from school Y (if school is above, push down)
+        direction = -1.0 if y_school > y_linear else 1.0
+        shift_repel = influence_school * direction * k_school * window
+        
+        # Intermediate path after school deflection
+        y_temp = y_linear + shift_repel
+        
+        # 2. Base Station Attraction
+        # Calculate Gaussian influence based on X distance to base station
+        dist_x_base = curr_x - x_base
+        influence_base = math.exp(-(dist_x_base**2) / (2 * sigma_base**2))
+        
+        # Pull the intermediate Y towards the base station Y
+        # This is sequential: it pulls the already-deflected path
+        shift_attract = (y_base - y_temp) * k_base * influence_base * window
+        
+        # Final combined Y
+        final_y = y_temp + shift_attract
+        
+        y_coords.append(float(final_y))
+        
+    return y_coords
+# EVOLVE-BLOCK-END
+
+import sys
+import os
+
+# 将当前目录加入系统路径以便导入同级文件
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from drone_evaluation import DroneGrader
+
+def run_experiment(**kwargs):
+    """供 Shinka 触发的单次实验方法"""
+    grader = DroneGrader()
+    
+    # 捕获异常防止大模型写出死循环炸毁测评机
+    try:
+        avg_f1, avg_f2, avg_f3, final_score = grader.grade_silent(evolve_drone_path, timeout=12)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        avg_f1, avg_f2, avg_f3, final_score = float('inf'), float('inf'), float('inf'), float('inf')
+        
+    return avg_f1, avg_f2, avg_f3, final_score

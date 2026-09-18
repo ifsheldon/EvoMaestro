@@ -1,0 +1,127 @@
+--- a/original.py
++++ b/original.py
+@@ -1,79 +1,99 @@
+ # EVOLVE-BLOCK-START
+ def evolve_drone_path(start, end, school, base, num_points):
+     """
+-    多目标启发式：
+-    - 以直线为基底（控制距离）
+-    - 远离 school（降低噪声风险）
+-    - 靠近 base（降低信号损失）
+-    - 局部平滑，得到连续自然弯曲路径
++    多目标启发式（改进版）：
++    1) 先构造“引导曲线”：直线 + 远离 school + 靠近 base
++    2) 再做带锚点的迭代平滑：在保持引导目标的同时降低曲率与额外路程
+     """
+     import math
+ 
+     x_start, y_start = start
+     x_end, y_end = end
+     sx, sy = school
+     bx, by = base
+ 
+     if num_points <= 0:
+         return []
+ 
+-    # 均匀 x 采样
++    span_x = abs(x_end - x_start)
+     dx = (x_end - x_start) / (num_points + 1)
+ 
+-    # 势场参数（偏保守，优先保持较短路径）
+-    school_sigma = max(8.0, abs(x_end - x_start) * 0.16)
+-    base_sigma = max(10.0, abs(x_end - x_start) * 0.22)
+-    school_amp = 18.0
+-    base_pull = 0.55
++    # 影响范围与强度（更强调基站信号，同时维持可接受路程）
++    school_sigma = max(7.0, 0.14 * span_x)
++    base_sigma = max(10.0, 0.24 * span_x)
+ 
++    # 远离 school 的方向：优先选择更接近 base 的一侧，兼顾 F2 与 F3
++    repel_dir = -1.0 if by <= sy else 1.0
++    school_clearance = 20.0
++    school_gain = 0.95
++    base_gain = 0.85
++
++    guide = []
+     y_coords = []
++
++    # 第一阶段：构造多目标引导曲线
+     for i in range(num_points):
+         t = (i + 1) / (num_points + 1)
+         x = x_start + (i + 1) * dx
+ 
+-        # 直线基底
+         y_line = y_start + t * (y_end - y_start)
+ 
+-        # 学校斥力：沿 y 方向远离 school
+-        away_sign = -1.0 if y_line <= sy else 1.0
+-        repel = away_sign * school_amp * math.exp(-((x - sx) ** 2) / (2.0 * school_sigma ** 2))
++        # 在 school 的 x 邻域，推向远离 school 的安全带
++        ws = math.exp(-((x - sx) ** 2) / (2.0 * school_sigma ** 2))
++        y_away = sy + repel_dir * school_clearance
++        y = y_line + school_gain * ws * (y_away - y_line)
+ 
+-        # 基站引力：在 base 的 x 邻域，向 base.y 靠拢
+-        attract_w = math.exp(-((x - bx) ** 2) / (2.0 * base_sigma ** 2))
+-        attract = base_pull * attract_w * (by - y_line)
++        # 在 base 的 x 邻域 + 后段航程，向 base.y 靠拢
++        wb = math.exp(-((x - bx) ** 2) / (2.0 * base_sigma ** 2))
++        tail_w = t * t
++        pull = base_gain * (0.72 * wb + 0.28 * tail_w)
++        y = y + pull * (by - y)
+ 
+-        y_coords.append(float(y_line + repel + attract))
++        # 限制极端偏移，避免 F1 过大
++        max_dev = 38.0
++        upper = y_line + max_dev
++        lower = y_line - max_dev
++        if y > upper:
++            y = upper
++        elif y < lower:
++            y = lower
+ 
+-    # 轻量平滑，减少折线抖动与额外路程
+-    smooth_alpha = 0.35
+-    for _ in range(2):
+-        smoothed = []
++        guide.append(float(y))
++        y_coords.append(float(y))
++
++    # 第二阶段：带锚点的迭代平滑（降折线长度/抖动，同时贴近 guide）
++    smooth_step = 0.22
++    anchor_step = 0.18
++    for _ in range(40):
++        new_y = []
+         for i in range(num_points):
+             left = y_start if i == 0 else y_coords[i - 1]
+             right = y_end if i == num_points - 1 else y_coords[i + 1]
+-            smoothed.append((1.0 - smooth_alpha) * y_coords[i] + smooth_alpha * 0.5 * (left + right))
+-        y_coords = smoothed
++            lap = left - 2.0 * y_coords[i] + right
++            y_new = y_coords[i] + smooth_step * lap + anchor_step * (guide[i] - y_coords[i])
++            new_y.append(float(y_new))
++        y_coords = new_y
+ 
+     return [float(y) for y in y_coords]
+ # EVOLVE-BLOCK-END
+ 
+ import sys
+ import os
+ 
+ # 将当前目录加入系统路径以便导入同级文件
+ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+ from drone_evaluation import DroneGrader
+ 
+ def run_experiment(**kwargs):
+     """供 Shinka 触发的单次实验方法"""
+     grader = DroneGrader()
+ 
+     # 捕获异常防止大模型写出死循环炸毁测评机
+     try:
+         avg_f1, avg_f2, avg_f3, final_score = grader.grade_silent(evolve_drone_path, timeout=12)
+     except Exception as e:
+         import traceback
+         traceback.print_exc()
+         avg_f1, avg_f2, avg_f3, final_score = float('inf'), float('inf'), float('inf'), float('inf')
+ 
+     return avg_f1, avg_f2, avg_f3, final_score

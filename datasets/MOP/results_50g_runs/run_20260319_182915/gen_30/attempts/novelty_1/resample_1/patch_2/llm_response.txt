@@ -1,0 +1,60 @@
+<NAME>
+adam_trajectory_refinement
+</NAME>
+
+<DESCRIPTION>
+This edit introduces a native Python Adam Optimizer that runs immediately after the grid search. The grid search is excellent at finding a robust global topological initialization (e.g., deciding which side of the school to pass), but it is limited by its rigid Gaussian basis shapes. By analytically differentiating the surrogate objectives (`F1`, `F2`, and `F3`) with respect to every `Y` coordinate, we can treat the path as a completely flexible discrete spline (a rubber-band in an energy field). 
+
+The `F1` gradient naturally behaves like a Laplacian smoothing operator, while `F2` repels the path from the school and `F3` attracts it to the base station. Adam fine-tunes the coordinates for 150 steps, perfectly balancing the competing objectives and significantly lowering the final score.
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+                    score = f1 * f2 * f3
+                    if score < best_score:
+                        best_score = score
+                        best_ys = ys
+
+    return best_ys
+=======
+                    score = f1 * f2 * f3
+                    if score < best_score:
+                        best_score = score
+                        best_ys = ys
+
+    # Fine-tune with Adam optimizer
+    ys = list(best_ys)
+    best_adam_ys = list(best_ys)
+    best_adam_score = best_score
+
+    m = [0.0] * num_points
+    v = [0.0] * num_points
+    beta1 = 0.9
+    beta2 = 0.999
+    alpha = 1.0
+    epsilon = 1e-8
+
+    for step in range(150):
+        grad = [0.0] * num_points
+        dist = 0.0
+        f2 = 0.0
+        f3 = 0.0
+        px, py = x_start, y_start
+        
+        # Forward pass
+        for i in range(num_points):
+            cx, cy = xs[i], ys[i]
+            dist += math.hypot(cx - px, cy - py)
+            px, py = cx, cy
+            
+            D_sq_school = (cx - school_x)**2 + (cy - school_y)**2
+            f2 += 1.0 / (D_sq_school + 1e-3)
+            
+            D_sq_base = (cx - base_x)**2 + (cy - base_y)**2
+            f3 += math.sqrt(D_sq_base)
+            
+        dist += math.hypot(x_end - px, y_end - py)
+        f1 = dist / straight_dist
+        
+        score = f1 * f2 * f3
+        if score < best_adam_

@@ -1,0 +1,14 @@
+{
+  "generation": 3,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 2,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "gaussian_kernel_displacement_mapping",
+  "patch_description": "This algorithm implements a localized deformation field using Gaussian kernels to modulate a linear baseline trajectory. It treats the school as a repulsive force and the base station as an attractive force, specifically designed to optimize the three objectives:\n1. **F1 (Distance)**: By using a smooth, continuous deformation based on Gaussian functions, the path avoids sharp turns or jagged edges, keeping the total distance penalty low.\n2. **F2 (School Noise)**: A repulsive Gaussian kernel is centered at the school's X-coordinate. It calculates the vertical direction needed to move away from the school's Y-coordinate and applies a localized \"push\" to the path.\n3. **F3 (Signal Loss)**: An attractive Gaussian kernel is centered at the base station's X-coordinate. It calculates the vector towards the base station's Y-coordinate and \"pulls\" the path closer to maximize signal strength.\nA sinusoidal envelope is applied to the combined offsets to ensure the deformation smoothly tapers to zero at the start and end points, maintaining strict boundary constraints while providing a smooth, differentiable curve.",
+  "error_msg": null,
+  "timestamp": "2026-03-19T16:03:33.242934",
+  "llm_cost": 0.003725,
+  "llm_model": null
+}

@@ -1,0 +1,22 @@
+==========Running program evaluation 1/1...==========
+执行异常: name 'math' is not defined
+执行异常: name 'math' is not defined
+执行异常: name 'math' is not defined
+执行异常: name 'math' is not defined
+执行异常: name 'math' is not defined
+执行异常: name 'math' is not defined
+执行异常: name 'math' is not defined
+执行异常: name 'math' is not defined
+==========Run 1/1 completed in 0.00 seconds==========
+Correctness and error status saved to /home/evolve/evolvis/MOP/results_50g_runs/run_20260319_182915/gen_47/results/correct.json
+Metrics saved to /home/evolve/evolvis/MOP/results_50g_runs/run_20260319_182915/gen_47/results/metrics.json
+Evaluation failed: Validation failed: Evaluation crashed or timed out.
+Metrics:
+  combined_score: -999999999.0
+  public: {'status': 'Compilation/Runtime Timeout'}
+  private: {}
+  execution_time_mean: 9.355088695883751e-05
+  execution_time_std: 0.0
+  num_valid_runs: 0
+  num_invalid_runs: 1
+  all_validation_errors: ['Evaluation crashed or timed out.']

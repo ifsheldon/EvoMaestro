@@ -1,0 +1,17 @@
+<NAME>variant_2</NAME>
+<DESCRIPTION>Changed loop count to 50 and multiplier to 2.38.</DESCRIPTION>
+
+```python
+# EVOLVE-BLOCK-START
+import random
+
+def compute(seed: int = 42) -> float:
+    random.seed(seed)
+    x = sum(random.gauss(0, 1) for _ in range(50))
+    return abs(x) * 2.38
+
+def run_experiment(seed: int = 1) -> float:
+    return compute(seed)
+
+# EVOLVE-BLOCK-END
+```

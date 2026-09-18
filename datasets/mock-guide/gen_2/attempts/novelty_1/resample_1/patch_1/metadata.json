@@ -1,0 +1,14 @@
+{
+  "generation": 2,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "variant_2",
+  "patch_description": "Changed loop count to 30 and multiplier to 2.04.",
+  "error_msg": null,
+  "timestamp": "2026-07-20T01:09:19.681758",
+  "llm_cost": 0.0,
+  "llm_model": "mock-llm"
+}

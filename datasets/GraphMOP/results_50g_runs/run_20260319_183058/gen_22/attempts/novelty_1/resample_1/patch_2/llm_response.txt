@@ -1,0 +1,145 @@
+<NAME>
+regret_aware_marginal_routing
+</NAME>
+
+<DESCRIPTION>
+The regret_aware_marginal_routing algorithm implements a sophisticated task-to-server assignment strategy focused on total system optimization. 
+
+Key improvements:
+1. **True Marginal Costing**: Instead of individual task metrics, we calculate the discrete change in total system objectives (Sum of Latencies and Total Energy) caused by assigning a task. This accounts for how a new task increases the queueing delay for all other existing tasks on the same server.
+2. **Regret-Based Prioritization**: We order task assignments by "regret"—the penalty incurred if the source cannot be assigned to its first-best server/path. This ensures sources with unique bottlenecks are prioritized over those with many flexible options.
+3. **Diverse Candidate Selection**: For each server, we precompute four Dijkstra trees using different weight profiles (Latency-optimized, Energy-optimized, Balanced, and Capacity-aware). This provides a rich, varied set of path options for every source-server pair.
+4. **Iterative Refinement**: After an initial greedy assignment, the algorithm performs refinement passes, re-evaluating each source's placement in the context of the emergent global load distribution to find globally improved solutions.
+</DESCRIPTION>
+
+<CODE>
+```{language}
+# EVOLVE-BLOCK-START
+def evolve_task_routing(
+    num_nodes,
+    edges,
+    server_nodes,
+    task_sources,
+    task_info,
+    server_info,
+):
+    import heapq
+
+    # ---------- 1. Data Preparation ----------
+    adj = [[] for _ in range(num_nodes)]
+    edge_attrs = {}
+    for u, v, lat, ene, cap in edges:
+        adj[u].append((v, lat, ene, cap))
+        adj[v].append((u, lat, ene, cap))
+        edge_attrs[tuple(sorted((u, v)))] = (lat, ene, cap)
+
+    # ---------- 2. Path Candidate Generation ----------
+    def run_dijkstra(root_node, weight_params):
+        w_l, w_e, w_c = weight_params
+        dists = [float('inf')] * num_nodes
+        parents = [-1] * num_nodes
+        dists[root_node] = 0
+        pq = [(0.0, root_node)]
+        while pq:
+            d, u = heapq.heappop(pq)
+            if d > dists[u]: continue
+            for v, lat, ene, cap in adj[u]:
+                weight = w_l * lat + w_e * ene + w_c / (cap + 1e-7)
+                if dists[u] + weight < dists[v]:
+                    dists[v] = dists[u] + weight
+                    parents[v] = u
+                    heapq.heappush(pq, (dists[v], v))
+        return parents
+
+    # Pre-generate diverse Dijkstra trees from servers (few servers expected)
+    dijkstra_modes = [
+        (1.0, 0.05, 0.01),  # Latency focus
+        (0.05, 1.0, 0.01),  # Energy focus
+        (1.0, 0.8, 0.1),    # Balanced
+        (0.5, 0.2, 0.8)     # Capacity focus
+    ]
+    all_trees = {s: [] for s in server_nodes}
+    for s in server_nodes:
+        for mode in dijkstra_modes:
+            all_trees[s].append(run_dijkstra(s, mode))
+
+    # Identify candidate paths and precompute static metrics for each (source, server)
+    source_candidates = {src: {s: [] for s in server_nodes} for src in task_sources}
+    for src in task_sources:
+        arr, pld, comp = task_info[src]
+        for s in server_nodes:
+            seen_paths = set()
+            for tree in all_trees[s]:
+                path = []
+                curr = src
+                while curr != -1:
+                    path.append(curr)
+                    if curr == s: break
+                    curr = tree[curr]
+                if path and path[-1] == s:
+                    p_tuple = tuple(path)
+                    if p_tuple not in seen_paths:
+                        seen_paths.add(p_tuple)
+                        p_lat, p_ene = 0.0, 0.0
+                        for i in range(len(path)-1):
+                            l, e, cap = edge_attrs[tuple(sorted((path[i], path[i+1])))]
+                            ratio = pld / (cap + 1e-7)
+                            p_lat += l + 0.05 * ratio
+                            p_ene += e * (1.0 + 0.02 * ratio)
+                        source_candidates[src][s].append({
+                            'path': path, 
+                            'p_lat': p_lat, 
+                            'p_ene': p_ene
+                        })
+
+    # ---------- 3. Multi-objective Marginal Logic ----------
+    W_ENE = 0.80
+
+    def get_marginal_score(src, srv, cand, current_load):
+        arr, pld, comp = task_info[src]
+        mu, idle, dyn = server_info[srv]
+        demand = arr * comp
+        
+        if current_load + demand >= 0.995 * mu:
+            return 1e20 # Overload penalty
+            
+        # Delta Total Latency Sum contribution
+        # qd represents the average number of tasks in system (M/M/1 simple proxy)
+        qd_old = current_load / (mu - current_load) if mu > current_load else 1e12
+        qd_new = (current_load + demand) / (mu - (current_load + demand))
+        delta_lat = arr * cand['p_lat'] + (qd_new - qd_old)
+        
+        # Delta Total Energy Sum contribution
+        rho_old = current_load / mu
+        rho_new = (current_load + demand) / mu
+        # Dynamic energy with non-linear scale and idle power activation check
+        ene_old = dyn * pow(rho_old, 1.25) + (idle if current_load > 1e-6 else 0)
+        ene_new = dyn * pow(rho_new, 1.25) + idle 
+        delta_ene = arr * cand['p_ene'] + (ene_new - ene_old)
+        
+        return delta_lat + W_ENE * delta_ene
+
+    # ---------- 4. Regret-Aware Greedy Assignment ----------
+    regrets = []
+    for src in task_sources:
+        arr, pld, comp = task_info[src]
+        scores = []
+        for s in server_nodes:
+            for cand in source_candidates[src][s]:
+                scores.append(get_marginal_score(src, s, cand, 0.0))
+        
+        if not scores: # Fallback for unreachable sources
+            regrets.append((0.0, src))
+        else:
+            scores.sort()
+            best = scores[0]
+            second = scores[1] if len(scores) > 1 else best * 1.5
+            # Priority combines regret with task size
+            priority = (second - best) + 0.2 * (arr * comp)
+            regrets.append((priority, src))
+    
+    regrets.sort(key=lambda x: x[0], reverse=True)
+    
+    projected_load = {s: 0.0 for s in server_nodes}
+    plan = {}
+    

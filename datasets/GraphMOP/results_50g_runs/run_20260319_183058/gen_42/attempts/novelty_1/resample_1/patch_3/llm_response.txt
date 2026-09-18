@@ -1,0 +1,54 @@
+<NAME>
+multi_path_marginal_cost_router
+</NAME>
+
+<DESCRIPTION>
+The new algorithm uses a multi-path marginal cost approach to minimize latency and energy consumption. 
+1. **Multi-Tree Preprocessing**: For each server, it computes three distinct Dijkstra trees using different edge weightings: one focused on latency (including capacity constraints), one on energy, and one balanced. This provides a diverse set of candidate paths for each source-server pair.
+2. **Marginal Cost Objective**: It uses a system-wide marginal cost function to guide task assignment. This function calculates the incremental increase in total system latency (including the queueing delay impact on existing tasks) and total system energy (routing energy plus incremental server dynamic energy).
+3. **Greedy Assignment with Refinement**: Tasks are first assigned greedily based on their marginal cost impact, prioritized by their total compute demand. A local search refinement pass then iterates through the assignments to find better server/path combinations that further reduce the total system cost.
+4. **Adaptive Scaling**: The algorithm adaptively scales the weight between latency and energy based on the graph's specific edge and task statistics, ensuring robust performance across different scenarios.
+</DESCRIPTION>
+
+<CODE>
+```python
+# EVOLVE-BLOCK-START
+def evolve_task_routing(
+    num_nodes,
+    edges,
+    server_nodes,
+    task_sources,
+    task_info,
+    server_info,
+):
+    import heapq
+
+    if not server_nodes or not task_sources:
+        return {}
+
+    # 1. Build Graph and Calculate Statistics
+    adj = [[] for _ in range(num_nodes)]
+    edge_data = {}
+    avg_lat = 0.0
+    avg_eng = 0.0
+    avg_inv_cap = 0.0
+    for u, v, l, e, c in edges:
+        u, v = int(u), int(v)
+        l, e, c = float(l), float(e), float(c)
+        adj[u].append((v, l, e, c))
+        adj[v].append((u, l, e, c))
+        edge_data[(u, v)] = (l, e, c)
+        edge_data[(v, u)] = (l, e, c)
+        avg_lat += l
+        avg_eng += e
+        avg_inv_cap += 1.0 / max(1e-9, c)
+
+    num_edges = len(edges) if edges else 1
+    avg_lat /= num_edges
+    avg_eng /= num_edges
+    avg_inv_cap /= num_edges
+
+    unique_sources = list(set(task_sources))
+    avg_payload = sum(task_info[src][1] for src in unique_sources) / len(unique_sources) if unique_sources else 1.0
+
+    # 2

@@ -1,0 +1,14 @@
+{
+  "generation": 38,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "bezier_pattern_search",
+  "patch_description": "This rewrite replaces the previous local Gaussian field heuristic with a fundamentally different approach: a monotone cubic B\u00e9zier trajectory search.\n\nInstead of directly perturbing every sampled Y-point, the path is represented by a smooth low-dimensional curve with two internal B\u00e9zier control points. That makes the trajectory naturally smooth and keeps distance growth under control. A deterministic pattern search then optimizes the two control-point Y values using a surrogate objective that jointly balances:\n\n- short total path length,\n- staying away from the school,\n- moving closer to the base station, especially in the later portion of the route.\n\nThis should perform better because it searches over globally smooth curves rather than many locally perturbed polylines, reducing jaggedness and overfitting while still allowing a deliberate bend away from the school and toward the base.",
+  "error_msg": null,
+  "timestamp": "2026-03-19T16:11:54.086860",
+  "llm_cost": 0.0703925,
+  "llm_model": null
+}

@@ -1,0 +1,151 @@
+<NAME>
+marginal_cost_routing
+</NAME>
+
+<DESCRIPTION>
+I will change the assignment heuristic to a rigorous marginal cost formulation. Instead of an arbitrary linear combination of metrics, I will calculate the exact change in total system latency (including the increased queueing delay for all existing tasks on the server) and total system energy (including dynamic power and waking up idle servers). The shortest path weight is also updated to match the latency/energy tradeoff weight (1.5).
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+            for v, b_lat, e_cost in graph[u]:
+                # Combined weight for routing (balancing latency and energy)
+                w = b_lat + 0.4 * e_cost
+                if dist[u] + w < dist[v]:
+=======
+            for v, b_lat, e_cost in graph[u]:
+                # Combined weight for routing (balancing latency and energy)
+                w = b_lat + 1.5 * e_cost
+                if dist[u] + w < dist[v]:
+>>>>>>> REPLACE
+</DIFF>
+
+<DIFF>
+<<<<<<< SEARCH
+    projected_load = {srv: 0.0 for srv in server_nodes}
+    plan = {}
+
+    # 4. Assign each source to the best server using O(1) precomputed metrics
+    for src in ranked_sources:
+        arr_rate, _payload_size, comp_demand = task_info[src]
+        load_increase = arr_rate * comp_demand
+
+        best_srv = None
+        best_score = float("inf")
+
+        for srv in server_nodes:
+            if server_trees[srv]['dist'][src] == float('inf'):
+                continue
+
+            srv_rate, idle_pwr, dyn_pwr = server_info[srv]
+            new_load = projected_load[srv] + load_increase
+
+            # Avoid overloading servers (cap at 95% utilization)
+            if new_load >= 0.95 * srv_rate:
+                continue
+
+            util = new_load / srv_rate
+            # M/M/1 queueing delay approximation
+            q_delay = 1.0 / (srv_rate - new_load)
+
+            t_lat = server_trees[srv]['lat'][src]
+            r_eng = server_trees[srv]['eng'][src]
+
+            # Multi-objective score directly modeling latency and energy
+            score = t_lat + 0.8 * r_eng + 1.5 * q_delay + 0.05 * dyn_pwr * util + 0.01 * idle_pwr
+
+            if score < best_score:
+                best_score = score
+                best_srv = srv
+
+        # Fallback if all servers are overloaded or unreachable
+        if best_srv is None:
+            reachable = [s for s in server_nodes if server_trees[s]['dist'][src] != float('inf')]
+            if reachable:
+                best_srv = min(reachable, key=lambda s: server_trees[s]['dist'][src])
+            else:
+                best_srv = server_nodes[0]
+
+        # Reconstruct path from source to server using the precomputed tree
+        if server_trees[best_srv]['dist'][src] == float('inf'):
+            plan[src] = {"server": best_srv, "path": []}
+        else:
+            path = []
+            curr = src
+            while curr != -1:
+                path.append(curr)
+                curr = server_trees[best_srv]['parent'][curr]
+            plan[src] = {"server": best_srv, "path": path}
+
+        projected_load[best_srv] += load_increase
+
+    return plan
+=======
+    projected_load = {srv: 0.0 for srv in server_nodes}
+    projected_arr = {srv: 0.0 for srv in server_nodes}
+    plan = {}
+
+    # 4. Assign each source to the best server using O(1) precomputed metrics
+    for src in ranked_sources:
+        arr_rate, _payload_size, comp_demand = task_info[src]
+        load_increase = arr_rate * comp_demand
+
+        best_srv = None
+        best_score = float("inf")
+
+        for srv in server_nodes:
+            if server_trees[srv]['dist'][src] == float('inf'):
+                continue
+
+            srv_rate, idle_pwr, dyn_pwr = server_info[srv]
+            old_load = projected_load[srv]
+            new_load = old_load + load_increase
+
+            # Avoid overloading servers (cap at 95% utilization)
+            if new_load >= 0.95 * srv_rate:
+                continue
+
+            q_delay_new = 1.0 / (srv_rate - new_load)
+            q_delay_old = 1.0 / (srv_rate - old_load) if old_load > 0 else 1.0 / srv_rate
+
+            t_lat = server_trees[srv]['lat'][src]
+            r_eng = server_trees[srv]['eng'][src]
+
+            # Marginal cost of assigning this task source to this server
+            delta_lat = arr_rate * (t_lat + q_delay_new) + projected_arr[srv] * (q_delay_new - q_delay_old)
+            delta_eng = arr_rate * r_eng + dyn_pwr * (load_increase / srv_rate)
+            if old_load == 0:
+                delta_eng += idle_pwr
+
+            # Multi-objective score directly modeling marginal latency and energy
+            score = delta_lat + 1.5 * delta_eng
+
+            if score < best_score:
+                best_score = score
+                best_srv = srv
+
+        # Fallback if all servers are overloaded or unreachable
+        if best_srv is None:
+            reachable = [s for s in server_nodes if server_trees[s]['dist'][src] != float('inf')]
+            if reachable:
+                best_srv = min(reachable, key=lambda s: server_trees[s]['dist'][src])
+            else:
+                best_srv = server_nodes[0]
+
+        # Reconstruct path from source to server using the precomputed tree
+        if server_trees[best_srv]['dist'][src] == float('inf'):
+            plan[src] = {"server": best_srv, "path": []}
+        else:
+            path = []
+            curr = src
+            while curr != -1:
+                path.append(curr)
+                curr = server_trees[best_srv]['parent'][curr]
+            plan[src] = {"server": best_srv, "path": path}
+
+        projected_load[best_srv] += load_increase
+        projected_arr[best_srv] += arr_rate
+
+    return plan
+>>>>>>> REPLACE
+</DIFF>

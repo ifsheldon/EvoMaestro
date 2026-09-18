@@ -1,0 +1,35 @@
+An excellent way to improve the optimization of the drone path is to rethink the way the path is parameterized and how the proxy objective function evaluates it. 
+
+The previous code used only 3 global parameters (`a_school`, `a_base`, `a_global`) which severely limited the flexibility of the path, preventing it from finding complex curves that optimally balance the three objectives. Furthermore, the proxy score was a linear combination of the objectives, whereas the actual evaluation metric is a multiplier score (the product of F1, F2, and F3).
+
+### Proposed Improvements:
+1. **More Flexible Path Parameterization**: Instead of 3 global parameters, we will parameterize the path using 9 Gaussian "bumps" evenly distributed along the X-axis. This allows the path to bend locally and form much more complex and optimal shapes.
+2. **Accurate Proxy Score**: We will change the proxy score to directly minimize the product of the three objectives (`F1 * F2 * F3`) rather than a linear combination. This perfectly aligns with the MOP Multiplier Score.
+3. **Coordinate Descent Optimization**: We will use an iterative coordinate descent algorithm over the 9 bump weights. We will also initialize the search with a few heuristic paths (e.g., explicitly pushing away from the school and pulling towards the base station) to avoid getting stuck in poor local minima.
+
+<NAME>
+flexible_bump_coordinate_descent
+</NAME>
+
+<DESCRIPTION>
+Replaces the 3-parameter global search with a 9-parameter Gaussian bump coordinate descent. Updates the proxy score to minimize the product of F1, F2, and F3 to match the evaluator's MOP Multiplier Score.
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+    # -------- 2) 预计算特征（数据流中心化）--------
+    # 与场景尺度相关的核宽度
+    span_x = abs(x1 - x0) + 1e-9
+    sigma_s = max(8.0, 0.18 * span_x)
+    sigma_b = max(10.0, 0.22 * span_x)
+
+    def gauss(x, mu, sigma):
+        z = (x - mu) / (sigma + 1e-12)
+        return math.exp(-0.5 * z * z)
+
+    # 学校附近抬升/压低强度（按学校相对线的位置决定方向）
+    y_school_on_line = y0 + (y1 - y0) * ((sx - x0) / (x1 - x0 + 1e-12))
+    school_sign = -1.0 if sy > y_school_on_line else 1.0  # 学校在上方 => 向下绕；反之向上绕
+
+    # 基站吸引方向（朝基站 y 靠拢）
+    y_base_on_line = y0 + (y1 - y0) * ((bx - x0) / (x

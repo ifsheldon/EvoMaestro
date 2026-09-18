@@ -1,0 +1,14 @@
+{
+  "generation": 6,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "precompute_local_search",
+  "patch_description": "Precomputes a rich set of candidate paths from all servers using multiple edge-weight functions. It then uses a fast marginal-cost evaluator to greedily assign sources, followed by a high-throughput Local Search (Hill Climbing) to continuously optimize the assignments for latency, energy, and load-balancing until the time limit is reached.",
+  "error_msg": "Could not extract code from patch string",
+  "timestamp": "2026-03-20T02:33:30.418040",
+  "llm_cost": 0.011052000000000001,
+  "llm_model": null
+}

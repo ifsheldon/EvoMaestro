@@ -1,0 +1,99 @@
+<NAME>
+capacity_aware_mode_and_pareto_filter
+</NAME>
+
+<DESCRIPTION>
+We introduce a fourth, highly capacity-aware routing mode dynamically via `run_dijkstra` which uses a heavier weight (`gamma = 5.0`) on the inverse capacity term. Since task sources often face bottlenecks dependent on their specific edge capacity limits (especially high-payload ones), this explores a new structural alternative. 
+To prevent an explosion of options and to only keep this alternative when it represents an objectively beneficial route for the specific payload, we filter candidates at the source-server level taking only Pareto front solutions (considering specific `payload`-adjusted `p_lat` and `p_ene`). This strictly improves the tightness of our route options.
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+    def run_dijkstra(start_node, lat_w, ene_w):
+        dists = [float('inf')] * num_nodes
+        parents = [-1] * num_nodes
+        dists[start_node] = 0
+        pq = [(0.0, start_node)]
+        while pq:
+            d, u = heapq.heappop(pq)
+            if d > dists[u]:
+                continue
+            for v, lat, ene, cap in adj[u]:
+                # Cost function for path finding
+                weight = lat_w * lat + ene_w * ene + 0.1 / (cap + 1e-6)
+                if dists[u] + weight < dists[v]:
+                    dists[v] = dists[u] + weight
+                    parents[v] = u
+                    heapq.heappush(pq, (dists[v], v))
+        return parents
+
+    # Precompute trees for each server (typically few servers)
+    server_trees = {}
+    for s_node in server_nodes:
+        # 3 modes: Latency focus, Energy focus, Balanced
+        trees = [
+            run_dijkstra(s_node, 1.0, 0.05),
+            run_dijkstra(s_node, 0.05, 1.0),
+            run_dijkstra(s_node, 0.5, 0.4)
+        ]
+        server_trees[s_node] = trees
+=======
+    def run_dijkstra(start_node, lat_w, ene_w, cap_w=0.1):
+        dists = [float('inf')] * num_nodes
+        parents = [-1] * num_nodes
+        dists[start_node] = 0
+        pq = [(0.0, start_node)]
+        while pq:
+            d, u = heapq.heappop(pq)
+            if d > dists[u]:
+                continue
+            for v, lat, ene, cap in adj[u]:
+                # Cost function for path finding
+                weight = lat_w * lat + ene_w * ene + cap_w / (cap + 1e-6)
+                if dists[u] + weight < dists[v]:
+                    dists[v] = dists[u] + weight
+                    parents[v] = u
+                    heapq.heappush(pq, (dists[v], v))
+        return parents
+
+    # Precompute trees for each server (typically few servers)
+    server_trees = {}
+    for s_node in server_nodes:
+        # 4 modes: Latency focus, Energy focus, Balanced, Capacity focus
+        trees = [
+            run_dijkstra(s_node, 1.0, 0.05, 0.1),
+            run_dijkstra(s_node, 0.05, 1.0, 0.1),
+            run_dijkstra(s_node, 0.5, 0.4, 0.1),
+            run_dijkstra(s_node, 0.3, 0.3, 5.0)
+        ]
+        server_trees[s_node] = trees
+>>>>>>> REPLACE
+</DIFF>
+
+<DIFF>
+<<<<<<< SEARCH
+            if srv_paths:
+                all_cands[src][s_node] = srv_paths
+=======
+            if srv_paths:
+                pareto = []
+                for p1 in srv_paths:
+                    dominated = False
+                    for p2 in srv_paths:
+                        if p1 is p2: continue
+                        if p2['p_lat'] <= p1['p_lat'] + 1e-9 and p2['p_ene'] <= p1['p_ene'] + 1e-9:
+                            if p2['p_lat'] < p1['p_lat'] - 1e-9 or p2['p_ene'] < p1['p_ene'] - 1e-9:
+                                dominated = True
+                                break
+                            if len(p2['path']) < len(p1['path']):
+                                dominated = True
+                                break
+                            if len(p2['path']) == len(p1['path']):
+                                if tuple(p2['path']) < tuple(p1['path']):
+                                dominated = True
+                                break
+                    if not dominated:
+                        pareto.append(p1)
+                all_cands[src][s_node] = pareto
+>>>>>>> REPLACE
+</DIFF>

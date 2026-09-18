@@ -1,0 +1,52 @@
+ 1e-6 else 1e6`.
+
+Final check on Dijkstra weight:
+`w = lw * (lat + trans) + ew * ener + cw * (1.0 / (cap + 1e-6))`
+If `cap` is very large, `1.0/cap` is small. If `cap` is very small, `1.0/cap` is large. Correct.
+
+A source might be able to reach a server only through a bottleneck. Different weights will help find that.
+
+$12$ seconds is quite generous for $10^7$ simple ops in Python, but I'll make sure to avoid redundant calculations.
+
+```python
+# Before starting the BFS fallback
+# Check if num_nodes is huge
+```
+Wait, `num_nodes` is up to 1000, $E$ up to a few thousand. It's all good.
+
+Final refinement on Dijkstra:
+```python
+        for lw, ew, cw in weight_configs:
+            # Dijkstra starting from srv
+            dist = [float('inf')] * num_nodes
+            parent = [-1] * num_nodes
+            dist[srv] = 0
+            pq = [(0.0, srv)]
+            while pq:
+                d, u = heapq.heappop(pq)
+                if d > dist[u]: continue
+                for v, lat, ener, cap in graph_dict[u].items(): # Dictionary items
+                    # lat, ener, cap are from graph_dict
+                    trans = avg_payload / cap if cap > 1e-6 else 1e6
+                    w = lw * (lat + trans) + ew * ener + cw * (1.0 / (cap + 1e-6))
+                    ...
+```
+This looks very robust. `graph_dict[u].items()` means `v` is the key, `(lat, ener, cap)` is the value.
+
+Wait, `graph_dict[u]` was a dict of `v: (lat, ener, cap)`. In my code, I used `graph_dict[u][v]`. Let me be consistent.
+
+```python
+    graph_dict = [{} for _ in range(num_nodes)]
+    for u, v, lat, ener, cap in edges:
+        graph_dict[u][v] = (lat, ener, cap)
+        graph_dict[v][u] = (lat, ener, cap)
+```
+Then `for v, (lat, ener, cap) in graph_dict[u].items():`. This is efficient.
+
+Check `regret` tie-breaker again.
+```python
+            if regret > current_max_regret:
+                current_max_regret = regret
+                target_src = src
+            elif abs(regret - current_max_regret) < 1e-9: # Tie
+                if target_src is not None and src

@@ -1,0 +1,118 @@
+# EVOLVE-BLOCK-START
+import math
+
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    【无人机连续空间多目标折线优化】
+    LLMs 将被要求在这里编写代码（可以使用启发式寻找策略，或者单纯使用规则拟合）。
+    你需要返回一个长度为 num_points 的列表，包含从起点到终点按 X 匀速布置对应的 Y 轴偏移量。
+    """
+    x_start, y_start = start
+    x_end, y_end = end
+    x_s, y_s = school
+    x_b, y_b = base
+
+    xs = [x_start + (i + 1) * (x_end - x_start) / (num_points + 1) for i in range(num_points)]
+    lx = (x_end - x_start) if x_end != x_start else 1.0
+    line_ys = [y_start + (x - x_start) * (y_end - y_start) / lx for x in xs]
+    wins = [math.sin(math.pi * (x - x_start) / lx) for x in xs]
+
+    straight_dist = math.hypot(x_end - x_start, y_end - y_start) or 1.0
+
+    def get_score(p):
+        a_s, c_s, w_s, a_b, c_b, w_b, a_m, c_m, w_m = p
+        dist, f2, f3 = 0.0, 0.0, 0.0
+        px, py = x_start, y_start
+        
+        ys = []
+        for i in range(num_points):
+            cx = xs[i]
+            v_s = a_s * math.exp(-((cx - c_s)**2) / w_s) if w_s > 0 else 0
+            v_b = a_b * math.exp(-((cx - c_b)**2) / w_b) if w_b > 0 else 0
+            v_m = a_m * math.exp(-((cx - c_m)**2) / w_m) if w_m > 0 else 0
+            
+            cy = line_ys[i] + (v_s + v_b + v_m) * wins[i]
+            ys.append(cy)
+            
+            dist += math.hypot(cx - px, cy - py)
+            f2 += 1.0 / ((cx - x_s)**2 + (cy - y_s)**2 + 1e-3)
+            f3 += math.sqrt((cx - x_b)**2 + (cy - y_b)**2)
+            px, py = cx, cy
+            
+        dist += math.hypot(x_end - px, y_end - py)
+        return (dist / straight_dist) * f2 * f3, ys
+
+    best_score = float('inf')
+    best_p = [0, x_s, 300, 0, x_b, 300, 0, (x_s+x_b)/2, 300]
+    best_ys = line_ys
+
+    # Phase 1: Grid search for topological initialization
+    amps_s = [-120, -60, 0, 60, 120]
+    widths_s = [150, 500]
+    centers_s = [x_s - 15, x_s, x_s + 15]
+    
+    amps_b = [-80, 0, 80]
+    widths_b = [200, 600]
+    centers_b = [x_b]
+
+    for a_s in amps_s:
+        for w_s in widths_s:
+            for c_s in centers_s:
+                for a_b in amps_b:
+                    for w_b in widths_b:
+                        for c_b in centers_b:
+                            p = [a_s, c_s, w_s, a_b, c_b, w_b, 0, (x_s+x_b)/2, 300]
+                            score, ys = get_score(p)
+                            if score < best_score:
+                                best_score = score
+                                best_p = p
+                                best_ys = ys
+
+    # Phase 2: Hill climbing fine-tuning including a third "bridge" Gaussian
+    p = list(best_p)
+    step_sizes = [15.0, 5.0, 50.0, 15.0, 5.0, 50.0, 15.0, 10.0, 50.0]
+    
+    for _ in range(25):
+        improved = False
+        for i in range(9):
+            for sign in [-1, 1]:
+                p_new = list(p)
+                p_new[i] += sign * step_sizes[i]
+                
+                # Constrain widths to be strictly positive
+                if i in [2, 5, 8] and p_new[i] < 20:
+                    continue
+                    
+                score, ys = get_score(p_new)
+                if score < best_score:
+                    best_score = score
+                    p = p_new
+                    best_ys = ys
+                    improved = True
+                    
+        if not improved:
+            step_sizes = [s * 0.6 for s in step_sizes]
+
+    return best_ys
+# EVOLVE-BLOCK-END
+
+import sys
+import os
+
+# 将当前目录加入系统路径以便导入同级文件
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from drone_evaluation import DroneGrader
+
+def run_experiment(**kwargs):
+    """供 Shinka 触发的单次实验方法"""
+    grader = DroneGrader()
+
+    # 捕获异常防止大模型写出死循环炸毁测评机
+    try:
+        avg_f1, avg_f2, avg_f3, final_score = grader.grade_silent(evolve_drone_path, timeout=12)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        avg_f1, avg_f2, avg_f3, final_score = float('inf'), float('inf'), float('inf'), float('inf')
+
+    return avg_f1, avg_f2, avg_f3, final_score

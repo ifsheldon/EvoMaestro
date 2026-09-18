@@ -1,0 +1,70 @@
+An excellent way to minimize the three objectives is to use a heuristic based on Gaussian functions.
+
+The strategy is to start with the baseline straight line and apply two Gaussian-shaped deviations:
+1. **Bend away from the school (Minimize F2):** We calculate the vector from the line to the school and apply a negative multiplier. This smoothly pushes the drone away from the school's vicinity.
+2. **Bend towards the base station (Minimize F3):** We calculate the vector from the line to the base station and apply a positive multiplier. This smoothly pulls the drone closer to the base station to maintain signal strength.
+
+By using Gaussian functions (`math.exp(-distance^2 / variance)`), the deviations are localized and smooth, which prevents sharp turns and keeps the total flying distance (F1) penalty very low.
+
+Here is the implementation:
+
+<NAME>
+heuristic_gaussian_path
+</NAME>
+
+<DESCRIPTION>
+Replaces the straight line path with a heuristic curve using Gaussian functions. It bends the path away from the school to minimize noise (F2) and pulls it towards the base station to minimize signal drop (F3). The Gaussian functions ensure the path remains smooth, keeping the flying distance (F1) penalty low.
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    【无人机连续空间多目标折线优化】
+    LLMs 将被要求在这里编写代码（可以使用启发式寻找策略，或者单纯使用规则拟合）。
+    你需要返回一个长度为 num_points 的列表，包含从起点到终点按 X 匀速布置对应的 Y 轴偏移量。
+    """
+    x_start, y_start = start
+    x_end, y_end = end
+
+    # 【初始方案：最无脑的纯直线】
+    y_coords = []
+    dy = (y_end - y_start) / (num_points + 1)
+
+    for i in range(num_points):
+        y_coords.append(float(y_start + (i + 1) * dy))
+
+    return y_coords
+=======
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    【无人机连续空间多目标折线优化】
+    LLMs 将被要求在这里编写代码（可以使用启发式寻找策略，或者单纯使用规则拟合）。
+    你需要返回一个长度为 num_points 的列表，包含从起点到终点按 X 匀速布置对应的 Y 轴偏移量。
+    """
+    import math
+    x_start, y_start = start
+    x_end, y_end = end
+    sx, sy = school
+    bx, by = base
+
+    y_coords = []
+    dx = (x_end - x_start) / (num_points + 1)
+    dy = (y_end - y_start) / (num_points + 1)
+
+    for i in range(num_points):
+        x = x_start + (i + 1) * dx
+        y_line = y_start + (i + 1) * dy
+
+        # Bend away from school
+        y_school = -1.2 * (sy - y_line) * math.exp(-((x - sx)**2) / 500.0)
+
+        # Bend towards base
+        y_base = 0.85 * (by - y_line) * math.exp(-((x - bx)**2) / 500.0)
+
+        y = y_line + y_school + y_base
+        y_coords.append(float(y))
+
+    return y_coords
+>>>>>>> REPLACE
+</DIFF>

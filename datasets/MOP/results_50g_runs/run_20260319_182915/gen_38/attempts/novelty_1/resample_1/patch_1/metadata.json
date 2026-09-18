@@ -1,0 +1,14 @@
+{
+  "generation": 38,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "hybrid_annealed_adam_path",
+  "patch_description": "This rewrite performs a true crossover between the two strategies:\n\n1. **Annealed Gauss-Seidel warm start** (from the inspiration script): quickly shapes a smooth path, strongly pushing away from the school first, then gradually increasing pull toward the base.\n2. **Adaptive Adam refinement** (from the current/better script): fine-tunes the multi-objective balance with normalized gradients for F1/F2/F3.\n3. **Smooth geometric prior**: initial curve gets a gentle Gaussian bend away from the school and toward the base, helping optimization converge faster and more consistently.\n4. **Stability improvements**: bounded updates, lightweight Laplacian regularization, and decaying learning rate to reduce oscillation and preserve smoothness.\n\nInputs/outputs are unchanged: same `evolve_drone_path(start, end, school, base, num_points)` and returns the Y-coordinate array.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:42:38.205544",
+  "llm_cost": 0.0511105,
+  "llm_model": null
+}

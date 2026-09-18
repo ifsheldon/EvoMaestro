@@ -1,0 +1,91 @@
+<NAME>
+exact_gaussian_targeting
+</NAME>
+
+<DESCRIPTION>
+The previous heuristic applied two independent Gaussians (one repelling from the school, one attracting to the base). Due to superposition, the exact safe offsets at `(sx, sy)` and `(bx, by)` were distorted by the tails of the other Gaussian, sometimes creating a "double-dip" that needlessly increased the curve length (worsening F1) or missing the target depth (worsening F2/F3).
+
+To guarantee optimal positioning at exactly `x = sx` (safely away from the school) and `x = bx` (right at the base) while maintaining single-valley mathematical smoothness to drastically improve F1, we introduce an exact 2-Point Gaussian Interpolator. By establishing the precise target coordinates for the school-avoidance peak and the base-attraction valley, we can analytically solve the 2x2 linear system for the optimal Gaussian amplitudes `A_s` and `A_b`. This guarantees the final superposed curve intersects exactly the strategic waypoints while minimizing excess distance. It effectively shapes the path as a smooth envelope curving precisely away from the school and wrapping gently into the base.
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+    # Independent Gaussian widths: sharper school avoidance, broader base recovery
+    sigma_s2 = 260.0
+    sigma_b2 = 920.0
+
+    for i in range(num_points):
+        t = (i + 1) / (num_points + 1.0)
+        x = x_start + (i + 1) * dx
+        y_line = y_start + (i + 1) * dy
+
+        # Smooth envelope keeps bends gentle near ends
+        env = math.sin(math.pi * t)
+
+        # Sequential update: baseline -> school repulsion -> base attraction
+        y = y_line
+
+        # 1) Bend away from school (localized, stronger)
+        w_s = math.exp(-((x - sx) ** 2) / sigma_s2)
+        push_dir = -1.0 if sy > y_line else 1.0
+
+        # Conditional override: check if pushing the opposite way is closer to base and safe from school
+        y_def = y_line + push_dir * 34.0 * w_s * env
+        y_alt = y_line - push_dir * 34.0 * w_s * env
+        if abs(by - y_alt) < abs(by - y_def) and math.hypot(x - sx, y_alt - sy) > 38.0:
+            push_dir = -push_dir
+
+        y += push_dir * 34.0 * w_s * env
+
+        # 2) Bend towards base (broader, moderate)
+        w_b = math.exp(-((x - bx) ** 2) / sigma_b2)
+        y += (by - y) * 0.82 * w_b * env
+
+        y_coords.append(float(y))
+=======
+    # Exact 2-Point Gaussian Interpolator
+    sigma_s2 = 350.0
+    sigma_b2 = 700.0
+
+    t_sx = (sx - x_start) / (x_end - x_start) if x_end != x_start else 0.0
+    y_line_sx = y_start + t_sx * (y_end - y_start)
+
+    t_bx = (bx - x_start) / (x_end - x_start) if x_end != x_start else 0.0
+    y_line_bx = y_start + t_bx * (y_end - y_start)
+
+    # Choose school avoidance side to minimize curve length towards base
+    y_s1 = sy + 40.0
+    y_s2 = sy - 40.0
+    target_s = y_s1 if abs(y_s1 - by) < abs(y_s2 - by) else y_s2
+    target_b = by
+
+    env_s = max(0.1, math.sin(math.pi * max(0.0, min(1.0, t_sx))))
+    env_b = max(0.1, math.sin(math.pi * max(0.0, min(1.0, t_bx))))
+
+    O_s = (target_s - y_line_sx) / env_s
+    O_b = (target_b - y_line_bx) / env_b
+
+    E_sb = math.exp(-((sx - bx) ** 2) / sigma_b2)
+    E_bs = math.exp(-((bx - sx) ** 2) / sigma_s2)
+
+    det = 1.0 - E_sb * E_bs
+    if abs(det) < 1e-6:
+        A_s, A_b = O_s, O_b
+    else:
+        A_s = (O_s - O_b * E_sb) / det
+        A_b = (O_b - O_s * E_bs) / det
+
+    for i in range(num_points):
+        t = (i + 1) / (num_points + 1.0)
+        x = x_start + (i + 1) * dx
+        y_line = y_start + (i + 1) * dy
+
+        env = math.sin(math.pi * t)
+
+        w_s = math.exp(-((x - sx) ** 2) / sigma_s2)
+        w_b = math.exp(-((x - bx) ** 2) / sigma_b2)
+
+        y = y_line + (A_s * w_s + A_b * w_b) * env
+        y_coords.append(float(y))
+>>>>>>> REPLACE
+</DIFF>

@@ -1,0 +1,109 @@
+# EVOLVE-BLOCK-START
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    【无人机连续空间多目标折线优化】
+    返回一个长度为 num_points 的列表，表示在 X 轴均匀采样下的中间 Y 坐标。
+
+    改进策略：
+    1. 以起终点直线作为最短距离基线；
+    2. 在 school 的 X 邻域施加平滑“远离”偏置，降低噪音邻近；
+    3. 在 base 的 X 邻域施加平滑“靠近”偏置，改善信号覆盖；
+    4. 使用高斯权重保证轨迹连续、平滑、无尖角。
+    """
+    import math
+
+    x_start, y_start = start
+    x_end, y_end = end
+    sx, sy = school
+    bx, by = base
+
+    if num_points <= 0:
+        return []
+
+    dx_total = x_end - x_start
+    if abs(dx_total) < 1e-12:
+        # 极端情况下 X 不变化，则直接平滑插值 Y
+        step = (y_end - y_start) / (num_points + 1)
+        return [float(y_start + (i + 1) * step) for i in range(num_points)]
+
+    def line_y(x):
+        t = (x - x_start) / dx_total
+        return y_start + (y_end - y_start) * t
+
+    def gaussian(x, mu, sigma):
+        sigma = max(float(sigma), 1e-6)
+        z = (x - mu) / sigma
+        return math.exp(-0.5 * z * z)
+
+    # 采样中间点 X（与原实现保持一致：不包含起终点）
+    xs = [x_start + (i + 1) * dx_total / (num_points + 1) for i in range(num_points)]
+    baseline = [line_y(x) for x in xs]
+
+    # 基于直线与学校/基站相对位置，决定上下偏置方向
+    school_line_y = line_y(sx)
+    base_line_y = line_y(bx)
+
+    # 远离学校：若学校在线上方，则向下压；若在线下方，则向上抬
+    away_dir = -1.0 if sy >= school_line_y else 1.0
+
+    # 靠近基站：向基站所在侧偏移
+    toward_dir = 1.0 if by >= base_line_y else -1.0
+
+    # 横向作用范围：学校影响更局部，基站吸引也更局部以防止路径过长
+    span = abs(dx_total)
+    sigma_school = max(span * 0.12, 6.0)
+    sigma_base = max(span * 0.14, 7.0)
+
+    # 纵向幅值：控制在适中范围，避免过大导致路径显著变长
+    school_gap = abs(sy - school_line_y)
+    base_gap = abs(by - base_line_y)
+
+    # 学校排斥更积极，基站吸引增强但更局部；同时设置上限防止极端输入失控
+    amp_school = min(18.0, 0.40 * school_gap + 6.0)
+    amp_base = min(35.0, 0.80 * base_gap + 5.0)
+
+    # 若学校与基站在同侧且作用冲突，适度增强学校规避优先级
+    if away_dir == toward_dir:
+        amp_school *= 1.10
+        amp_base *= 0.95
+
+    y_coords = []
+    for x, y0 in zip(xs, baseline):
+        w_school = gaussian(x, sx, sigma_school)
+        w_base = gaussian(x, bx, sigma_base)
+
+        # 平滑叠加：先避校区，再逐步靠向基站
+        delta = away_dir * amp_school * w_school + toward_dir * amp_base * w_base
+
+        # 轻微距离约束：限制相对基线偏离，兼顾 F1
+        max_dev = 35.0
+        if delta > max_dev:
+            delta = max_dev
+        elif delta < -max_dev:
+            delta = -max_dev
+
+        y_coords.append(float(y0 + delta))
+
+    return y_coords
+# EVOLVE-BLOCK-END
+
+import sys
+import os
+
+# 将当前目录加入系统路径以便导入同级文件
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from drone_evaluation import DroneGrader
+
+def run_experiment(**kwargs):
+    """供 Shinka 触发的单次实验方法"""
+    grader = DroneGrader()
+
+    # 捕获异常防止大模型写出死循环炸毁测评机
+    try:
+        avg_f1, avg_f2, avg_f3, final_score = grader.grade_silent(evolve_drone_path, timeout=12)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        avg_f1, avg_f2, avg_f3, final_score = float('inf'), float('inf'), float('inf'), float('inf')
+
+    return avg_f1, avg_f2, avg_f3, final_score

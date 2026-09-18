@@ -1,0 +1,14 @@
+{
+  "generation": 28,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 6,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "analytical_gaussian_spline_solver",
+  "patch_description": "The algorithm uses an **Analytical Gaussian Spline Solver**. Instead of applying iterative physical forces or simple heuristics, it constructs the trajectory as a linear interpolation baseline plus a linear combination of two \"pinned\" Gaussian basis functions. \n\n1. **Pinned Gaussian Basis**: It uses Gaussian kernels that are mathematically forced to be exactly zero at the start and end points of the flight. This ensures the boundary conditions (reaching the destination) are always met with $C^\\infty$ smoothness, minimizing the flying distance (F1).\n2. **2x2 Analytical Solution**: It identifies two target displacements: one at the school's X-coordinate (to stay 35 units away from the noise source) and one at the base station's X-coordinate (to reach target signal strength). It then sets up and solves a 2x2 system of linear equations to find the exact amplitudes for the school-repulsion and base-attraction kernels.\n3. **Optimized Parameters**: It uses relatively broad kernels ($\\sigma = 22\\%$ of the total span) to ensure the path doesn't have sharp turns, which keeps the total distance (F1) efficient while satisfying both spatial constraints (F2 and F3).",
+  "error_msg": null,
+  "timestamp": "2026-03-19T16:15:12.730426",
+  "llm_cost": 0.0081865,
+  "llm_model": null
+}

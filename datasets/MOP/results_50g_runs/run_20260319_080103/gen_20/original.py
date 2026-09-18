@@ -1,0 +1,77 @@
+# EVOLVE-BLOCK-START
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    【无人机连续空间多目标折线优化】
+    Implements a Gaussian-Sinusoidal hybrid deformation to balance distance,
+    noise avoidance, and signal strength.
+    """
+    import math
+
+    x_s, y_s = start
+    x_e, y_e = end
+
+    y_coords = []
+
+    # Calculate the total span and step sizes
+    x_range = x_e - x_s
+    y_range = y_e - y_s
+    dx = x_range / (num_points + 1)
+    dy = y_range / (num_points + 1)
+
+    for i in range(num_points):
+        # Normalized progress along the path (0 to 1)
+        t = (i + 1) / (num_points + 1.0)
+
+        # Current linear baseline position
+        curr_x = x_s + (i + 1) * dx
+        curr_y_lin = y_s + (i + 1) * dy
+
+        # 1. School Repulsion (F2 Optimization)
+        # Center the kernel at the school's X-coordinate
+        dist_x_sch = curr_x - school[0]
+        # Gaussian weight: sigma=22.36 (variance=500) provides a localized effect
+        w_sch = math.exp(-(dist_x_sch**2) / 500.0)
+        # Determine direction: push away from the school's Y-coordinate
+        side_sch = -1.0 if school[1] > curr_y_lin else 1.0
+        push_sch = side_sch * 14.0 * w_sch
+
+        # 2. Base Station Attraction (F3 Optimization)
+        # Center the kernel at the base station's X-coordinate
+        dist_x_bs = curr_x - base[0]
+        # Gaussian weight: sigma=28.28 (variance=800) for a broader attraction field
+        w_bs = math.exp(-(dist_x_bs**2) / 800.0)
+        # Pull the path towards the base station's Y-coordinate (70% of the gap)
+        pull_bs = (base[1] - curr_y_lin) * 0.75 * w_bs
+
+        # 3. Boundary Constraint Envelope
+        # Sinusoidal envelope ensures deviation is 0 at t=0 and t=1
+        envelope = math.sin(math.pi * t)
+
+        # Combine the linear path with the weighted deformations
+        y_final = curr_y_lin + (push_sch + pull_bs) * envelope
+
+        y_coords.append(float(y_final))
+
+    return y_coords
+# EVOLVE-BLOCK-END
+
+import sys
+import os
+
+# 将当前目录加入系统路径以便导入同级文件
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from drone_evaluation import DroneGrader
+
+def run_experiment(**kwargs):
+    """供 Shinka 触发的单次实验方法"""
+    grader = DroneGrader()
+
+    # 捕获异常防止大模型写出死循环炸毁测评机
+    try:
+        avg_f1, avg_f2, avg_f3, final_score = grader.grade_silent(evolve_drone_path, timeout=12)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        avg_f1, avg_f2, avg_f3, final_score = float('inf'), float('inf'), float('inf'), float('inf')
+
+    return avg_f1, avg_f2, avg_f3, final_score

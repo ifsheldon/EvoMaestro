@@ -1,0 +1,14 @@
+{
+  "generation": 50,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 9,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "adaptive_two_stage_projection",
+  "patch_description": "The `adaptive_two_stage_projection` algorithm implements a direct analytical construction of the drone path based on the two-stage potential field recommendation. \n\n1. **Broad Signal Alignment (F3)**: It first calculates a base station attraction amplitude. By determining the displacement needed from the linear path at the base station's x-coordinate, it uses a wide Gaussian kernel to ensure the path stays close to the base station for optimal signal coverage.\n2. **Clearance-Aware School Repulsion (F2)**: Following the specific recommendation, it estimates the path's height at the school's x-coordinate *after* the base pull is factored in. It then applies an adaptive repulsion amplitude: `amp = min(52.0, max(32.0, 31.0 + 115.0 / (clearance + 5.5)))`. This ensures the school noise penalty is minimized precisely where needed without causing excessive distance.\n3. **Harmonic Smoothness (F1)**: The final path is synthesized by combining the linear baseline with the Gaussian fields, all modulated by a sinusoid taper. This guarantees $C^\\infty$ smoothness and ensures the path starts and ends exactly at the required coordinates, minimizing total flying distance.",
+  "error_msg": "Could not extract code from patch string",
+  "timestamp": "2026-03-19T16:26:15.141274",
+  "llm_cost": 0.009778,
+  "llm_model": null
+}

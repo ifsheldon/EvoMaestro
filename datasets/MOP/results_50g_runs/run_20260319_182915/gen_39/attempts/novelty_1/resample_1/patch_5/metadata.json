@@ -1,0 +1,14 @@
+{
+  "generation": 39,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 5,
+  "success": true,
+  "num_applied": 2,
+  "patch_name": "seed_expansion_for_basin_coverage",
+  "patch_description": "To improve the path optimization, we expand the initialization set with asymmetric and event-localized seeds instead of relying only on the symmetric `scale_s \u00d7 scale_b` sweep. By introducing specific new basis functions (a bump before the school, a bump after the school, and a \"bridge\" bump between the school and base station), we can generate left-heavy, right-heavy, and bridge-focused repulsion strategies. This targeted basin coverage allows the surrogate model to evaluate and select from a much richer set of topological path candidates before performing local refinement, significantly lowering the combined multi-objective score.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:52:17.862728",
+  "llm_cost": 0.058172,
+  "llm_model": null
+}

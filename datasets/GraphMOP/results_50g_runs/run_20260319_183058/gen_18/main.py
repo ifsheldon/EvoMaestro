@@ -1,0 +1,270 @@
+# EVOLVE-BLOCK-START
+def evolve_task_routing(
+    num_nodes,
+    edges,
+    server_nodes,
+    task_sources,
+    task_info,
+    server_info,
+):
+    """
+    Graph multi-objective routing problem.
+
+    Return:
+    {
+        source_node: {
+            "server": server_node,
+            "path": [source_node, ..., server_node],
+        },
+        ...
+    }
+    """
+    import heapq
+
+    # ---------- Graph build ----------
+    graph = [[] for _ in range(num_nodes)]
+    edge_attr = {}
+    for u, v, base_latency, energy_cost, capacity in edges:
+        graph[u].append((v, base_latency, energy_cost, capacity))
+        graph[v].append((u, base_latency, energy_cost, capacity))
+        key = (u, v) if u < v else (v, u)
+        edge_attr[key] = (base_latency, energy_cost, capacity)
+
+    # ---------- Multi-criteria Dijkstra from each server ----------
+    def edge_weight(mode, lat, ene, cap):
+        cap_term = 1.0 / (cap + 1e-9)
+        if mode == 0:
+            return lat + 0.03 * cap_term + 0.08 * ene
+        elif mode == 1:
+            return ene + 0.02 * lat + 0.03 * cap_term
+        elif mode == 2:
+            return lat + 0.30 * ene + 0.04 * cap_term
+        elif mode == 3:
+            return lat + 0.10 * ene + 0.10 * cap_term
+        elif mode == 4:
+            return 0.10 * lat + ene + 0.10 * cap_term
+        else:
+            return lat + ene + 0.05 * cap_term
+
+    def dijkstra_from_root(root, mode):
+        dist = [float("inf")] * num_nodes
+        parent = [-1] * num_nodes
+        dist[root] = 0.0
+        parent[root] = root
+        heap = [(0.0, root)]
+
+        while heap:
+            d, u = heapq.heappop(heap)
+            if d != dist[u]:
+                continue
+            for v, lat, ene, cap in graph[u]:
+                w = edge_weight(mode, lat, ene, cap)
+                nd = d + w
+                if nd < dist[v]:
+                    dist[v] = nd
+                    parent[v] = u
+                    heapq.heappush(heap, (nd, v))
+        return dist, parent
+
+    # Precompute per-server trees (6 diverse modes).
+    server_trees = {}
+    for s in server_nodes:
+        trees = []
+        for mode in range(6):
+            dist, parent = dijkstra_from_root(s, mode)
+            trees.append((dist, parent))
+        server_trees[s] = trees
+
+    def reconstruct_path_from_server_tree(source, server, parent):
+        if source == server:
+            return [source]
+        if source < 0 or source >= num_nodes or parent[source] == -1:
+            return []
+        path = [source]
+        cur = source
+        seen = {source}
+        while cur != server:
+            cur = parent[cur]
+            if cur == -1 or cur in seen:
+                return []
+            path.append(cur)
+            seen.add(cur)
+        return path
+
+    def path_metrics(path, payload):
+        if not path or len(path) == 1:
+            return 0.0, 0.0
+        tlat = 0.0
+        teng = 0.0
+        for i in range(len(path) - 1):
+            u, v = path[i], path[i + 1]
+            key = (u, v) if u < v else (v, u)
+            lat, ene, cap = edge_attr[key]
+            ratio = payload / (cap + 1e-9)
+            tlat += lat + 0.05 * ratio
+            teng += ene * (1.0 + 0.02 * ratio)
+        return tlat, teng
+
+    def get_queue_sum(load, service_rate):
+        if service_rate <= 1e-12:
+            return 1e9
+        if load >= 0.999 * service_rate:
+            return 1e9
+        return load / (service_rate - load)
+
+    def get_energy_sum(load, service_rate, idle_power, dynamic_power):
+        if service_rate <= 1e-12:
+            return 1e9
+        util = min(1.0, max(0.0, load / service_rate))
+        return 0.02 * idle_power + dynamic_power * (util ** 1.15)
+
+    # ---------- Build candidate path sets ----------
+    candidates = {}
+    for src in task_sources:
+        payload = task_info[src][1]
+        per_server = {}
+        for s in server_nodes:
+            server_cands = []
+            for mode in range(6):
+                _, parent = server_trees[s][mode]
+                p = reconstruct_path_from_server_tree(src, s, parent)
+                if p:
+                    lat, ene = path_metrics(p, payload)
+                    server_cands.append((lat, ene, p))
+            
+            # Deduplicate by path signature
+            if server_cands:
+                uniq = {}
+                for lat, ene, p in server_cands:
+                    key = tuple(p)
+                    if key not in uniq or (lat + ene) < (uniq[key][0] + uniq[key][1]):
+                        uniq[key] = (lat, ene, p)
+                per_server[s] = list(uniq.values())
+        candidates[src] = per_server
+
+    # ---------- Assignment ----------
+    projected_load = {s: 0.0 for s in server_nodes}
+    plan = {}
+
+    # Heavier tasks first
+    ranked_sources = sorted(
+        task_sources,
+        key=lambda src: (
+            task_info[src][0] * task_info[src][2],
+            task_info[src][1],
+        ),
+        reverse=True,
+    )
+
+    def best_assignment_for_source(src, current_server=None, current_path=None):
+        arr, payload, comp = task_info[src]
+        demand = arr * comp
+        best = None
+
+        per_server = candidates.get(src, {})
+        for s in server_nodes:
+            cands = per_server.get(s, [])
+            if not cands:
+                continue
+
+            service_rate, idle_power, dynamic_power = server_info[s]
+            old_load = projected_load[s]
+            new_load = old_load + demand
+            
+            if new_load >= 0.985 * service_rate:
+                continue
+
+            old_q = get_queue_sum(old_load, service_rate)
+            new_q = get_queue_sum(new_load, service_rate)
+            q_diff = new_q - old_q
+
+            old_e = get_energy_sum(old_load, service_rate, idle_power, dynamic_power)
+            new_e = get_energy_sum(new_load, service_rate, idle_power, dynamic_power)
+            e_diff = new_e - old_e
+
+            for lat, ene, p in cands:
+                cost_lat = arr * lat + q_diff
+                cost_ene = arr * ene + e_diff
+                hop_pen = 0.01 * arr * (len(p) - 1)
+                
+                score = cost_lat + hop_pen + 0.85 * cost_ene
+
+                # Tiny stickiness bonus to prevent flapping
+                if current_server is not None and s == current_server and p == current_path:
+                    score *= 0.998
+
+                if best is None or score < best[0]:
+                    best = (score, s, p)
+
+        return best
+
+    # Initial greedy assignment
+    for src in ranked_sources:
+        arr, payload, comp = task_info[src]
+        demand = arr * comp
+
+        best = best_assignment_for_source(src)
+        if best is None:
+            chosen_server = None
+            chosen_path = []
+            per_server = candidates.get(src, {})
+            for s in server_nodes:
+                cands = per_server.get(s, [])
+                if cands:
+                    cands.sort(key=lambda x: x[0] + x[1] + 0.01 * len(x[2]))
+                    chosen_server = s
+                    chosen_path = cands[0][2]
+                    break
+            if chosen_server is None:
+                chosen_server = server_nodes[0]
+                chosen_path = [src] if src == chosen_server else []
+        else:
+            _, chosen_server, chosen_path = best
+
+        plan[src] = {"server": chosen_server, "path": chosen_path}
+        projected_load[chosen_server] += demand
+
+    # ---------- Multi-pass local improvement ----------
+    for _pass in range(2):
+        for src in ranked_sources:
+            cur_server = plan[src]["server"]
+            cur_path = plan[src]["path"]
+            arr, payload, comp = task_info[src]
+            demand = arr * comp
+
+            projected_load[cur_server] -= demand
+            best = best_assignment_for_source(src, current_server=cur_server, current_path=cur_path)
+
+            if best is None:
+                projected_load[cur_server] += demand
+                continue
+
+            _, new_server, new_path = best
+            if new_server != cur_server or new_path != cur_path:
+                plan[src] = {"server": new_server, "path": new_path}
+                projected_load[new_server] += demand
+            else:
+                projected_load[cur_server] += demand
+
+    return plan
+# EVOLVE-BLOCK-END
+
+import os
+import sys
+
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from graph_evaluation import GraphRoutingGrader
+
+
+def run_experiment(**kwargs):
+    del kwargs
+    grader = GraphRoutingGrader()
+    try:
+        avg_latency, avg_energy, final_score = grader.grade_silent(evolve_task_routing, timeout=12)
+    except Exception:
+        import traceback
+
+        traceback.print_exc()
+        avg_latency, avg_energy, final_score = float("inf"), float("inf"), float("inf")
+
+    return avg_latency, avg_energy, final_score

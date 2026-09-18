@@ -1,0 +1,14 @@
+{
+  "generation": 29,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 2,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "conditional_push_direction_override",
+  "patch_description": "Replaces the hardcoded school repulsion direction with a dynamic evaluation. It calculates the potential new Y-coordinate for both pushing away and pushing towards the school's side. If pushing towards the base yields a path that is closer to the base AND maintains a safe distance from the school (e.g., > 38.0 units), it flips the push direction. This safely resolves conflict cases where the default repulsion would push the drone far away from the base station.",
+  "error_msg": null,
+  "timestamp": "2026-03-19T16:11:24.185325",
+  "llm_cost": 0.015854,
+  "llm_model": null
+}

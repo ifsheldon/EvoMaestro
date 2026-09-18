@@ -1,0 +1,14 @@
+{
+  "generation": 26,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "local_search_routing",
+  "patch_description": "This solution combines the precomputed shortest path trees from the inspiration program with a powerful local search refinement phase. \n\n1. **Precomputation**: We compute the shortest path trees from each server to all nodes using Dijkstra's algorithm. The edge weight is a balanced combination of base latency and energy cost (`WEIGHT = 1.0`), which aligns with the global objective. This reduces Dijkstra calls from O(N*S) to O(S).\n2. **Greedy Assignment**: We sort task sources by their computational demand (First-Fit Decreasing) and assign them to the server that minimizes the marginal increase in the global objective (latency + energy).\n3. **Local Search Refinement**: We iteratively evaluate moving each task source to a different server. We compute the exact delta in the global objective in O(1) time. If a move reduces the total objective, we apply it. This local search runs until convergence or a maximum number of iterations, ensuring a highly optimized multi-objective assignment.\n4. **Robustness**: The queueing delay and load calculations are protected against floating-point underflow and division by zero, handling overloaded fallback servers gracefully.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:45:48.922090",
+  "llm_cost": 0.07916000000000001,
+  "llm_model": null
+}

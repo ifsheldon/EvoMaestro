@@ -1,0 +1,188 @@
+<NAME>
+analytic_multistart_adam
+</NAME>
+
+<DESCRIPTION>
+This approach transitions from discrete point-based evaluation approximations to exact continuous curve line integrals utilizing a 3-point Gaussian Quadrature scheme. This computes precise path lengths (F1), school proximity repulsions (F2), and base signal attritions (F3) natively along each segment, perfectly simulating the evaluator.
+
+Because the system inherently minimizes the multiplied combined objective MOP = F1 * F2 * F3, computing explicit analytic integrated gradients for `log(F1) + log(F2) + log(F3)` ensures an optimal update direction unaffected by the huge numerical scaling discrepancies among the three metrics. 
+
+To overcome potential saddle points or local topological minima (e.g. passing symmetrically above or below the school), it relies on a multi-start strategy. Four separate initial trajectory shapes (straight line, mathematically bowing upwards, mathematically bowing downwards, and initially biased towards the target base station) are optimized with an annealed Adam optimizer for 1500 local steps each. The outcome with the mathematically lowest final integrated objective cost is definitively selected and returned.
+</DESCRIPTION>
+
+<CODE>
+```python
+# EVOLVE-BLOCK-START
+import math
+
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    【无人机连续空间多目标折线优化】
+    Uses an exact geometric integral via 3-point Gaussian Quadrature and Analytic Gradients
+    embedded inside a robust multi-start Adam optimizer to achieve the lowest MOP Score.
+    """
+    x_start, y_start = start
+    x_end, y_end = end
+    sx, sy = school
+    bx, by = base
+    
+    num_seg = num_points + 1
+    dx_spacing = (x_end - x_start) / num_seg
+    xs = [x_start + (i + 1) * dx_spacing for i in range(num_points)]
+    
+    # 3-point Gaussian Quadrature properties for interval [0, 1]
+    T = [0.1127016653792583, 0.5, 0.8872983346207417]
+    W = [5.0/18.0, 8.0/18.0, 5.0/18.0]
+    
+    def optimize(initial_ys):
+        ys = list(initial_ys)
+        m = [0.0] * num_points
+        v = [0.0] * num_points
+        beta1 = 0.9
+        beta2 = 0.999
+        epsilon = 1e-8
+        total_steps = 1500
+        
+        final_cost = float('inf')
+        
+        for step in range(1, total_steps + 1):
+            lr = 1.0 * (1.0 - step / total_steps)
+            
+            f1, f2, f3 = 0.0, 0.0, 0.0
+            grad_f1 = [0.0] * num_points
+            grad_f2 = [0.0] * num_points
+            grad_f3 = [0.0] * num_points
+            
+            pts_x = [x_start] + xs + [x_end]
+            pts_y = [y_start] + ys + [y_end]
+            
+            for i in range(num_seg):
+                p0_x, p0_y = pts_x[i], pts_y[i]
+                p1_x, p1_y = pts_x[i+1], pts_y[i+1]
+                
+                dX = p1_x - p0_x
+                dY = p1_y - p0_y
+                L = math.hypot(dX, dY)
+                if L < 1e-7:
+                    L = 1e-7
+                    
+                f1 += L
+                dL_p0 = -dY / L
+                dL_p1 = dY / L
+                
+                sum_f2 = 0.0
+                sum_f3 = 0.0
+                dsum_f2_p0 = 0.0
+                dsum_f3_p0 = 0.0
+                dsum_f2_p1 = 0.0
+                dsum_f3_p1 = 0.0
+                
+                for t, w in zip(T, W):
+                    tx = p0_x + t * dX
+                    ty = p0_y + t * dY
+                    
+                    # F2: School Noise Proximity Assessment (Weighting: 1 / distance^2)
+                    dx_s = tx - sx
+                    dy_s = ty - sy
+                    dist_sq_s = dx_s*dx_s + dy_s*dy_s + 1e-5
+                    v2 = 1.0 / dist_sq_s
+                    grad_v2_y = -2.0 * dy_s * (v2 * v2)
+                    
+                    sum_f2 += w * v2
+                    dsum_f2_p0 += w * grad_v2_y * (1.0 - t)
+                    dsum_f2_p1 += w * grad_v2_y * t
+                    
+                    # F3: Base Station Signal Drop Assessment (Weighting: linear distance)
+                    dx_b = tx - bx
+                    dy_b = ty - by
+                    dist_sq_b = dx_b*dx_b + dy_b*dy_b + 1e-5
+                    dist_b = math.sqrt(dist_sq_b)
+                    v3 = dist_b
+                    grad_v3_y = dy_b / dist_b
+                    
+                    sum_f3 += w * v3
+                    dsum_f3_p0 += w * grad_v3_y * (1.0 - t)
+                    dsum_f3_p1 += w * grad_v3_y * t
+                    
+                f2 += L * sum_f2
+                f3 += L * sum_f3
+                
+                # Chain accumulation of geometric gradients
+                if i > 0:
+                    idx = i - 1
+                    grad_f1[idx] += dL_p0
+                    grad_f2[idx] += dL_p0 * sum_f2 + L * dsum_f2_p0
+                    grad_f3[idx] += dL_p0 * sum_f3 + L * dsum_f3_p0
+                if i < num_seg - 1:
+                    idx = i
+                    grad_f1[idx] += dL_p1
+                    grad_f2[idx] += dL_p1 * sum_f2 + L * dsum_f2_p1
+                    grad_f3[idx] += dL_p1 * sum_f3 + L * dsum_f3_p1
+                    
+            # Compute actual combined objective cost to accurately track best multi-start topology
+            final_cost = f1 * f2 * f3
+            
+            # Apply analytical relative gradients via local Adam relaxation
+            for i in range(num_points):
+                # Gradients of log(f1) + log(f2) + log(f3) translate to proportional target changes
+                grad = (grad_f1[i] / f1) + (grad_f2[i] / f2) + (grad_f3[i] / f3)
+                
+                m[i] = beta1 * m[i] + (1 - beta1) * grad
+                v[i] = beta2 * v[i] + (1 - beta2) * (grad ** 2)
+                
+                m_hat = m[i] / (1 - beta1 ** step)
+                v_hat = v[i] / (1 - beta2 ** step)
+                
+                ys[i] -= lr * m_hat / (math.sqrt(v_hat) + epsilon)
+                
+        return final_cost, ys
+
+    y_straight = [y_start + (y_end - y_start) * (i + 1) / num_seg for i in range(num_points)]
+    
+    inits = []
+    # Hypothesis 1. Straight line direct sequence trajectory 
+    inits.append(list(y_straight))
+    
+    # Hypothesis 2. Bow Up topology (Avoidance maneuver above school)
+    inits.append([y_straight[i] + math.sin((i+1)/num_seg * math.pi) * 30.0 for i in range(num_points)])
+    
+    # Hypothesis 3. Bow Down topology (Avoidance maneuver below school)
+    inits.append([y_straight[i] - math.sin((i+1)/num_seg * math.pi) * 30.0 for i in range(num_points)])
+    
+    # Hypothesis 4. Gravitative setup pulled deeply into Base Station territory early-on
+    inits.append([y_straight[i] + (by - y_straight[i]) * 0.8 * math.sin((i+1)/num_seg * math.pi) for i in range(num_points)])
+    
+    best_cost = float('inf')
+    best_ys = None
+    
+    for init_ys in inits:
+        cost, ys = optimize(init_ys)
+        if cost < best_cost:
+            best_cost = cost
+            best_ys = ys
+            
+    return best_ys
+# EVOLVE-BLOCK-END
+
+import sys
+import os
+
+# 将当前目录加入系统路径以便导入同级文件
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from drone_evaluation import DroneGrader
+
+def run_experiment(**kwargs):
+    """供 Shinka 触发的单次实验方法"""
+    grader = DroneGrader()
+    
+    # 捕获异常防止大模型写出死循环炸毁测评机
+    try:
+        avg_f1, avg_f2, avg_f3, final_score = grader.grade_silent(evolve_drone_path, timeout=12)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        avg_f1, avg_f2, avg_f3, final_score = float('inf'), float('inf'), float('inf'), float('inf')
+        
+    return avg_f1, avg_f2, avg_f3, final_score
+```
+</CODE>

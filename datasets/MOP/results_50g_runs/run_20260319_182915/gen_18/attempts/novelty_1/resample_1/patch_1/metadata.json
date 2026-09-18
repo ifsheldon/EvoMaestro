@@ -1,0 +1,14 @@
+{
+  "generation": 18,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "adam_energy_path",
+  "patch_description": "Redesigned the program with a novel object-oriented architecture, decoupling the optimization logic into an explicit `AdamOptimizer` and a `PathEnergyModel`. The new formulation calculates physically-motivated, precise gradients (using true curve len/rubber-banding and smoothness stiffness). Instead of only a local force, the base attraction now exerts a global steady pull to guide the entire flight path into a sweeping curve toward the base station, avoiding sharp V-shape length penalties (F1) while substantially decreasing the base signal drop (F3).",
+  "error_msg": "Could not extract code from patch string",
+  "timestamp": "2026-03-20T02:36:31.134758",
+  "llm_cost": 0.015162,
+  "llm_model": null
+}

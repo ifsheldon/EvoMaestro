@@ -1,0 +1,54 @@
+<NAME>
+multi_objective_pareto_router
+</NAME>
+
+<DESCRIPTION>
+The new algorithm uses a multi-objective optimization approach with the following key features:
+1. **Multi-Tree Preprocessing**: For each server, it computes three different Dijkstra trees using distinct weight functions: one focused on latency (including capacity constraints), one on energy, and one balanced. This provides a diverse set of candidate paths for each source-server pair.
+2. **Global Objective Function**: It defines a system-wide cost function that combines total network latency, total server queueing delay (using an M/M/1 model), and total energy consumption (routing + server dynamic energy).
+3. **Marginal Cost Greedy Assignment**: Sources are assigned to the (server, path) combination that minimizes the marginal increase in the global objective function, ensuring a locally optimal starting point.
+4. **Iterative Local Search**: A refinement phase iterates through the assignments and attempts to move tasks to different servers or paths if it reduces the total system cost, effectively climbing the objective landscape.
+5. **Adaptive Scaling**: The algorithm adaptively scales the energy-to-latency weight (beta) based on the graph's specific edge and task statistics, ensuring robust performance across different scenarios.
+</DESCRIPTION>
+
+<CODE>
+```python
+# EVOLVE-BLOCK-START
+def evolve_task_routing(
+    num_nodes,
+    edges,
+    server_nodes,
+    task_sources,
+    task_info,
+    server_info,
+):
+    import heapq
+
+    # 1. Graph and Statistics
+    adj = [[] for _ in range(num_nodes)]
+    avg_lat = 0.0
+    avg_eng = 0.0
+    avg_inv_cap = 0.0
+    if edges:
+        for u, v, lat, eng, cap in edges:
+            adj[u].append((v, float(lat), float(eng), float(cap)))
+            adj[v].append((u, float(lat), float(eng), float(cap)))
+            avg_lat += lat
+            avg_eng += eng
+            avg_inv_cap += 1.0 / max(1e-9, cap)
+        avg_lat /= len(edges)
+        avg_eng /= len(edges)
+        avg_inv_cap /= len(edges)
+    else:
+        avg_lat = avg_eng = avg_inv_cap = 1.0
+
+    unique_sources = sorted(list(set(task_sources)))
+    if unique_sources:
+        avg_payload = sum(task_info[s][1] for s in unique_sources) / len(unique_sources)
+    else:
+        avg_payload = 10.0
+
+    # 2. Multi-Objective Weights
+    beta = 0.45
+    avg_lat_total = avg_lat + avg_payload * avg_inv_cap
+    avg_eng

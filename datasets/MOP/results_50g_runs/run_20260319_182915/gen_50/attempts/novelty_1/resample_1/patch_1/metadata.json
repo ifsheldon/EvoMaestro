@@ -1,0 +1,14 @@
+{
+  "generation": 50,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "hybrid_guided_adam_path",
+  "patch_description": "This proposal crossbreeds the stronger parts of the prior implementations:\n\n- From the active-contour version, it keeps the useful geometric intuition:\n  - explicit smoothness and curvature control,\n  - a strong school-avoidance field,\n  - a base-attraction field,\n  - and the successful heuristic pre-bend initialization.\n- From the Adam-based version, it keeps the more stable and faster optimization dynamics.\n\nThe rewritten function is more efficient because it:\n- precomputes all X-dependent Gaussian weights once,\n- uses a compact gradient routine,\n- uses Adam for rapid convergence in fewer iterations,\n- finishes with a light smoothing pass to preserve a smooth line.\n\nIt also explicitly biases the initialization to create a smooth trajectory that bends away from the school region near `(40, 20)` and then bends toward the base region near `(70, -30)`, matching the requested qualitative shape while still optimizing the three objectives jointly.\n\nThe program keeps the same inputs and outputs and preserves all code outside the evolve block.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:57:59.405040",
+  "llm_cost": 0.048185000000000006,
+  "llm_model": null
+}

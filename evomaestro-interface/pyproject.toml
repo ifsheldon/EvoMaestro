@@ -1,0 +1,10 @@
+[project]
+name = "evomaestro-interface"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = ["fastapi>=0.141.1", "shinka-evolve", "uvicorn>=0.53.0"]
+
+[tool.uv.sources]
+shinka-evolve = { workspace = true, editable = true }

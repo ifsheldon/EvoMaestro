@@ -1,0 +1,234 @@
+# EVOLVE-BLOCK-START
+def evolve_task_routing(
+    num_nodes,
+    edges,
+    server_nodes,
+    task_sources,
+    task_info,
+    server_info,
+):
+    """
+    Graph multi-objective routing problem.
+
+    You must return a dict:
+    {
+        source_node: {
+            "server": server_node,
+            "path": [source_node, ..., server_node],
+        },
+        ...
+    }
+
+    Goals:
+    1. Minimize end-to-end latency = transmission latency + server queueing delay.
+    2. Minimize total energy = routing energy + server compute energy.
+    """
+    import heapq
+
+    WEIGHT = 1.0
+
+    # 1. Build adjacency list
+    graph = [[] for _ in range(num_nodes)]
+    for u, v, base_latency, energy_cost, capacity in edges:
+        graph[u].append((v, base_latency, energy_cost))
+        graph[v].append((u, base_latency, energy_cost))
+
+    # 2. Precompute shortest path trees from each server to all nodes
+    server_trees = {}
+    for srv in server_nodes:
+        dist = [float("inf")] * num_nodes
+        lat = [0.0] * num_nodes
+        eng = [0.0] * num_nodes
+        parent = [-1] * num_nodes
+
+        dist[srv] = 0.0
+        heap = [(0.0, srv)]
+
+        while heap:
+            d, u = heapq.heappop(heap)
+            if d > dist[u]:
+                continue
+            for v, b_lat, e_cost in graph[u]:
+                w = b_lat + WEIGHT * e_cost
+                if dist[u] + w < dist[v]:
+                    dist[v] = dist[u] + w
+                    lat[v] = lat[u] + b_lat
+                    eng[v] = eng[u] + e_cost
+                    parent[v] = u
+                    heapq.heappush(heap, (dist[v], v))
+
+        server_trees[srv] = {
+            'dist': dist,
+            'lat': lat,
+            'eng': eng,
+            'parent': parent
+        }
+
+    # 3. Sort task sources by total compute demand descending to pack efficiently
+    ranked_sources = sorted(
+        task_sources,
+        key=lambda src: task_info[src][0] * task_info[src][2],
+        reverse=True,
+    )
+
+    server_loads = {srv: 0.0 for srv in server_nodes}
+    server_arrs = {srv: 0.0 for srv in server_nodes}
+    assignment = {}
+
+    # 4. Greedy assignment
+    for src in ranked_sources:
+        arr_rate, _payload_size, comp_demand = task_info[src]
+        load_increase = arr_rate * comp_demand
+
+        best_srv = None
+        best_score = float("inf")
+
+        for srv in server_nodes:
+            if server_trees[srv]['dist'][src] == float('inf'):
+                continue
+
+            srv_rate, idle_pwr, dyn_pwr = server_info[srv]
+            old_load = server_loads[srv]
+            new_load = old_load + load_increase
+
+            if new_load >= 0.95 * srv_rate:
+                continue
+
+            new_denom = max(0.01 * srv_rate, srv_rate - new_load)
+            q_delay_new = 1.0 / new_denom if new_load > 1e-9 else 1.0 / srv_rate
+
+            old_denom = max(0.01 * srv_rate, srv_rate - old_load)
+            q_delay_old = 1.0 / old_denom if old_load > 1e-9 else 1.0 / srv_rate
+
+            t_lat = server_trees[srv]['lat'][src]
+            r_eng = server_trees[srv]['eng'][src]
+
+            delta_lat = arr_rate * (t_lat + q_delay_new) + server_arrs[srv] * (q_delay_new - q_delay_old)
+            delta_eng = arr_rate * r_eng + dyn_pwr * (load_increase / srv_rate)
+            if old_load <= 1e-9 and new_load > 1e-9:
+                delta_eng += idle_pwr
+
+            score = delta_lat + WEIGHT * delta_eng
+
+            if score < best_score:
+                best_score = score
+                best_srv = srv
+
+        if best_srv is None:
+            reachable = [s for s in server_nodes if server_trees[s]['dist'][src] != float('inf')]
+            if reachable:
+                best_srv = min(reachable, key=lambda s: server_trees[s]['dist'][src])
+            else:
+                best_srv = server_nodes[0]
+
+        assignment[src] = best_srv
+        server_loads[best_srv] += load_increase
+        server_arrs[best_srv] += arr_rate
+
+    # 5. Local Search Refinement
+    improved = True
+    max_iters = 30
+    iter_count = 0
+
+    while improved and iter_count < max_iters:
+        improved = False
+        iter_count += 1
+
+        for src in task_sources:
+            old_srv = assignment[src]
+            arr_rate, _, comp_demand = task_info[src]
+            load = arr_rate * comp_demand
+
+            best_new_srv = old_srv
+            best_delta = -1e-6
+
+            for new_srv in server_nodes:
+                if new_srv == old_srv:
+                    continue
+                if server_trees[new_srv]['dist'][src] == float('inf'):
+                    continue
+
+                new_rate, new_idle, new_dyn = server_info[new_srv]
+                if server_loads[new_srv] + load >= 0.95 * new_rate:
+                    continue
+
+                # Calculate delta for old server
+                old_rate, old_idle, old_dyn = server_info[old_srv]
+                old_load_new = max(0.0, server_loads[old_srv] - load)
+                old_arr_new = max(0.0, server_arrs[old_srv] - arr_rate)
+
+                old_denom = max(0.01 * old_rate, old_rate - server_loads[old_srv])
+                old_q_delay_old = 1.0 / old_denom if server_loads[old_srv] > 1e-9 else 1.0 / old_rate
+
+                old_new_denom = max(0.01 * old_rate, old_rate - old_load_new)
+                old_q_delay_new = 1.0 / old_new_denom if old_load_new > 1e-9 else 1.0 / old_rate
+
+                delta_lat_old = old_arr_new * old_q_delay_new - server_arrs[old_srv] * old_q_delay_old - arr_rate * server_trees[old_srv]['lat'][src]
+                delta_eng_old = - arr_rate * server_trees[old_srv]['eng'][src] - old_dyn * (load / old_rate)
+                if old_load_new <= 1e-9 and server_loads[old_srv] > 1e-9:
+                    delta_eng_old -= old_idle
+
+                # Calculate delta for new server
+                new_load_new = server_loads[new_srv] + load
+                new_arr_new = server_arrs[new_srv] + arr_rate
+
+                new_denom = max(0.01 * new_rate, new_rate - server_loads[new_srv])
+                new_q_delay_old = 1.0 / new_denom if server_loads[new_srv] > 1e-9 else 1.0 / new_rate
+
+                new_new_denom = max(0.01 * new_rate, new_rate - new_load_new)
+                new_q_delay_new = 1.0 / new_new_denom if new_load_new > 1e-9 else 1.0 / new_rate
+
+                delta_lat_new = new_arr_new * new_q_delay_new - server_arrs[new_srv] * new_q_delay_old + arr_rate * server_trees[new_srv]['lat'][src]
+                delta_eng_new = arr_rate * server_trees[new_srv]['eng'][src] + new_dyn * (load / new_rate)
+                if server_loads[new_srv] <= 1e-9 and new_load_new > 1e-9:
+                    delta_eng_new += new_idle
+
+                delta_total = (delta_lat_old + delta_lat_new) + WEIGHT * (delta_eng_old + delta_eng_new)
+
+                if delta_total < best_delta:
+                    best_delta = delta_total
+                    best_new_srv = new_srv
+
+            if best_new_srv != old_srv:
+                server_loads[old_srv] = max(0.0, server_loads[old_srv] - load)
+                server_arrs[old_srv] = max(0.0, server_arrs[old_srv] - arr_rate)
+                server_loads[best_new_srv] += load
+                server_arrs[best_new_srv] += arr_rate
+                assignment[src] = best_new_srv
+                improved = True
+
+    # 6. Build final plan
+    plan = {}
+    for src, srv in assignment.items():
+        if server_trees[srv]['dist'][src] == float('inf'):
+            plan[src] = {"server": srv, "path": []}
+        else:
+            path = []
+            curr = src
+            while curr != -1:
+                path.append(curr)
+                curr = server_trees[srv]['parent'][curr]
+            plan[src] = {"server": srv, "path": path}
+
+    return plan
+# EVOLVE-BLOCK-END
+
+import os
+import sys
+
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from graph_evaluation import GraphRoutingGrader
+
+
+def run_experiment(**kwargs):
+    del kwargs
+    grader = GraphRoutingGrader()
+    try:
+        avg_latency, avg_energy, final_score = grader.grade_silent(evolve_task_routing, timeout=12)
+    except Exception:
+        import traceback
+
+        traceback.print_exc()
+        avg_latency, avg_energy, final_score = float("inf"), float("inf"), float("inf")
+
+    return avg_latency, avg_energy, final_score

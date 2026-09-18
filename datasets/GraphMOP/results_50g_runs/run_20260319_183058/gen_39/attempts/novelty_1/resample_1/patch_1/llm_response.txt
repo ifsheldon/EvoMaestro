@@ -1,0 +1,181 @@
+An excellent way to improve both latency and energy is to recognize that transmission delay inherently depends on the task's payload and the edge's capacity (`payload / capacity`). The current candidate generation underestimates the true latency by only summing the base latency (`bl`) and ignoring the capacity-dependent transmission time.
+
+By correcting the `route_lat` calculation to include `payload / capacity` during candidate evaluation, the assignment model will naturally steer high-payload tasks away from low-capacity edges. To ensure such capacity-aware paths are actually available in the candidate pool, we can introduce an adaptive extra routing pass in Dijkstra that explicitly penalizes low-capacity edges using a `gamma / capacity` term, where `gamma` is tied to the average payload of the tasks.
+
+Here are the modifications to implement this:
+
+<NAME>
+adaptive_capacity_aware_routing
+</NAME>
+
+<DESCRIPTION>
+1. Modify `dijkstra_from_server` to accept a `gamma` parameter and add `gamma / capacity` to the edge weight.
+2. Add an extra Dijkstra pass per server using `gamma = avg_payload` to generate capacity-aware paths.
+3. Build an `edge_dict` during graph construction to quickly look up edge capacities.
+4. Correct the `route_lat` calculation in candidate generation to explicitly include `payload / capacity`, ensuring the assignment model accurately evaluates and selects paths that avoid bottlenecks for heavy tasks.
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+    def dijkstra_from_server(server, alpha):
+        """
+        Shortest path tree rooted at server using:
+            edge_weight = latency + alpha * energy
+        Stores actual cumulative latency and energy on the chosen path.
+        """
+        dist = [float("inf")] * num_nodes
+        parent = [-1] * num_nodes
+        cum_lat = [0.0] * num_nodes
+        cum_en = [0.0] * num_nodes
+
+        dist[server] = 0.0
+        pq = [(0.0, server)]
+
+        while pq:
+            cur_d, u = heapq.heappop(pq)
+            if cur_d != dist[u]:
+                continue
+            for v, bl, ec, _cap in graph[u]:
+                nd = cur_d + bl + alpha * ec
+                if nd < dist[v] - 1e-15:
+                    dist[v] = nd
+                    parent[v] = u
+                    cum_lat[v] = cum_lat[u] + bl
+                    cum_en[v] = cum_en[u] + ec
+                    heapq.heappush(pq, (nd, v))
+
+        return {"parent": parent, "lat": cum_lat, "en": cum_en, "dist": dist}
+=======
+    def dijkstra_from_server(server, alpha, gamma=0.0):
+        """
+        Shortest path tree rooted at server using:
+            edge_weight = latency + alpha * energy + gamma / capacity
+        Stores actual cumulative latency and energy on the chosen path.
+        """
+        dist = [float("inf")] * num_nodes
+        parent = [-1] * num_nodes
+        cum_lat = [0.0] * num_nodes
+        cum_en = [0.0] * num_nodes
+
+        dist[server] = 0.0
+        pq = [(0.0, server)]
+
+        while pq:
+            cur_d, u = heapq.heappop(pq)
+            if cur_d != dist[u]:
+                continue
+            for v, bl, ec, cap in graph[u]:
+                nd = cur_d + bl + alpha * ec + gamma / max(cap, 1e-9)
+                if nd < dist[v] - 1e-15:
+                    dist[v] = nd
+                    parent[v] = u
+                    cum_lat[v] = cum_lat[u] + bl
+                    cum_en[v] = cum_en[u] + ec
+                    heapq.heappush(pq, (nd, v))
+
+        return {"parent": parent, "lat": cum_lat, "en": cum_en, "dist": dist}
+>>>>>>> REPLACE
+</DIFF>
+
+<DIFF>
+<<<<<<< SEARCH
+    # -----------------------------
+    # Graph construction
+    # -----------------------------
+    graph = [[] for _ in range(num_nodes)]
+    for u, v, base_latency, energy_cost, capacity in edges:
+        bl = float(base_latency)
+        ec = float(energy_cost)
+        cap = float(capacity)
+        graph[u].append((v, bl, ec, cap))
+        graph[v].append((u, bl, ec, cap))
+
+    servers = list(server_nodes)
+    sources = list(task_sources)
+=======
+    # -----------------------------
+    # Graph construction
+    # -----------------------------
+    graph = [[] for _ in range(num_nodes)]
+    edge_dict = {}
+    for u, v, base_latency, energy_cost, capacity in edges:
+        bl = float(base_latency)
+        ec = float(energy_cost)
+        cap = float(capacity)
+        graph[u].append((v, bl, ec, cap))
+        graph[v].append((u, bl, ec, cap))
+        edge_dict[(u, v)] = (bl, ec, cap)
+        edge_dict[(v, u)] = (bl, ec, cap)
+
+    servers = list(server_nodes)
+    sources = list(task_sources)
+>>>>>>> REPLACE
+</DIFF>
+
+<DIFF>
+<<<<<<< SEARCH
+    # -----------------------------
+    # Precompute path trees
+    # -----------------------------
+    trees = {s: [dijkstra_from_server(s, a) for a in ALPHAS] for s in servers}
+
+    # -----------------------------
+    # Candidate generation
+    # -----------------------------
+=======
+    # -----------------------------
+    # Precompute path trees
+    # -----------------------------
+    avg_payload = sum(float(task_info[src][1]) for src in sources) / len(sources) if sources else 0.0
+    trees = {s: [dijkstra_from_server(s, a) for a in ALPHAS] for s in servers}
+    for s in servers:
+        trees[s].append(dijkstra_from_server(s, 0.18, gamma=avg_payload))
+
+    # -----------------------------
+    # Candidate generation
+    # -----------------------------
+>>>>>>> REPLACE
+</DIFF>
+
+<DIFF>
+<<<<<<< SEARCH
+                route_lat = float(tree["lat"][src])
+                route_en = float(tree["en"][src])
+
+                # Zero-load proxy for this source-server-path.
+                q0 = queue_delay(rate, work)
+                comp_en = dynamic_power(s) * (work / rate)
+                base_energy = payload * route_en + comp_en + 0.005 * idle_power(s)
+                base_cost = route_lat + q0 + 0.52 * base_energy
+=======
+                route_lat = 0.0
+                route_en = 0.0
+                for i in range(len(path) - 1):
+                    bl, ec, cap = edge_dict[(path[i], path[i+1])]
+                    route_lat += bl + payload / max(cap, 1e-9)
+                    route_en += ec
+
+                # Zero-load proxy for this source-server-path.
+                q0 = queue_delay(rate, work)
+                comp_en = dynamic_power(s) * (work / rate)
+                base_energy = payload * route_en + comp_en + 0.005 * idle_power(s)
+                base_cost = route_lat + q0 + 0.52 * base_energy
+>>>>>>> REPLACE
+</DIFF>
+
+<DIFF>
+<<<<<<< SEARCH
+                    score = tree["lat"][src] + 0.2 * tree["en"][src]
+                    if score < best_score:
+                        best_score = score
+                        repaired = {
+                            "server": s,
+                            "path": path,
+                            "route_lat": float(tree["lat"][src]),
+                            "route_en": float(tree["en"][src]),
+                            "base_energy": float(tree["en"][src]),
+                            "base_cost": float(score),
+                        }
+=======
+                    r_lat = 0.0
+                    r_en =

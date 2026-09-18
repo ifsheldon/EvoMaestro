@@ -1,0 +1,40 @@
+An elegant and precise way to handle continuous path optimization where multiple objectives compete (distance F1 fighting with obstacles F2 and attractors F3) is to realize that this problem behaves identically to a discrete rubber-band in an energy field. Instead of relying purely on a coarse grid-search with predetermined geometric offset models (which structurally restrict the flexibility and order of path control points), we can implement an **Adam Optimizer natively in Python**.
+
+The following improvement simplifies the previous grid-search to rapidly find a global basin of attraction, and then computes the exact analytical gradients for the surrogate objective (`score = F1 * F2 * F3`) with respect to all `Y` control points simultaneously. This transforms the rigid grid output into a completely flexible spline, effectively shifting curve centers to exact physical optima without relying upon brute-force loop limits. 
+
+<NAME>
+adam_trajectory_refinement
+</NAME>
+
+<DESCRIPTION>
+1. Reduce the amplitude resolution and bounds of the surrogate grid-search to quickly produce a robust topological initialization (preventing local minima on the wrong side of the school). 
+2. Introduce a full Adam Optimization loop natively applied to the `Y` values.
+3. Analytically differentiate `F1`, `F2`, and `F3` w.r.t the coordinates, resulting in perfectly continuous smooth optimization (the F1 gradient mathematically behaves like a Laplacian, naturally smoothing out the line against any F2/F3 field distortion).
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+    W_choices = [100.0, 300.0, 600.0, 1000.0]
+
+    # Precompute structural Gaussian basis shapes for rapid grid combinations
+    shape_school = []
+    for W in W_choices:
+        shape_school.append([school_dirs[i] * (-1.0) * math.exp(-((xs[i] - school_x)**2) / W) for i in range(num_points)])
+
+    shape_base = []
+    for W in W_choices:
+        shape_base.append([base_dirs[i] * 1.0 * math.exp(-((xs[i] - base_x)**2) / W) for i in range(num_points)])
+
+    best_score = float('inf')
+    best_ys = line_ys
+
+    # Adjust step stride dynamically to prevent Python overhead timeouts purely for overly dense meshes
+    A_steps = 3 if num_points <= 100 else 6
+    if num_points > 500: A_steps = 10
+
+    # Fully explore the configuration space internally via Surrogate Function Check
+    for A_school in range(0, 61, A_steps):
+        for A_base in range(0, 61, A_steps):
+            for w_s_idx in range(len(W_choices)):
+                ss = shape_school[w_s_idx]
+                for w_

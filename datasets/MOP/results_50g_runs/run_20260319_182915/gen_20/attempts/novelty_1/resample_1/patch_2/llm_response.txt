@@ -1,0 +1,57 @@
+
+```
+Wait, the description was cut off in my thought process, but I'll make sure it's complete in the final output.
+
+Wait, I noticed the previous attempt failed with "No changes applied". This usually means the SEARCH block didn't match the file exactly.
+Let's look at the "Current program" provided in the prompt.
+
+```python
+# EVOLVE-BLOCK-START
+import math
+
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    【无人机连续空间多目标折线优化】
+    LLMs 将被要求在这里编写代码（可以使用启发式寻找策略，或者单纯使用规则拟合）。
+    你需要返回一个长度为 num_points 的列表，包含从起点到终点按 X 匀速布置对应的 Y 轴偏移量。
+    """
+    x_start, y_start = start
+    x_end, y_end = end
+    x_school, y_school = school
+    x_base, y_base = base
+
+    y_coords = []
+    dx = (x_end - x_start) / (num_points + 1)
+
+    def get_y_line(x):
+        if x_end == x_start:
+            return y_start
+        return y_start + (x - x_start) * (y_end - y_start) / (x_end - x_start)
+
+    y_line_school = get_y_line(x_school)
+    y_line_base = get_y_line(x_base)
+
+    # Determine push directions relative to the straight line
+    push_school = -1 if y_school > y_line_school else 1
+    push_base = 1 if y_base > y_line_base else -1
+
+    for i in range(num_points):
+        x = x_start + (i + 1) * dx
+        y_line = get_y_line(x)
+
+        # Sine window to ensure offsets smoothly drop to 0 at the start and end points
+        window = math.sin(math.pi * (x - x_start) / (x_end - x_start)) if x_end != x_start else 1.0
+
+        # Gaussian curves for smooth local bending
+        offset_school = push_school * 25.0 * math.exp(-((x - x_school) ** 2) / 300.0)
+        offset_base = push_base * 36.0 * math.exp(-((x - x_base) ** 2) / 300.0)
+
+        total_offset = (offset_school + offset_base) * window
+
+        y_coords.append(float(y_line + total_offset))
+
+    return y_coords
+# EVOLVE-BLOCK-END
+```
+
+I will

@@ -1,0 +1,14 @@
+{
+  "generation": 9,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "guided_smooth_multiobjective_path",
+  "patch_description": "Replace the current heuristic with a two-stage \u201cguide + relaxation\u201d strategy that better balances all three objectives:\n\n1) Build a guide curve from the straight line, then:\n- push away from school in its X-neighborhood (noise reduction),\n- pull toward base in its X-neighborhood and mildly in late trajectory (signal improvement).\n\n2) Run iterative Laplacian relaxation with guide anchoring:\n- reduces local curvature and excess distance,\n- preserves smooth continuous bending behavior,\n- keeps the trajectory near the multi-objective guide.\n\nThis tends to keep F1 controlled while further improving F3, accepting only limited F2 tradeoff. It also naturally creates a smooth path that bends away from school-like points (e.g., around (40, 20)) and toward base-like points (e.g., around (70, -30)).",
+  "error_msg": null,
+  "timestamp": "2026-03-19T16:02:52.057037",
+  "llm_cost": 0.038589250000000005,
+  "llm_model": null
+}

@@ -1,0 +1,15 @@
+==========Running program evaluation 1/1...==========
+==========Run 1/1 completed in 0.00 seconds==========
+Correctness and error status saved to /home/evolve/evolvis/GraphMOP/results_50g_runs/run_20260319_183058/gen_42/results/correct.json
+Metrics saved to /home/evolve/evolvis/GraphMOP/results_50g_runs/run_20260319_183058/gen_42/results/metrics.json
+Evaluation completed successfully.
+Metrics:
+  combined_score: -21.654846823201826
+  public: {'Latency': 5.567905195939676, 'Energy': 3.215425962420938, 'Graph MOP Score': 21.654846823201826, 'Note': 'Lower latency, lower energy, and lower final score are better.'}
+  private: {}
+  text_feedback: Your routing function yielded score=21.654847, latency=5.567905, energy=3.215426. Try to lower both latency and energy simultaneously while keeping valid paths.
+  execution_time_mean: 0.0010027328971773386
+  execution_time_std: 0.0
+  num_valid_runs: 1
+  num_invalid_runs: 0
+  all_validation_errors: []

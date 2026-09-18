@@ -1,0 +1,36 @@
+<NAME>
+geometry_aware_amplitude
+</NAME>
+
+<DESCRIPTION>
+Make the initial perturbation amplitudes dynamic and geometry-aware. For the school, we scale the Gaussian bump amplitude based on the baseline's vertical distance to the school (`dist_school_y`), maintaining strong localized avoidance when necessary but eliminating unnecessary detours when the baseline is safely distant. For the base station, the fixed amplitude of 14.0 had a bug: if the baseline passed very close to the base station, this fixed bump could cause the path to overshoot and unnecessarily deflect away from the target. We cap the attraction bump amplitude relative to the raw vertical distance (`dist_base_y * 0.85`), preventing overshooting while allowing a stronger initial guess (up to 25.0) when the baseline is far away.
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+    # 偏置幅度适中，避免 F1 急剧上升
+    amp_school = 10.0
+    amp_base = 14.0
+
+    ys = []
+    for x in xs:
+        y_lin = line_y(x)
+        bump_school = dir_school * amp_school * math.exp(-0.5 * ((x - sx) / sig_school) ** 2)
+        bump_base = dir_base * amp_base * math.exp(-0.5 * ((x - bx) / sig_base) ** 2)
+        ys.append(y_lin + bump_school + bump_base)
+=======
+    # 动态偏置幅度：降低对足够远学校的非必要绕路，并防止基站牵引过冲
+    dist_school_y = abs(y_school_line - sy)
+    amp_school = 22.0 * math.exp(-0.005 * dist_school_y ** 2)
+    
+    dist_base_y = abs(y_base_line - by)
+    amp_base = min(25.0, dist_base_y * 0.85)
+
+    ys = []
+    for x in xs:
+        y_lin = line_y(x)
+        bump_school = dir_school * amp_school * math.exp(-0.5 * ((x - sx) / sig_school) ** 2)
+        bump_base = dir_base * amp_base * math.exp(-0.5 * ((x - bx) / sig_base) ** 2)
+        ys.append(y_lin + bump_school + bump_base)
+>>>>>>> REPLACE
+</DIFF>

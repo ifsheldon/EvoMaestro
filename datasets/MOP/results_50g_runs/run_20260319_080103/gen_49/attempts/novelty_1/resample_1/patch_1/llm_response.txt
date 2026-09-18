@@ -1,0 +1,42 @@
+=s_line_y` for `away_dir`.
+    `away_dir = -1.0 if sy >= s_line_y else 1.0`
+    If `sy` is 20 and `s_line_y` is 0, `away_dir` is -1.
+    `y1_target = y1_line + (-1) * school_strength * weight`.
+    This moves the path to $y = -20$.
+    Distance from $y=-20$ to $sy=20$ is 40.
+    If it moved to $y=+20$, distance would be 0.
+    So -1 is correct. It moves *away* from the school.
+
+    One last look at the `toward_dir`:
+    `toward_dir = 1.0 if by >= b_line_y else -1.0`
+    If `by` is -30 and `b_line_y` is 0, `toward_dir` is -1.
+    `y2_target = y2_line + (-1) * base_strength * weight`.
+    This moves the path to $y = -25$.
+    Distance from $y=-25$ to $by=-30$ is 5.
+    If it moved to $y=+25$, distance would be 55.
+    So -1 is correct. It moves *toward* the base.
+
+    Perfect.
+
+    Wait, the Prior 1 code used `0.78` for `x2`. I'll use `0.75`.
+    And I'll use `0.35` for `x1`.
+    School is at 40, Base is at 70.
+    With $x_0=0, x_3=100$:
+    $x_1 = 35$ (just before school at 40).
+    $x_2 = 75$ (just after base at 70).
+    This is a very good placement for control points.
+
+    Final check on the surrogate:
+    `f1 * f2 * f3` is the product.
+    `5.0 * f1 + 25.0 * f2 + 0.2 * f3` is the sum.
+    The sum is generally better for optimization because it's more linear.
+    However, I'll use a slightly higher weight for F2 to ensure we stay away from the school.
+
+    ```python
+    return 4.5 * f1 + 22.0 * f2 + 0.18 * f3 + pen
+    ```
+
+    Wait, I'll also add the `school_shape_pen` and `base_shape_pen` from Prior 1, as they were very effective at guiding the search.
+
+    ```python
+    y_at_sx = bezier_y_

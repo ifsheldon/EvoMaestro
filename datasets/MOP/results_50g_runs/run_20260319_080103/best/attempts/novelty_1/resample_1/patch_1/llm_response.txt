@@ -1,0 +1,63 @@
+<NAME>
+remove_envelope_and_reorder_objectives
+</NAME>
+
+<DESCRIPTION>
+1. **Remove the `env` smooth scaling**: The previous introduction of the sine envelope function strictly bounded modifications near the endpoints to 0. This dramatically harmed the base signal metrics (F3) and school noise metrics (F2) when these POIs were nearer to the course's start/end.
+2. **Reorder Operations**: Instead of dodging the school first and then drawing towards the base (which could re-steer the path right back into the school thereby hurting F2), we now pull the trajectory toward the base *first*. Afterwards, we firmly repulse it away from the school so avoidance takes correct priority and ensures minimum F2 noise penalization.
+3. **Consistent Dodge Direction**: To guarantee a clean dodge and prevent mid-point switching or jitter if the path hugs the school's noise zone, we calculate `global_push_dir` right at the `sx` mark based on where the base attraction *would* naturally drift the drone. This ensures the curve bulges smoothly to one valid side.
+4. **Broadened Signal Capture**: Tuning `sigma_b2` wider enables the drone to hold a strong signal over a broader region and tuning `w_s` push value slightly higher directly protects against noise overlaps.
+</DESCRIPTION>
+
+<DIFF>
+<<<<<<< SEARCH
+    # Independent Gaussian widths: sharper school avoidance, broader base recovery
+    sigma_s2 = 260.0
+    sigma_b2 = 920.0
+
+    for i in range(num_points):
+        t = (i + 1) / (num_points + 1.0)
+        x = x_start + (i + 1) * dx
+        y_line = y_start + (i + 1) * dy
+
+        # Smooth envelope keeps bends gentle near ends
+        env = math.sin(math.pi * t)
+
+        # Sequential update: baseline -> school repulsion -> base attraction
+        y = y_line
+
+        # 1) Bend away from school (localized, stronger)
+        w_s = math.exp(-((x - sx) ** 2) / sigma_s2)
+        push_dir = -1.0 if sy > y_line else 1.0
+        y += push_dir * 34.0 * w_s * env
+
+        # 2) Bend towards base (broader, moderate)
+        w_b = math.exp(-((x - bx) ** 2) / sigma_b2)
+        y += (by - y) * 0.82 * w_b * env
+=======
+    # Independent Gaussian widths: sharp school avoidance, broad base recovery
+    sigma_s2 = 450.0
+    sigma_b2 = 1200.0
+
+    # Determine consistent dodge direction by projecting baseline at sx
+    t_sx = (sx - x_start) / (x_end - x_start) if x_end != x_start else 0.0
+    y_line_sx = y_start + t_sx * (y_end - y_start)
+    w_b_sx = math.exp(-((sx - bx) ** 2) / sigma_b2)
+    y_at_sx = y_line_sx + (by - y_line_sx) * w_b_sx
+    global_push_dir = -1.0 if sy > y_at_sx else 1.0
+
+    for i in range(num_points):
+        x = x_start + (i + 1) * dx
+        y_line = y_start + (i + 1) * dy
+
+        y = y_line
+
+        # 1) Bend towards base first to establish target path
+        w_b = math.exp(-((x - bx) ** 2) / sigma_b2)
+        y += (by - y) * w_b
+
+        # 2) Apply school repulsion over the established path to guarantee F2 safety
+        w_s = math.exp(-((x - sx) ** 2) / sigma_s2)
+        y += global_push_dir * 40.0 * w_s
+>>>>>>> REPLACE
+</DIFF>

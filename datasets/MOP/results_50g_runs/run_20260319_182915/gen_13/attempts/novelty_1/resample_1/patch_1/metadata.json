@@ -1,0 +1,14 @@
+{
+  "generation": 13,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 1,
+  "patch_name": "adaptive_contour_bend",
+  "patch_description": "The current approach has essentially no tunable optimization components: it uses a straight-line initialization only, with implicit fixed parameters of zero curvature control, zero obstacle avoidance, zero base attraction, and zero iterative refinement. That keeps F1 optimal, but leaves F2 and especially F3 weak.\n\nThe new algorithm keeps the same input/output contract, but introduces a smooth parametric path and a lightweight adaptive optimizer:\n\n- **Initialization**: start from the straight line between endpoints.\n- **Shape terms**:\n  - a **school repulsion bump** centered near the school X-position to push the path away from `(40, 20)`;\n  - a **base attraction bump** centered near the base X-position to pull the path toward `(70, -30)`;\n  - a mild **global sag term** to help the path transition smoothly downward when useful.\n- **Key parameters added/changed**:\n  - `repulse_amp`, `attract_amp`, `sag_amp`: amplitudes of the three shape components;\n  - `sigma_school`, `sigma_base`, `sigma_sag`: spatial widths controlling how local/global each bend is;\n  - `coarse_steps`, `refine_steps`: two-stage search counts;\n  - `smooth_passes`: explicit smoothing strength to keep F1 low while improving F2/F3.\n- **Optimization strategy**:\n  - replaces the nonexistent optimizer with a **scheduled coordinate/local search**:\n    - a coarse search over amplitude candidates,\n    - then a refinement loop with shrinking step sizes.\n  - this is more robust than a fixed-step gradient descent because it avoids unstable updates and works without requiring the grader\u2019s exact differentiable objective.\n- **Selection criterion**:\n  - uses a surrogate objective combining distance, school proximity, base distance, and roughness, with stronger emphasis on avoiding the school and improving base coverage while preserving smoothness.\n\nThis should outperform the straight line by bending smoothly away from the school region and toward the base station region, reducing F2 and F3 without overly increasing F1.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:33:26.456731",
+  "llm_cost": 0.0449225,
+  "llm_model": null
+}

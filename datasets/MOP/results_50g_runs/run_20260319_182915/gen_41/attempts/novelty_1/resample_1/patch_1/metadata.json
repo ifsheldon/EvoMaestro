@@ -1,0 +1,14 @@
+{
+  "generation": 41,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": true,
+  "num_applied": 2,
+  "patch_name": "asymmetric_local_seeds",
+  "patch_description": "This edit strengthens the current optimizer without rewriting the whole function.\n\nThe main idea is to keep the existing Gaussian-control representation, but make it much more search-efficient for the actual objective:\n\n1. Add a smooth endpoint envelope to the Gaussian deformation basis, so bends naturally taper to zero near start/end. This usually reduces unnecessary path length inflation while preserving the ability to bend strongly near important regions.\n2. Precompute basis values and score constants, making it cheap to evaluate many more candidate paths.\n3. Replace the symmetric school/base initialization sweep with a richer seed set that is explicitly asymmetric and event-localized:\n   - single bump before the school,\n   - single bump after the school,\n   - left-heavy school repulsion,\n   - right-heavy school repulsion,\n   - a bridge bump between school and base,\n   - directional seeds that bend away from the school and toward the base.\n4. Instead of optimizing only one best seed, rank all seeds and run coordinate descent from the top few. This increases basin coverage and is especially useful in this landscape where localized bends around the school and base matter more than globally symmetric perturbations.\n5. Add a final light smoothing pass to preserve a smooth line shape while keeping the beneficial bend away from (40, 20) and toward (70, -30).\n\nThis is directly aimed at reducing the product F1 * F2 * F3 by improving initialization quality and preserving smoothness with lower distance overhead.",
+  "error_msg": null,
+  "timestamp": "2026-03-20T02:43:28.996790",
+  "llm_cost": 0.07375999999999999,
+  "llm_model": null
+}

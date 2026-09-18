@@ -1,0 +1,14 @@
+{
+  "generation": 43,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 1,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "smooth_potential_field_with_envelope",
+  "patch_description": "1. Replaced the Gaussian school repulsion with a Lorentzian function for fatter tails, enabling smoother avoidance and reducing F1.\n2. Fixed a bug where the repulsion direction could flip mid-path by calculating a constant direction based on the school's X-coordinate.\n3. Added an envelope function `1.0 - abs(2.0 * t - 1.0)**3` to the total deviation from the linear path. This forces the potential field shifts to smoothly decay to zero at the start and end points, eliminating massive F1 penalties caused by boundary discontinuities.\n4. Slightly tuned the sigmas and k-values to compensate for the envelope and improve base station attraction (F3).",
+  "error_msg": "No changes applied",
+  "timestamp": "2026-03-19T16:14:56.405627",
+  "llm_cost": 0.013928,
+  "llm_model": null
+}

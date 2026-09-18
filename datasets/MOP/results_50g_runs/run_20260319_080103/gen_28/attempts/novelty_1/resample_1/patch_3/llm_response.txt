@@ -1,0 +1,53 @@
+<NAME>
+pinned_gaussian_spline
+</NAME>
+
+<DESCRIPTION>
+The new algorithm uses a **Pinned Gaussian Basis Function** approach. Instead of iteratively applying forces, it treats the path as a linear baseline plus a smooth displacement function. This displacement is constructed from Gaussian kernels that are "pinned" (forced to zero) at the start and end points to ensure the path strictly adheres to the boundary conditions. 
+
+Key advantages:
+1. **F3 Optimization**: It calculates the exact amplitude needed for the Gaussian to pass directly through the base station's Y-coordinate at its X-coordinate, minimizing signal loss.
+2. **F2 Optimization**: It checks if the base-attraction path gets too close to the school. If so, it solves a 2x2 system of linear equations to find the amplitudes for two Gaussians (one for the base, one for the school) that simultaneously hit the base station and maintain a safe buffer from the school.
+3. **F1 Optimization**: By using broad Gaussian kernels ($\sigma = 0.25 \times \text{span}$), the resulting curve is mathematically smooth ($C^\infty$), avoiding the wiggles or sharp turns that increase path length.
+</DESCRIPTION>
+
+<CODE>
+```python
+# EVOLVE-BLOCK-START
+def evolve_drone_path(start, end, school, base, num_points):
+    """
+    无人机连续空间多目标折线优化：
+    使用“销钉高斯基函数”(Pinned Gaussian Basis) 算法。
+    1. 建立起终点线性基准。
+    2. 构造在起终点自动归零的高斯基函数。
+    3. 通过解析解（线性方程组）精确控制轨迹经过基站并避开学校。
+    4. 保证曲线全局平滑，兼顾 F1, F2, F3。
+    """
+    import math
+
+    x0, y0 = start
+    x1, y1 = end
+    xs, ys = school
+    xb, yb = base
+
+    if num_points <= 0:
+        return []
+
+    dx = x1 - x0
+    if abs(dx) < 1e-12:
+        # 极端情况：垂直路径
+        step = (y1 - y0) / (num_points + 1)
+        return [float(y0 + (i + 1) * step) for i in range(num_points)]
+
+    # 1. 基础参数
+    span = abs(dx)
+    sigma = 0.25 * span  # 较大的 sigma 保证 F1 平滑度
+
+    def y_lin(x):
+        return y0 + (x - x0) * (y1 - y0) / dx
+
+    def pinned_phi(x, mu):
+        # 基础高斯
+        p = math.exp(-0.5 * ((x - mu) / sigma)**2)
+        # 边界值
+        

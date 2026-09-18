@@ -1,0 +1,14 @@
+{
+  "generation": 50,
+  "novelty_attempt": 1,
+  "resample_attempt": 1,
+  "patch_attempt": 2,
+  "success": false,
+  "num_applied": 0,
+  "patch_name": "adaptive_gaussian_geometric_projection",
+  "patch_description": "This algorithm replaces iterative gradient descent with a high-precision, two-stage analytical geometric projection. \n1. **Geometric Base Alignment**: It first applies a wide-scope Gaussian pull toward the base station signal coordinates. This directly minimizes the signal drop (F3), which was the primary bottleneck in previous versions. \n2. **Clearance-Aware School Avoidance**: Instead of a fixed repulsion, it computes the y-coordinate at the school's x-location after the base attraction. It then calculates an adaptive push amplitude based on the recommendation formula: `amp = min(52.0, max(32.0, a + b / (clearance + c)))`. This ensures that even if the path is already biased away from the school, it maintains a safe, noise-minimizing buffer (F2). \n3. **Smooth Path Synthesis**: Endpoint safety and distance efficiency (F1) are maintained using a sine-based taper that smoothly transitions the path deviations to zero at the start and end coordinates. The Gaussian basis functions ensure $C^\\infty$ smoothness across the entire trajectory.",
+  "error_msg": "Could not extract code from patch string",
+  "timestamp": "2026-03-19T16:20:18.675779",
+  "llm_cost": 0.003474,
+  "llm_model": null
+}
