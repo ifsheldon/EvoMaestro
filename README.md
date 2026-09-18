@@ -179,6 +179,9 @@ The planned demo address is `https://evomaestro-demo.reify.ing`; [deployment rou
 
 ## Development
 
+For a single-container deployment of the mock demo, project page, and MOP/GraphMOP Shinka viewers, see [Docker hosting](docker/README.md).
+It publishes four loopback ports above 10000 for a host-managed cloudflared tunnel and preserves mock progress across restarts.
+
 The repository contains a Next.js/React frontend and FastAPI backend in `evomaestro-interface/`, the ShinkaEvolve integration as a submodule, and the benchmark harnesses.
 The repository root is a Bun workspace with `evomaestro-interface` and `project-page` as its members.
 `project-page/` contains the separate public project website; see its [development guide](project-page/README.md).

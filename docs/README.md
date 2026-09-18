@@ -7,6 +7,7 @@ Run command examples from the working directory specified in their guide.
 
 ## Guides
 
+- [Docker hosting](../docker/README.md): one container for the public mock demo, project page, and recorded-run Shinka viewers, with host cloudflared origins.
 - [Mock examples and guided walkthrough](guides/mock-examples.md): run or resume the demo, prepare fixtures, understand the fixed guide, and configure same-origin hosting.
 - [Interface development guide](../evomaestro-interface/README.md): frontend and backend setup, commands, and checks.
 - [Publication website](../project-page/README.md): maintain and build the project page.

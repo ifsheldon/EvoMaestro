@@ -8,6 +8,7 @@
 
 ## 使用指南
 
+- [Docker 部署](../docker/README.zh-CN.md)：单容器运行公开模拟演示、项目网站和历史运行 Shinka 查看器，并提供主机 cloudflared 源站地址。
 - [模拟示例与交互导览](guides/mock-examples.md)：启动或恢复演示、准备示例数据、了解固定导览数据集，以及配置同源部署。
 - [界面开发指南](../evomaestro-interface/README.md)：前后端环境、命令与检查流程。
 - [论文项目网站](../project-page/README.md)：维护与构建项目展示页面。

@@ -179,6 +179,9 @@ Maestro Chat 使用的 ChatGPT 订阅权限与真实演化所需的模型 API �
 
 ## 开发
 
+如需在单个容器中部署模拟演示、项目网站和 MOP/GraphMOP Shinka 查看器，请阅读 [Docker 部署](docker/README.zh-CN.md)。
+该配置发布四个大于 10000 的主机回环端口供主机 cloudflared 隧道使用，并在重启后保留模拟进度。
+
 `evomaestro-interface/` 包含 Next.js/React 前端和 FastAPI 后端，ShinkaEvolve 集成以子模块形式提供，其余目录包含基准任务代码。
 仓库根目录是 Bun 工作区，成员为 `evomaestro-interface` 和 `project-page`。
 `project-page/` 包含独立的公开项目网站，详见其[开发说明](project-page/README.md)。

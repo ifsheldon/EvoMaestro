@@ -305,6 +305,13 @@ Runner arguments use shell-aware parsing, and stale production proxy manifests f
 
 The visible **Continue** control resumes a paused run through `/api/run/resume`, which queues the `RESUME` command.
 
+## Container deployment
+
+The [Docker deployment](../docker/README.md) builds the interface with `EVOMAESTRO_STANDALONE=1` and a fixed `API_PROXY=http://127.0.0.1:18001`.
+The standalone server runs on port 13000, while Supervisor manages FastAPI and the mock runner independently so each process can restart after failure.
+`docker/runtime.py` configures the existing public-demo policy directly, stores its callback credential in private tmpfs, and initializes or resumes one durable mock working copy.
+The ordinary local launcher remains `start.py`; container startup uses the prebuilt standalone server and does not run Bun or rebuild assets.
+
 ## Guided walkthrough
 
 `useGuideSession` owns preparation, running, and restoration for every Guide entry point.

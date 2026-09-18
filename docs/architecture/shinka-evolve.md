@@ -508,6 +508,9 @@ This is still present and now exposes more endpoints than the older document cap
 
 It remains a monolithic Python HTTP server over static HTML.
 
+The [Docker deployment](../../docker/README.md) wraps its request handler with separate MOP and GraphMOP dataset allowlists, path confinement, and restricted static-file access.
+The wrapper supports older snapshots without an `attempt_log` table, while image preparation selects DELETE journal mode for browsing on a read-only filesystem without changing repository snapshots or their logical data.
+
 ### Repo-local `evomaestro-interface`
 
 `evomaestro-interface/`
