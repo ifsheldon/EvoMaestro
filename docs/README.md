@@ -25,12 +25,7 @@ Run command examples from the working directory specified in their guide.
 
 ## Maintenance
 
-- [Release checklist](maintenance/release-checklist.md): remaining source corrections, publication checks, and hosting requirements.
 - [Documentation rules](AGENTS.md): placement, sources of truth, translations, and link checks.
-
-## Archive
-
-- [Mock guide implementation plan](archive/mock-guide-implementation-plan.md): completed design and validation history; use the maintained mock guide for current commands.
 
 ## Reference papers
 

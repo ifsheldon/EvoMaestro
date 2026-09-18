@@ -26,12 +26,7 @@
 
 ## 维护
 
-- [发布检查清单](maintenance/release-checklist.md)：剩余源码问题、发布前检查与公开部署要求。
 - [文档维护规则](AGENTS.md)：分类、权威来源、翻译与链接检查。
-
-## 归档
-
-- [模拟导览实施计划](archive/mock-guide-implementation-plan.md)：已完成的设计与验证历史；当前命令请以持续维护的模拟示例指南为准。
 
 ## 参考论文
 
