@@ -4,8 +4,7 @@ export const publication = {
     "EvoMaestro: Toward Interpretable and Steerable LLM-Driven Program Evolution",
   description:
     "An interactive visual analytics system that helps experts understand, inspect, and steer LLM-driven program evolution.",
-  paperUrl:
-    "https://www.researchgate.net/publication/414382819_EvoMaestro_Toward_Interpretable_and_Steerable_LLM-Driven_Program_Evolution",
+  paperUrl: "https://arxiv.org/abs/2610.03721",
   codeUrl: "https://github.com/ifsheldon/EvoMaestro",
   demoUrl: new URL("https://evomaestro-demo.reify.ing"),
   videoEmbedUrl:

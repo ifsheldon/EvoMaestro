@@ -103,5 +103,5 @@ It serves the project page on container port 13001 alongside the mock demo and r
 Ordinary local builds retain their existing configuration.
 
 Before publishing, check the layout at desktop and phone widths, open both figure overlays and check close-button, Escape, backdrop, and focus-restoration behavior, play the video, copy the citation, and verify the publication links.
-The paper links currently open the [ResearchGate publication](https://www.researchgate.net/publication/414382819_EvoMaestro_Toward_Interpretable_and_Steerable_LLM-Driven_Program_Evolution) while the assigned DOI awaits activation.
-The DOI remains in the BibTeX citation and scholarly metadata; update `paperUrl` in `lib/publication.ts` when the ACM destination is ready.
+The paper links open the [arXiv publication](https://arxiv.org/abs/2610.03721), configured through `paperUrl` in `lib/publication.ts`.
+The ACM DOI remains in the BibTeX citation and scholarly metadata.
