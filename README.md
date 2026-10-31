@@ -5,7 +5,7 @@
 EvoMaestro is a visual interface for exploring how a population of programs evolves and guiding what it tries next.
 Built on ShinkaEvolve, it connects population structure, algorithmic ideas, source code, and evaluation results so you can inspect promising strategies and intervene during a run.
 
-[Paper (UIST 2026)](https://arxiv.org/abs/2610.03721) · [Online demo](https://evomaestro-demo.reify.ing) · [简体中文](README.zh-CN.md) · [Quick start](#quick-start) · [Datasets](#datasets)
+[Paper (UIST 2026)](https://doi.org/10.1145/3830398.3830626) · [Online demo](https://evomaestro-demo.reify.ing) · [简体中文](README.zh-CN.md) · [Quick start](#quick-start) · [Datasets](#datasets)
 
 ## What you can do
 

@@ -5,7 +5,7 @@
 EvoMaestro 是一个可视化界面，用于探索程序群体如何演化，并引导演化接下来尝试的方向。
 它基于 ShinkaEvolve，将群体结构、算法思路、源代码与评测结果联系起来，帮助你理解有潜力的策略，并在运行过程中进行干预。
 
-[论文（UIST 2026）](https://arxiv.org/abs/2610.03721) · [在线演示](https://evomaestro-demo.reify.ing) · [English](README.md) · [快速开始](#快速开始) · [数据集](#数据集)
+[论文（UIST 2026）](https://doi.org/10.1145/3830398.3830626) · [在线演示](https://evomaestro-demo.reify.ing) · [English](README.md) · [快速开始](#快速开始) · [数据集](#数据集)
 
 ## 功能
 
